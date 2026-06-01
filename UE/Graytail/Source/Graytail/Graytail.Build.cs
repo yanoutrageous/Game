@@ -12,5 +12,7 @@ public class Graytail : ModuleRules
 			"CoreUObject",
 			"Engine"
 		});
+
+		PublicIncludePaths.Add(ModuleDirectory);
 	}
 }

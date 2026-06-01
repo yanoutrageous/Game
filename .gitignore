@@ -1,0 +1,9 @@
+.build/
+dist/
+.tmp/
+logs/
+.cache/
+build/
+*.log
+.DS_Store
+Thumbs.db

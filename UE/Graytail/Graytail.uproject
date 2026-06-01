@@ -1,0 +1,12 @@
+{
+	"FileVersion": 3,
+	"Category": "Games",
+	"Description": "Graytail Unreal project shell.",
+	"Modules": [
+		{
+			"Name": "Graytail",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	]
+}

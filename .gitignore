@@ -7,3 +7,14 @@ build/
 *.log
 .DS_Store
 Thumbs.db
+
+# Unreal Engine generated files
+UE/Graytail/Binaries/
+UE/Graytail/Intermediate/
+UE/Graytail/Saved/
+UE/Graytail/DerivedDataCache/
+UE/Graytail/.vs/
+UE/Graytail/*.sln
+UE/Graytail/*.VC.db
+UE/Graytail/*.opensdf
+UE/Graytail/*.sdf

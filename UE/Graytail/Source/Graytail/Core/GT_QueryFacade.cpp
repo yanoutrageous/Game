@@ -100,3 +100,44 @@ bool UGT_QueryFacade::GetActorStates(TArray<FGT_ActorRuntimeState>& OutActors) c
 	OutActors = RunContext->GetActorStates();
 	return true;
 }
+
+bool UGT_QueryFacade::GetIntelCellViewData(int32 X, int32 Y, FGT_MiniMapCellViewData& OutCell) const
+{
+	OutCell = FGT_MiniMapCellViewData();
+
+	if (!HasValidRunContext())
+	{
+		return false;
+	}
+
+	const FGT_IntelMap& IntelMap = RunContext->GetPlayerIntelMap();
+	const FGT_IntelCell* IntelCell = IntelMap.GetCellConst(X, Y);
+	if (!IntelCell)
+	{
+		return false;
+	}
+
+	OutCell.X = IntelCell->X;
+	OutCell.Y = IntelCell->Y;
+	OutCell.bVisible = IntelCell->bVisible;
+	OutCell.bExplored = IntelCell->bExplored;
+	OutCell.bScanned = IntelCell->bScanned;
+	OutCell.DisplayedNumber = IntelCell->DisplayedNumber;
+	OutCell.MarkerState = IntelCell->MarkerState;
+	OutCell.VisibleRoomIcon = IntelCell->VisibleRoomIcon;
+	OutCell.bStale = IntelCell->bStale;
+	OutCell.ReliabilityState = IntelCell->ReliabilityState;
+	return true;
+}
+
+bool UGT_QueryFacade::IsIntelCellExplored(int32 X, int32 Y) const
+{
+	FGT_MiniMapCellViewData Cell;
+	return GetIntelCellViewData(X, Y, Cell) && Cell.bExplored;
+}
+
+bool UGT_QueryFacade::IsIntelCellVisible(int32 X, int32 Y) const
+{
+	FGT_MiniMapCellViewData Cell;
+	return GetIntelCellViewData(X, Y, Cell) && Cell.bVisible;
+}

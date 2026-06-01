@@ -47,6 +47,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Query")
 	bool GetActorStates(TArray<FGT_ActorRuntimeState>& OutActors) const;
 
+	UFUNCTION(BlueprintCallable, Category = "Graytail|Query")
+	bool GetIntelCellViewData(int32 X, int32 Y, FGT_MiniMapCellViewData& OutCell) const;
+
+	UFUNCTION(BlueprintPure, Category = "Graytail|Query")
+	bool IsIntelCellExplored(int32 X, int32 Y) const;
+
+	UFUNCTION(BlueprintPure, Category = "Graytail|Query")
+	bool IsIntelCellVisible(int32 X, int32 Y) const;
+
 private:
 	UPROPERTY(Transient)
 	UGT_RunContext* RunContext = nullptr;

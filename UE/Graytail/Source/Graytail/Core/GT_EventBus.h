@@ -56,6 +56,12 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Graytail|Event")
 	int32 GetEventCount() const;
 
+	UFUNCTION(BlueprintPure, Category = "Graytail|Event")
+	bool HasEventOfType(FName EventType) const;
+
+	UFUNCTION(BlueprintPure, Category = "Graytail|Event")
+	int32 CountEventsOfType(FName EventType) const;
+
 	const TArray<FGT_GameEvent>& GetEventHistory() const;
 
 private:

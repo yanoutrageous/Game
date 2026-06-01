@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
+#include "Debug/GT_RuntimeSmokeValidator.h"
 #include "UI/ViewModels/GT_MiniMapViewModel.h"
 #include "GT_DebugSubsystem.generated.h"
 
@@ -19,4 +20,7 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
 	void GetCurrentMiniMapDebugCells(TArray<FGT_MiniMapCellViewData>& OutCells, int32& OutWidth, int32& OutHeight) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
+	bool RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSmokeCheckResult>& OutResults);
 };

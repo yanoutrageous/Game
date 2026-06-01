@@ -2,6 +2,7 @@
 
 #include "Core/GT_QueryFacade.h"
 #include "Core/GT_RunSubsystem.h"
+#include "Debug/GT_RuntimeSmokeValidator.h"
 #include "Engine/GameInstance.h"
 
 void UGT_DebugSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -55,4 +56,12 @@ void UGT_DebugSubsystem::GetCurrentMiniMapDebugCells(TArray<FGT_MiniMapCellViewD
 	{
 		QueryFacade->BuildMiniMapViewData(OutCells, OutWidth, OutHeight);
 	}
+}
+
+bool UGT_DebugSubsystem::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSmokeCheckResult>& OutResults)
+{
+	UGT_RunSubsystem* RunSubsystem = GetGameInstance() ? GetGameInstance()->GetSubsystem<UGT_RunSubsystem>() : nullptr;
+	UGT_RuntimeSmokeValidator* Validator = NewObject<UGT_RuntimeSmokeValidator>(this);
+	Validator->Initialize(RunSubsystem);
+	return Validator->RunMinimalMovementSmokeTest(OutResults);
 }

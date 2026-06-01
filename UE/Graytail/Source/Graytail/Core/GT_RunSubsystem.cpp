@@ -1,6 +1,7 @@
 #include "Core/GT_RunSubsystem.h"
 
 #include "Core/GT_CommandBus.h"
+#include "Core/GT_CommandProcessor.h"
 #include "Core/GT_ContentRegistry.h"
 #include "Core/GT_EffectSystem.h"
 #include "Core/GT_EventBus.h"
@@ -12,6 +13,7 @@ void UGT_RunSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	Super::Initialize(Collection);
 
 	CommandBus = NewObject<UGT_CommandBus>(this);
+	CommandProcessor = NewObject<UGT_CommandProcessor>(this);
 	EventBus = NewObject<UGT_EventBus>(this);
 	EffectSystem = NewObject<UGT_EffectSystem>(this);
 	ContentRegistry = NewObject<UGT_ContentRegistry>(this);
@@ -23,6 +25,7 @@ void UGT_RunSubsystem::Deinitialize()
 	EndCurrentRun();
 
 	CommandBus = nullptr;
+	CommandProcessor = nullptr;
 	EventBus = nullptr;
 	EffectSystem = nullptr;
 	ContentRegistry = nullptr;
@@ -41,7 +44,39 @@ UGT_RunContext* UGT_RunSubsystem::StartNewRun(int32 Seed, int32 Width, int32 Hei
 		QueryFacade->Initialize(CurrentRunContext);
 	}
 
+	if (CommandProcessor)
+	{
+		CommandProcessor->Initialize(CurrentRunContext, EventBus);
+	}
+
+	if (EventBus)
+	{
+		int32 PlayerX = 0;
+		int32 PlayerY = 0;
+		CurrentRunContext->TryGetPlayerPosition(PlayerX, PlayerY);
+
+		FGT_GameEvent Event;
+		Event.EventType = FName(TEXT("RunStarted"));
+		Event.SourceSystem = FName(TEXT("RunSubsystem"));
+		Event.TargetActorId = CurrentRunContext->GetPlayerActorId();
+		Event.X = PlayerX;
+		Event.Y = PlayerY;
+		Event.bSuccess = true;
+		EventBus->PublishEvent(Event);
+	}
+
 	return CurrentRunContext;
+}
+
+bool UGT_RunSubsystem::SubmitCommand(const FGT_Command& Command)
+{
+	if (!CommandBus || !CommandProcessor)
+	{
+		return false;
+	}
+
+	CommandBus->SubmitCommand(Command);
+	return CommandProcessor->ProcessCommand(Command);
 }
 
 UGT_RunContext* UGT_RunSubsystem::GetCurrentRunContext() const
@@ -60,6 +95,11 @@ void UGT_RunSubsystem::EndCurrentRun()
 	if (QueryFacade)
 	{
 		QueryFacade->Reset();
+	}
+
+	if (CommandProcessor)
+	{
+		CommandProcessor->Initialize(nullptr, EventBus);
 	}
 }
 

@@ -9,6 +9,22 @@ void UGT_RunContext::InitializeRun(int32 InSeed, int32 InWidth, int32 InHeight)
 
 	TruthMap.Initialize(MapWidth, MapHeight, Seed);
 	PlayerIntelMap.Initialize(MapWidth, MapHeight, FName(TEXT("Player")));
+
+	PlayerActorId = FName(TEXT("Player"));
+
+	FGT_ActorRuntimeState PlayerState;
+	PlayerState.ActorId.Value = PlayerActorId;
+	PlayerState.ActorDefId = FName(TEXT("PlayerDefault"));
+	PlayerState.Team = EGT_ActorTeam::Player;
+	PlayerState.Faction = EGT_ActorFaction::Graytail;
+	PlayerState.X = 0;
+	PlayerState.Y = 0;
+	PlayerState.bAlive = true;
+
+	ActorStates.Reset();
+	ActorStates.Add(PlayerState);
+
+	MarkPlayerIntelCellExplored(PlayerState.X, PlayerState.Y);
 }
 
 void UGT_RunContext::ResetRun()
@@ -19,6 +35,8 @@ void UGT_RunContext::ResetRun()
 	MapHeight = 0;
 	TruthMap.Reset();
 	PlayerIntelMap.Reset();
+	ActorStates.Reset();
+	PlayerActorId = NAME_None;
 }
 
 FGuid UGT_RunContext::GetRunId() const
@@ -49,4 +67,70 @@ const FGT_TruthMap& UGT_RunContext::GetTruthMap() const
 const FGT_IntelMap& UGT_RunContext::GetPlayerIntelMap() const
 {
 	return PlayerIntelMap;
+}
+
+const TArray<FGT_ActorRuntimeState>& UGT_RunContext::GetActorStates() const
+{
+	return ActorStates;
+}
+
+FGT_ActorRuntimeState* UGT_RunContext::FindActorStateMutable(FName ActorId)
+{
+	if (ActorId.IsNone())
+	{
+		return nullptr;
+	}
+
+	return ActorStates.FindByPredicate([ActorId](const FGT_ActorRuntimeState& ActorState)
+	{
+		return ActorState.ActorId.ToName() == ActorId;
+	});
+}
+
+const FGT_ActorRuntimeState* UGT_RunContext::FindActorState(FName ActorId) const
+{
+	if (ActorId.IsNone())
+	{
+		return nullptr;
+	}
+
+	return ActorStates.FindByPredicate([ActorId](const FGT_ActorRuntimeState& ActorState)
+	{
+		return ActorState.ActorId.ToName() == ActorId;
+	});
+}
+
+FName UGT_RunContext::GetPlayerActorId() const
+{
+	return PlayerActorId;
+}
+
+bool UGT_RunContext::TryGetPlayerPosition(int32& OutX, int32& OutY) const
+{
+	const FGT_ActorRuntimeState* PlayerState = FindActorState(PlayerActorId);
+	if (!PlayerState)
+	{
+		OutX = 0;
+		OutY = 0;
+		return false;
+	}
+
+	OutX = PlayerState->X;
+	OutY = PlayerState->Y;
+	return true;
+}
+
+bool UGT_RunContext::IsValidMapCoord(int32 X, int32 Y) const
+{
+	return TruthMap.IsValidCoord(X, Y);
+}
+
+bool UGT_RunContext::MarkPlayerIntelCellExplored(int32 X, int32 Y)
+{
+	return PlayerIntelMap.MarkExplored(X, Y);
+}
+
+bool UGT_RunContext::MarkPlayerIntelCellVisible(int32 X, int32 Y, bool bVisible)
+{
+	return PlayerIntelMap.MarkVisible(X, Y, bVisible);
 }

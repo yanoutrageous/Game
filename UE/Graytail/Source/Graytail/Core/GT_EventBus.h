@@ -18,6 +18,18 @@ struct GRAYTAIL_API FGT_GameEvent
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Event")
 	FName SourceSystem = NAME_None;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Event")
+	FName TargetActorId = NAME_None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Event")
+	int32 X = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Event")
+	int32 Y = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Event")
+	bool bSuccess = false;
+
 	FGT_GameEvent()
 		: EventId(FGuid::NewGuid())
 	{

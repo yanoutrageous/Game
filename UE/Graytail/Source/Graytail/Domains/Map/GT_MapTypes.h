@@ -235,4 +235,31 @@ struct GRAYTAIL_API FGT_IntelMap
 		const int32 Index = ToIndex(X, Y);
 		return Cells.IsValidIndex(Index) ? &Cells[Index] : nullptr;
 	}
+
+	bool MarkVisible(int32 X, int32 Y, bool bInVisible)
+	{
+		FGT_IntelCell* Cell = GetCell(X, Y);
+		if (!Cell)
+		{
+			return false;
+		}
+
+		Cell->bVisible = bInVisible;
+		return true;
+	}
+
+	bool MarkExplored(int32 X, int32 Y)
+	{
+		FGT_IntelCell* Cell = GetCell(X, Y);
+		if (!Cell)
+		{
+			return false;
+		}
+
+		Cell->bVisible = true;
+		Cell->bExplored = true;
+		Cell->bScanned = false;
+		Cell->ReliabilityState = EGT_IntelReliabilityState::Accurate;
+		return true;
+	}
 };

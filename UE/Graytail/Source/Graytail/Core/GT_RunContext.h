@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
+#include "Core/GT_ActorTypes.h"
 #include "Domains/Map/GT_MapTypes.h"
 #include "GT_RunContext.generated.h"
 
@@ -31,6 +32,21 @@ public:
 
 	const FGT_TruthMap& GetTruthMap() const;
 	const FGT_IntelMap& GetPlayerIntelMap() const;
+	const TArray<FGT_ActorRuntimeState>& GetActorStates() const;
+	FGT_ActorRuntimeState* FindActorStateMutable(FName ActorId);
+	const FGT_ActorRuntimeState* FindActorState(FName ActorId) const;
+
+	UFUNCTION(BlueprintPure, Category = "Graytail|Run")
+	FName GetPlayerActorId() const;
+
+	UFUNCTION(BlueprintPure, Category = "Graytail|Run")
+	bool TryGetPlayerPosition(int32& OutX, int32& OutY) const;
+
+	UFUNCTION(BlueprintPure, Category = "Graytail|Run")
+	bool IsValidMapCoord(int32 X, int32 Y) const;
+
+	bool MarkPlayerIntelCellExplored(int32 X, int32 Y);
+	bool MarkPlayerIntelCellVisible(int32 X, int32 Y, bool bVisible);
 
 private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run", meta = (AllowPrivateAccess = "true"))
@@ -50,4 +66,10 @@ private:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run", meta = (AllowPrivateAccess = "true"))
 	FGT_IntelMap PlayerIntelMap;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run", meta = (AllowPrivateAccess = "true"))
+	TArray<FGT_ActorRuntimeState> ActorStates;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run", meta = (AllowPrivateAccess = "true"))
+	FName PlayerActorId = NAME_None;
 };

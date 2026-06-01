@@ -2,9 +2,10 @@
 
 #include "CoreMinimal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
+#include "Core/GT_CommandBus.h"
 #include "GT_RunSubsystem.generated.h"
 
-class UGT_CommandBus;
+class UGT_CommandProcessor;
 class UGT_ContentRegistry;
 class UGT_EffectSystem;
 class UGT_EventBus;
@@ -22,6 +23,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Run")
 	UGT_RunContext* StartNewRun(int32 Seed, int32 Width = 10, int32 Height = 10);
+
+	UFUNCTION(BlueprintCallable, Category = "Graytail|Run")
+	bool SubmitCommand(const FGT_Command& Command);
 
 	UFUNCTION(BlueprintPure, Category = "Graytail|Run")
 	UGT_RunContext* GetCurrentRunContext() const;
@@ -43,6 +47,9 @@ private:
 
 	UPROPERTY(Transient)
 	UGT_CommandBus* CommandBus = nullptr;
+
+	UPROPERTY(Transient)
+	UGT_CommandProcessor* CommandProcessor = nullptr;
 
 	UPROPERTY(Transient)
 	UGT_EventBus* EventBus = nullptr;

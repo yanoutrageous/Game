@@ -24,12 +24,22 @@ FString UGT_DebugSubsystem::GetCurrentRunDebugSummary() const
 		return TEXT("No active run");
 	}
 
+	int32 PlayerX = 0;
+	int32 PlayerY = 0;
+	const bool bHasPlayerPosition = QueryFacade->TryGetPlayerPosition(PlayerX, PlayerY);
+
+	TArray<FGT_ActorRuntimeState> ActorStates;
+	QueryFacade->GetActorStates(ActorStates);
+
 	return FString::Printf(
-		TEXT("RunId=%s, Seed=%d, Size=%dx%d"),
+		TEXT("RunId=%s, Seed=%d, Size=%dx%d, PlayerActorId=%s, PlayerPosition=%s, ActorCount=%d"),
 		*QueryFacade->GetRunId().ToString(),
 		QueryFacade->GetSeed(),
 		QueryFacade->GetMapWidth(),
-		QueryFacade->GetMapHeight());
+		QueryFacade->GetMapHeight(),
+		*QueryFacade->GetPlayerActorId().ToString(),
+		bHasPlayerPosition ? *FString::Printf(TEXT("(%d,%d)"), PlayerX, PlayerY) : TEXT("None"),
+		ActorStates.Num());
 }
 
 void UGT_DebugSubsystem::GetCurrentMiniMapDebugCells(TArray<FGT_MiniMapCellViewData>& OutCells, int32& OutWidth, int32& OutHeight) const

@@ -70,3 +70,33 @@ void UGT_QueryFacade::BuildMiniMapViewData(TArray<FGT_MiniMapCellViewData>& OutC
 		OutCells.Add(ViewData);
 	}
 }
+
+FName UGT_QueryFacade::GetPlayerActorId() const
+{
+	return HasValidRunContext() ? RunContext->GetPlayerActorId() : NAME_None;
+}
+
+bool UGT_QueryFacade::TryGetPlayerPosition(int32& OutX, int32& OutY) const
+{
+	if (!HasValidRunContext())
+	{
+		OutX = 0;
+		OutY = 0;
+		return false;
+	}
+
+	return RunContext->TryGetPlayerPosition(OutX, OutY);
+}
+
+bool UGT_QueryFacade::GetActorStates(TArray<FGT_ActorRuntimeState>& OutActors) const
+{
+	OutActors.Reset();
+
+	if (!HasValidRunContext())
+	{
+		return false;
+	}
+
+	OutActors = RunContext->GetActorStates();
+	return true;
+}

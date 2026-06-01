@@ -8,6 +8,7 @@ class UGT_CommandBus;
 class UGT_ContentRegistry;
 class UGT_EffectSystem;
 class UGT_EventBus;
+class UGT_QueryFacade;
 class UGT_RunContext;
 
 UCLASS()
@@ -33,6 +34,9 @@ public:
 	UGT_EffectSystem* GetEffectSystem() const;
 	UGT_ContentRegistry* GetContentRegistry() const;
 
+	UFUNCTION(BlueprintCallable, Category = "Graytail|Run")
+	UGT_QueryFacade* GetQueryFacade() const;
+
 private:
 	UPROPERTY(Transient)
 	UGT_RunContext* CurrentRunContext = nullptr;
@@ -48,4 +52,7 @@ private:
 
 	UPROPERTY(Transient)
 	UGT_ContentRegistry* ContentRegistry = nullptr;
+
+	UPROPERTY(Transient)
+	UGT_QueryFacade* QueryFacade = nullptr;
 };

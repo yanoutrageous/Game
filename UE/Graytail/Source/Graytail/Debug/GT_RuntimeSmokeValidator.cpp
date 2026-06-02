@@ -83,6 +83,28 @@ namespace
 	const FName GTCheck_ScanRejectedAfterRunFailed(TEXT("ScanRejectedAfterRunFailed"));
 	const FName GTCheck_PositionPreservedAfterFailedMove(TEXT("PositionPreservedAfterFailedMove"));
 	const FName GTCheck_IntelPreservedAfterFailedScan(TEXT("IntelPreservedAfterFailedScan"));
+	const FName GTCheck_ScenarioFailureStartRun(TEXT("ScenarioFailureStartRun"));
+	const FName GTCheck_ScenarioFailureInitialPosition(TEXT("ScenarioFailureInitialPosition"));
+	const FName GTCheck_ScenarioFailureScanBeforeMine(TEXT("ScenarioFailureScanBeforeMine"));
+	const FName GTCheck_ScenarioFailureMoveToMinePath(TEXT("ScenarioFailureMoveToMinePath"));
+	const FName GTCheck_ScenarioFailureMineEncountered(TEXT("ScenarioFailureMineEncountered"));
+	const FName GTCheck_ScenarioFailureRunFailed(TEXT("ScenarioFailureRunFailed"));
+	const FName GTCheck_ScenarioFailureRunFailedEvent(TEXT("ScenarioFailureRunFailedEvent"));
+	const FName GTCheck_ScenarioFailurePostFailMoveRejected(TEXT("ScenarioFailurePostFailMoveRejected"));
+	const FName GTCheck_ScenarioFailurePostFailScanRejected(TEXT("ScenarioFailurePostFailScanRejected"));
+	const FName GTCheck_ScenarioFailurePostFailExtractRejected(TEXT("ScenarioFailurePostFailExtractRejected"));
+	const FName GTCheck_ScenarioSuccessStartRun(TEXT("ScenarioSuccessStartRun"));
+	const FName GTCheck_ScenarioSuccessInitialPosition(TEXT("ScenarioSuccessInitialPosition"));
+	const FName GTCheck_ScenarioSuccessScanBeforeExit(TEXT("ScenarioSuccessScanBeforeExit"));
+	const FName GTCheck_ScenarioSuccessMoveToExitPath(TEXT("ScenarioSuccessMoveToExitPath"));
+	const FName GTCheck_ScenarioSuccessExitFound(TEXT("ScenarioSuccessExitFound"));
+	const FName GTCheck_ScenarioSuccessStillRunningAtExit(TEXT("ScenarioSuccessStillRunningAtExit"));
+	const FName GTCheck_ScenarioSuccessExtractAccepted(TEXT("ScenarioSuccessExtractAccepted"));
+	const FName GTCheck_ScenarioSuccessRunSucceeded(TEXT("ScenarioSuccessRunSucceeded"));
+	const FName GTCheck_ScenarioSuccessRunSucceededEvent(TEXT("ScenarioSuccessRunSucceededEvent"));
+	const FName GTCheck_ScenarioSuccessPostSuccessMoveRejected(TEXT("ScenarioSuccessPostSuccessMoveRejected"));
+	const FName GTCheck_ScenarioSuccessPostSuccessScanRejected(TEXT("ScenarioSuccessPostSuccessScanRejected"));
+	const FName GTCheck_ScenarioSuccessPostSuccessExtractRejected(TEXT("ScenarioSuccessPostSuccessExtractRejected"));
 
 	const FName GTCommandType_Move(TEXT("Move"));
 	const FName GTCommandType_Scan(TEXT("Scan"));
@@ -654,6 +676,36 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		return ActiveRunSubsystem->SubmitCommand(Command);
 	};
 
+	auto SubmitPlayerScanAt = [ActiveRunSubsystem](int32 TargetX, int32 TargetY) -> bool
+	{
+		if (!ActiveRunSubsystem)
+		{
+			return false;
+		}
+
+		FGT_Command Command;
+		Command.CommandType = GTCommandType_Scan;
+		Command.SourceActorId = GTActorId_Player;
+		Command.TargetActorId = GTActorId_Player;
+		Command.TargetX = TargetX;
+		Command.TargetY = TargetY;
+		return ActiveRunSubsystem->SubmitCommand(Command);
+	};
+
+	auto SubmitPlayerExtract = [ActiveRunSubsystem]() -> bool
+	{
+		if (!ActiveRunSubsystem)
+		{
+			return false;
+		}
+
+		FGT_Command Command;
+		Command.CommandType = GTCommandType_Extract;
+		Command.SourceActorId = GTActorId_Player;
+		Command.TargetActorId = GTActorId_Player;
+		return ActiveRunSubsystem->SubmitCommand(Command);
+	};
+
 	const FIntPoint ExitApproachPath[] = {
 		FIntPoint(2, 0),
 		FIntPoint(3, 0),
@@ -982,6 +1034,292 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 			IntelAfterFailedScan.bExplored ? TEXT("true") : TEXT("false"),
 			IntelBeforeFailedScan.DisplayedNumber,
 			IntelAfterFailedScan.DisplayedNumber));
+
+	RunSubsystem->StartNewRun(22345, 10, 10);
+	QueryFacade = RunSubsystem->GetQueryFacade();
+	RunContext = RunSubsystem->GetCurrentRunContext();
+	TruthMap = RunContext ? &RunContext->GetTruthMapForDebugOnly() : nullptr;
+	EventBus = RunSubsystem->GetEventBus();
+	if (EventBus)
+	{
+		EventBus->ClearEventHistory();
+	}
+
+	const bool bScenarioFailureStartRunOk = QueryFacade
+		&& QueryFacade->GetRunState() == EGT_RunState::Running
+		&& QueryFacade->IsRunActive();
+	AddCheck(
+		OutResults,
+		GTCheck_ScenarioFailureStartRun,
+		bScenarioFailureStartRunOk,
+		FString::Printf(TEXT("Failure scenario RunState after StartNewRun is %d."), QueryFacade ? static_cast<int32>(QueryFacade->GetRunState()) : static_cast<int32>(EGT_RunState::NotStarted)));
+
+	int32 ScenarioFailurePlayerX = INDEX_NONE;
+	int32 ScenarioFailurePlayerY = INDEX_NONE;
+	const bool bScenarioFailureInitialPositionReadable = QueryFacade && QueryFacade->TryGetPlayerPosition(ScenarioFailurePlayerX, ScenarioFailurePlayerY);
+	const bool bScenarioFailureInitialPositionOk = bScenarioFailureInitialPositionReadable
+		&& ScenarioFailurePlayerX == 0
+		&& ScenarioFailurePlayerY == 0;
+	AddCheck(
+		OutResults,
+		GTCheck_ScenarioFailureInitialPosition,
+		bScenarioFailureInitialPositionOk,
+		FString::Printf(TEXT("Failure scenario initial player position is (%d,%d)."), ScenarioFailurePlayerX, ScenarioFailurePlayerY));
+
+	const bool bScenarioFailureScanAccepted = SubmitPlayerScanAt(1, 1);
+	FGT_MiniMapCellViewData ScenarioFailureScanCell;
+	const bool bScenarioFailureScanCellReadable = QueryFacade && QueryFacade->GetIntelCellViewData(1, 1, ScenarioFailureScanCell);
+	const bool bScenarioFailureScanBeforeMineOk = bScenarioFailureScanAccepted
+		&& bScenarioFailureScanCellReadable
+		&& ScenarioFailureScanCell.bScanned
+		&& ScenarioFailureScanCell.DisplayedNumber == 1;
+	AddCheck(
+		OutResults,
+		GTCheck_ScenarioFailureScanBeforeMine,
+		bScenarioFailureScanBeforeMineOk,
+		FString::Printf(TEXT("Failure scenario scan accepted=%s, scanned=%s, displayed=%d."),
+			bScenarioFailureScanAccepted ? TEXT("true") : TEXT("false"),
+			ScenarioFailureScanCell.bScanned ? TEXT("true") : TEXT("false"),
+			ScenarioFailureScanCell.DisplayedNumber));
+
+	bool bScenarioFailureMovePathOk = SubmitPlayerMoveTo(1, 0);
+	bScenarioFailureMovePathOk = bScenarioFailureMovePathOk && SubmitPlayerMoveTo(2, 0);
+	bScenarioFailureMovePathOk = bScenarioFailureMovePathOk && SubmitPlayerMoveTo(2, 1);
+	const int32 ScenarioFailureMineEncounteredCountBeforeMineMove = EventBus ? EventBus->CountEventsOfType(GTEventType_MineEncountered) : 0;
+	const int32 ScenarioFailureRunFailedCountBeforeMineMove = EventBus ? EventBus->CountEventsOfType(GTEventType_RunFailed) : 0;
+	const bool bScenarioFailureMineMoveAccepted = bScenarioFailureMovePathOk && SubmitPlayerMoveTo(2, 2);
+	const int32 ScenarioFailureMineEncounteredCountAfterMineMove = EventBus ? EventBus->CountEventsOfType(GTEventType_MineEncountered) : 0;
+	const int32 ScenarioFailureRunFailedCountAfterMineMove = EventBus ? EventBus->CountEventsOfType(GTEventType_RunFailed) : 0;
+
+	ScenarioFailurePlayerX = INDEX_NONE;
+	ScenarioFailurePlayerY = INDEX_NONE;
+	const bool bScenarioFailureMinePositionReadable = QueryFacade && QueryFacade->TryGetPlayerPosition(ScenarioFailurePlayerX, ScenarioFailurePlayerY);
+	const bool bScenarioFailureMoveToMinePathOk = bScenarioFailureMovePathOk
+		&& bScenarioFailureMineMoveAccepted
+		&& bScenarioFailureMinePositionReadable
+		&& ScenarioFailurePlayerX == 2
+		&& ScenarioFailurePlayerY == 2;
+	AddCheck(
+		OutResults,
+		GTCheck_ScenarioFailureMoveToMinePath,
+		bScenarioFailureMoveToMinePathOk,
+		FString::Printf(TEXT("Failure scenario path=%s final move=%s, player position=(%d,%d)."),
+			bScenarioFailureMovePathOk ? TEXT("true") : TEXT("false"),
+			bScenarioFailureMineMoveAccepted ? TEXT("true") : TEXT("false"),
+			ScenarioFailurePlayerX,
+			ScenarioFailurePlayerY));
+
+	const bool bScenarioFailureMineEncounteredOk = ScenarioFailureMineEncounteredCountAfterMineMove == ScenarioFailureMineEncounteredCountBeforeMineMove + 1;
+	AddCheck(
+		OutResults,
+		GTCheck_ScenarioFailureMineEncountered,
+		bScenarioFailureMineEncounteredOk,
+		FString::Printf(TEXT("Failure scenario MineEncountered events %d->%d."),
+			ScenarioFailureMineEncounteredCountBeforeMineMove,
+			ScenarioFailureMineEncounteredCountAfterMineMove));
+
+	const bool bScenarioFailureRunFailedOk = QueryFacade
+		&& QueryFacade->GetRunState() == EGT_RunState::Failed
+		&& QueryFacade->IsRunFailed();
+	AddCheck(
+		OutResults,
+		GTCheck_ScenarioFailureRunFailed,
+		bScenarioFailureRunFailedOk,
+		FString::Printf(TEXT("Failure scenario RunState after mine is %d."), QueryFacade ? static_cast<int32>(QueryFacade->GetRunState()) : static_cast<int32>(EGT_RunState::NotStarted)));
+
+	const bool bScenarioFailureRunFailedEventOk = ScenarioFailureRunFailedCountAfterMineMove == ScenarioFailureRunFailedCountBeforeMineMove + 1;
+	AddCheck(
+		OutResults,
+		GTCheck_ScenarioFailureRunFailedEvent,
+		bScenarioFailureRunFailedEventOk,
+		FString::Printf(TEXT("Failure scenario RunFailed events %d->%d."),
+			ScenarioFailureRunFailedCountBeforeMineMove,
+			ScenarioFailureRunFailedCountAfterMineMove));
+
+	const bool bScenarioFailurePostFailMoveAccepted = SubmitPlayerMoveTo(2, 3);
+	AddCheck(
+		OutResults,
+		GTCheck_ScenarioFailurePostFailMoveRejected,
+		!bScenarioFailurePostFailMoveAccepted,
+		!bScenarioFailurePostFailMoveAccepted ? TEXT("Failure scenario move after RunFailed was rejected.") : TEXT("Failure scenario move after RunFailed was accepted."));
+
+	const bool bScenarioFailurePostFailScanAccepted = SubmitPlayerScanAt(0, 2);
+	AddCheck(
+		OutResults,
+		GTCheck_ScenarioFailurePostFailScanRejected,
+		!bScenarioFailurePostFailScanAccepted,
+		!bScenarioFailurePostFailScanAccepted ? TEXT("Failure scenario scan after RunFailed was rejected.") : TEXT("Failure scenario scan after RunFailed was accepted."));
+
+	const bool bScenarioFailurePostFailExtractAccepted = SubmitPlayerExtract();
+	AddCheck(
+		OutResults,
+		GTCheck_ScenarioFailurePostFailExtractRejected,
+		!bScenarioFailurePostFailExtractAccepted,
+		!bScenarioFailurePostFailExtractAccepted ? TEXT("Failure scenario extract after RunFailed was rejected.") : TEXT("Failure scenario extract after RunFailed was accepted."));
+
+	RunSubsystem->StartNewRun(32345, 10, 10);
+	QueryFacade = RunSubsystem->GetQueryFacade();
+	RunContext = RunSubsystem->GetCurrentRunContext();
+	TruthMap = RunContext ? &RunContext->GetTruthMapForDebugOnly() : nullptr;
+	EventBus = RunSubsystem->GetEventBus();
+	if (EventBus)
+	{
+		EventBus->ClearEventHistory();
+	}
+
+	const bool bScenarioSuccessStartRunOk = QueryFacade
+		&& QueryFacade->GetRunState() == EGT_RunState::Running
+		&& QueryFacade->IsRunActive();
+	AddCheck(
+		OutResults,
+		GTCheck_ScenarioSuccessStartRun,
+		bScenarioSuccessStartRunOk,
+		FString::Printf(TEXT("Success scenario RunState after StartNewRun is %d."), QueryFacade ? static_cast<int32>(QueryFacade->GetRunState()) : static_cast<int32>(EGT_RunState::NotStarted)));
+
+	int32 ScenarioSuccessPlayerX = INDEX_NONE;
+	int32 ScenarioSuccessPlayerY = INDEX_NONE;
+	const bool bScenarioSuccessInitialPositionReadable = QueryFacade && QueryFacade->TryGetPlayerPosition(ScenarioSuccessPlayerX, ScenarioSuccessPlayerY);
+	const bool bScenarioSuccessInitialPositionOk = bScenarioSuccessInitialPositionReadable
+		&& ScenarioSuccessPlayerX == 0
+		&& ScenarioSuccessPlayerY == 0;
+	AddCheck(
+		OutResults,
+		GTCheck_ScenarioSuccessInitialPosition,
+		bScenarioSuccessInitialPositionOk,
+		FString::Printf(TEXT("Success scenario initial player position is (%d,%d)."), ScenarioSuccessPlayerX, ScenarioSuccessPlayerY));
+
+	const bool bScenarioSuccessScanAccepted = SubmitPlayerScanAt(1, 1);
+	FGT_MiniMapCellViewData ScenarioSuccessScanCell;
+	const bool bScenarioSuccessScanCellReadable = QueryFacade && QueryFacade->GetIntelCellViewData(1, 1, ScenarioSuccessScanCell);
+	const bool bScenarioSuccessScanBeforeExitOk = bScenarioSuccessScanAccepted
+		&& bScenarioSuccessScanCellReadable
+		&& ScenarioSuccessScanCell.bScanned
+		&& ScenarioSuccessScanCell.DisplayedNumber == 1;
+	AddCheck(
+		OutResults,
+		GTCheck_ScenarioSuccessScanBeforeExit,
+		bScenarioSuccessScanBeforeExitOk,
+		FString::Printf(TEXT("Success scenario scan accepted=%s, scanned=%s, displayed=%d."),
+			bScenarioSuccessScanAccepted ? TEXT("true") : TEXT("false"),
+			ScenarioSuccessScanCell.bScanned ? TEXT("true") : TEXT("false"),
+			ScenarioSuccessScanCell.DisplayedNumber));
+
+	const FIntPoint ScenarioSuccessExitPath[] = {
+		FIntPoint(1, 0),
+		FIntPoint(2, 0),
+		FIntPoint(3, 0),
+		FIntPoint(4, 0),
+		FIntPoint(5, 0),
+		FIntPoint(6, 0),
+		FIntPoint(7, 0),
+		FIntPoint(8, 0),
+		FIntPoint(9, 0),
+		FIntPoint(9, 1),
+		FIntPoint(9, 2),
+		FIntPoint(9, 3),
+		FIntPoint(9, 4),
+		FIntPoint(9, 5),
+		FIntPoint(9, 6),
+		FIntPoint(9, 7),
+		FIntPoint(9, 8),
+		FIntPoint(9, 9)
+	};
+
+	const int32 ScenarioSuccessExitFoundCountBeforePath = EventBus ? EventBus->CountEventsOfType(GTEventType_ExitFound) : 0;
+	bool bScenarioSuccessMovePathOk = true;
+	for (const FIntPoint& Coord : ScenarioSuccessExitPath)
+	{
+		if (!SubmitPlayerMoveTo(Coord.X, Coord.Y))
+		{
+			bScenarioSuccessMovePathOk = false;
+			break;
+		}
+	}
+	const int32 ScenarioSuccessExitFoundCountAfterPath = EventBus ? EventBus->CountEventsOfType(GTEventType_ExitFound) : 0;
+
+	ScenarioSuccessPlayerX = INDEX_NONE;
+	ScenarioSuccessPlayerY = INDEX_NONE;
+	const bool bScenarioSuccessExitPositionReadable = QueryFacade && QueryFacade->TryGetPlayerPosition(ScenarioSuccessPlayerX, ScenarioSuccessPlayerY);
+	const bool bScenarioSuccessMoveToExitPathOk = bScenarioSuccessMovePathOk
+		&& bScenarioSuccessExitPositionReadable
+		&& ScenarioSuccessPlayerX == 9
+		&& ScenarioSuccessPlayerY == 9;
+	AddCheck(
+		OutResults,
+		GTCheck_ScenarioSuccessMoveToExitPath,
+		bScenarioSuccessMoveToExitPathOk,
+		FString::Printf(TEXT("Success scenario path=%s, player position=(%d,%d)."),
+			bScenarioSuccessMovePathOk ? TEXT("true") : TEXT("false"),
+			ScenarioSuccessPlayerX,
+			ScenarioSuccessPlayerY));
+
+	const bool bScenarioSuccessExitFoundOk = ScenarioSuccessExitFoundCountAfterPath == ScenarioSuccessExitFoundCountBeforePath + 1;
+	AddCheck(
+		OutResults,
+		GTCheck_ScenarioSuccessExitFound,
+		bScenarioSuccessExitFoundOk,
+		FString::Printf(TEXT("Success scenario ExitFound events %d->%d."),
+			ScenarioSuccessExitFoundCountBeforePath,
+			ScenarioSuccessExitFoundCountAfterPath));
+
+	const bool bScenarioSuccessStillRunningAtExitOk = QueryFacade
+		&& QueryFacade->GetRunState() == EGT_RunState::Running
+		&& QueryFacade->IsRunActive()
+		&& !QueryFacade->IsRunSucceeded();
+	AddCheck(
+		OutResults,
+		GTCheck_ScenarioSuccessStillRunningAtExit,
+		bScenarioSuccessStillRunningAtExitOk,
+		FString::Printf(TEXT("Success scenario RunState at exit before Extract is %d."), QueryFacade ? static_cast<int32>(QueryFacade->GetRunState()) : static_cast<int32>(EGT_RunState::NotStarted)));
+
+	const int32 ScenarioSuccessRunSucceededCountBeforeExtract = EventBus ? EventBus->CountEventsOfType(GTEventType_RunSucceeded) : 0;
+	const bool bScenarioSuccessExtractAccepted = SubmitPlayerExtract();
+	const int32 ScenarioSuccessRunSucceededCountAfterExtract = EventBus ? EventBus->CountEventsOfType(GTEventType_RunSucceeded) : 0;
+	AddCheck(
+		OutResults,
+		GTCheck_ScenarioSuccessExtractAccepted,
+		bScenarioSuccessExtractAccepted,
+		bScenarioSuccessExtractAccepted ? TEXT("Success scenario Extract at exit was accepted.") : TEXT("Success scenario Extract at exit was rejected."));
+
+	const bool bScenarioSuccessRunSucceededOk = QueryFacade
+		&& QueryFacade->GetRunState() == EGT_RunState::Succeeded
+		&& QueryFacade->IsRunSucceeded()
+		&& !QueryFacade->IsRunActive();
+	AddCheck(
+		OutResults,
+		GTCheck_ScenarioSuccessRunSucceeded,
+		bScenarioSuccessRunSucceededOk,
+		FString::Printf(TEXT("Success scenario RunState after Extract is %d."), QueryFacade ? static_cast<int32>(QueryFacade->GetRunState()) : static_cast<int32>(EGT_RunState::NotStarted)));
+
+	const bool bScenarioSuccessRunSucceededEventOk = ScenarioSuccessRunSucceededCountAfterExtract == ScenarioSuccessRunSucceededCountBeforeExtract + 1;
+	AddCheck(
+		OutResults,
+		GTCheck_ScenarioSuccessRunSucceededEvent,
+		bScenarioSuccessRunSucceededEventOk,
+		FString::Printf(TEXT("Success scenario RunSucceeded events %d->%d."),
+			ScenarioSuccessRunSucceededCountBeforeExtract,
+			ScenarioSuccessRunSucceededCountAfterExtract));
+
+	const bool bScenarioSuccessPostSuccessMoveAccepted = SubmitPlayerMoveTo(9, 8);
+	AddCheck(
+		OutResults,
+		GTCheck_ScenarioSuccessPostSuccessMoveRejected,
+		!bScenarioSuccessPostSuccessMoveAccepted,
+		!bScenarioSuccessPostSuccessMoveAccepted ? TEXT("Success scenario move after RunSucceeded was rejected.") : TEXT("Success scenario move after RunSucceeded was accepted."));
+
+	const bool bScenarioSuccessPostSuccessScanAccepted = SubmitPlayerScanAt(8, 8);
+	AddCheck(
+		OutResults,
+		GTCheck_ScenarioSuccessPostSuccessScanRejected,
+		!bScenarioSuccessPostSuccessScanAccepted,
+		!bScenarioSuccessPostSuccessScanAccepted ? TEXT("Success scenario scan after RunSucceeded was rejected.") : TEXT("Success scenario scan after RunSucceeded was accepted."));
+
+	const bool bScenarioSuccessPostSuccessExtractAccepted = SubmitPlayerExtract();
+	AddCheck(
+		OutResults,
+		GTCheck_ScenarioSuccessPostSuccessExtractRejected,
+		!bScenarioSuccessPostSuccessExtractAccepted,
+		!bScenarioSuccessPostSuccessExtractAccepted ? TEXT("Success scenario extract after RunSucceeded was rejected.") : TEXT("Success scenario extract after RunSucceeded was accepted."));
 
 	for (const FGT_RuntimeSmokeCheckResult& Result : OutResults)
 	{

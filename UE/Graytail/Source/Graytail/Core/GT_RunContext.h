@@ -6,6 +6,16 @@
 #include "Domains/Map/GT_MapTypes.h"
 #include "GT_RunContext.generated.h"
 
+UENUM(BlueprintType)
+enum class EGT_RunState : uint8
+{
+	NotStarted UMETA(DisplayName = "Not Started"),
+	Running UMETA(DisplayName = "Running"),
+	Failed UMETA(DisplayName = "Failed"),
+	Succeeded UMETA(DisplayName = "Succeeded"),
+	Ended UMETA(DisplayName = "Ended")
+};
+
 UCLASS(BlueprintType)
 class GRAYTAIL_API UGT_RunContext : public UObject
 {
@@ -45,6 +55,20 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Graytail|Run")
 	bool IsValidMapCoord(int32 X, int32 Y) const;
 
+	UFUNCTION(BlueprintPure, Category = "Graytail|Run")
+	EGT_RunState GetRunState() const;
+
+	UFUNCTION(BlueprintPure, Category = "Graytail|Run")
+	bool IsRunActive() const;
+
+	UFUNCTION(BlueprintPure, Category = "Graytail|Run")
+	bool IsRunFailed() const;
+
+	UFUNCTION(BlueprintPure, Category = "Graytail|Run")
+	bool IsRunSucceeded() const;
+
+	bool MarkRunFailed(FName Reason);
+
 	bool MarkPlayerIntelCellExplored(int32 X, int32 Y);
 	bool MarkPlayerIntelCellVisible(int32 X, int32 Y, bool bVisible);
 	bool CountAdjacentMines8(int32 X, int32 Y, int32& OutMineCount) const;
@@ -58,6 +82,12 @@ private:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run", meta = (AllowPrivateAccess = "true"))
 	FGuid RunId;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run", meta = (AllowPrivateAccess = "true"))
+	EGT_RunState RunState = EGT_RunState::NotStarted;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run", meta = (AllowPrivateAccess = "true"))
+	FName RunEndReason = NAME_None;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run", meta = (AllowPrivateAccess = "true"))
 	int32 Seed = 0;

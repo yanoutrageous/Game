@@ -37,6 +37,26 @@ int32 UGT_QueryFacade::GetMapHeight() const
 	return HasValidRunContext() ? RunContext->GetMapHeight() : 0;
 }
 
+EGT_RunState UGT_QueryFacade::GetRunState() const
+{
+	return HasValidRunContext() ? RunContext->GetRunState() : EGT_RunState::NotStarted;
+}
+
+bool UGT_QueryFacade::IsRunActive() const
+{
+	return HasValidRunContext() && RunContext->IsRunActive();
+}
+
+bool UGT_QueryFacade::IsRunFailed() const
+{
+	return HasValidRunContext() && RunContext->IsRunFailed();
+}
+
+bool UGT_QueryFacade::IsRunSucceeded() const
+{
+	return HasValidRunContext() && RunContext->IsRunSucceeded();
+}
+
 void UGT_QueryFacade::BuildMiniMapViewData(TArray<FGT_MiniMapCellViewData>& OutCells, int32& OutWidth, int32& OutHeight) const
 {
 	OutCells.Reset();

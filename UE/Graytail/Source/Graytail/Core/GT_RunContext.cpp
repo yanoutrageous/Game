@@ -3,6 +3,8 @@
 void UGT_RunContext::InitializeRun(int32 InSeed, int32 InWidth, int32 InHeight)
 {
 	RunId = FGuid::NewGuid();
+	RunState = EGT_RunState::Running;
+	RunEndReason = NAME_None;
 	Seed = InSeed;
 	MapWidth = InWidth > 0 ? InWidth : 10;
 	MapHeight = InHeight > 0 ? InHeight : 10;
@@ -31,6 +33,8 @@ void UGT_RunContext::InitializeRun(int32 InSeed, int32 InWidth, int32 InHeight)
 void UGT_RunContext::ResetRun()
 {
 	RunId.Invalidate();
+	RunState = EGT_RunState::NotStarted;
+	RunEndReason = NAME_None;
 	Seed = 0;
 	MapWidth = 0;
 	MapHeight = 0;
@@ -124,6 +128,38 @@ bool UGT_RunContext::TryGetPlayerPosition(int32& OutX, int32& OutY) const
 bool UGT_RunContext::IsValidMapCoord(int32 X, int32 Y) const
 {
 	return TruthMap.IsValidCoord(X, Y);
+}
+
+EGT_RunState UGT_RunContext::GetRunState() const
+{
+	return RunState;
+}
+
+bool UGT_RunContext::IsRunActive() const
+{
+	return RunState == EGT_RunState::Running;
+}
+
+bool UGT_RunContext::IsRunFailed() const
+{
+	return RunState == EGT_RunState::Failed;
+}
+
+bool UGT_RunContext::IsRunSucceeded() const
+{
+	return RunState == EGT_RunState::Succeeded;
+}
+
+bool UGT_RunContext::MarkRunFailed(FName Reason)
+{
+	if (RunState != EGT_RunState::Running)
+	{
+		return false;
+	}
+
+	RunState = EGT_RunState::Failed;
+	RunEndReason = Reason;
+	return true;
 }
 
 bool UGT_RunContext::MarkPlayerIntelCellExplored(int32 X, int32 Y)

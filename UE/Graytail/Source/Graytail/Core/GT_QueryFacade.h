@@ -3,11 +3,10 @@
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
 #include "Core/GT_ActorTypes.h"
+#include "Core/GT_RunContext.h"
 #include "Domains/Map/GT_MapTypes.h"
 #include "UI/ViewModels/GT_MiniMapViewModel.h"
 #include "GT_QueryFacade.generated.h"
-
-class UGT_RunContext;
 
 UCLASS(BlueprintType)
 class GRAYTAIL_API UGT_QueryFacade : public UObject
@@ -35,6 +34,18 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Graytail|Query")
 	int32 GetMapHeight() const;
+
+	UFUNCTION(BlueprintPure, Category = "Graytail|Query")
+	EGT_RunState GetRunState() const;
+
+	UFUNCTION(BlueprintPure, Category = "Graytail|Query")
+	bool IsRunActive() const;
+
+	UFUNCTION(BlueprintPure, Category = "Graytail|Query")
+	bool IsRunFailed() const;
+
+	UFUNCTION(BlueprintPure, Category = "Graytail|Query")
+	bool IsRunSucceeded() const;
 
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Query")
 	void BuildMiniMapViewData(TArray<FGT_MiniMapCellViewData>& OutCells, int32& OutWidth, int32& OutHeight) const;

@@ -10,6 +10,8 @@ namespace
 	const FName GTEventType_ActorMoved(TEXT("ActorMoved"));
 	const FName GTEventType_CellScanned(TEXT("CellScanned"));
 	const FName GTEventType_CommandFailed(TEXT("CommandFailed"));
+	const FName GTEventType_RunFailed(TEXT("RunFailed"));
+	const FName GTRunFailureReason_Mine(TEXT("Mine"));
 	const FName GTSourceSystem_CommandProcessor(TEXT("CommandProcessor"));
 }
 
@@ -31,6 +33,12 @@ void UGT_CommandProcessor::Initialize(UGT_RunContext* InRunContext, UGT_EventBus
 
 bool UGT_CommandProcessor::ProcessCommand(const FGT_Command& Command)
 {
+	if (!IsValid(RunContext) || !RunContext->IsRunActive())
+	{
+		PublishCommandEvent(GTEventType_CommandFailed, Command.TargetActorId, Command.TargetX, Command.TargetY, false);
+		return false;
+	}
+
 	if (Command.CommandType == GTCommandType_Move)
 	{
 		return ProcessMoveCommand(Command);
@@ -84,7 +92,12 @@ bool UGT_CommandProcessor::ProcessMoveCommand(const FGT_Command& Command)
 	if (Command.TargetActorId == RunContext->GetPlayerActorId() && IsValid(RoomResolver))
 	{
 		FGT_RoomResolveResult RoomResolveResult;
-		RoomResolver->ResolveRoomAt(Command.TargetX, Command.TargetY, RoomResolveResult);
+		if (RoomResolver->ResolveRoomAt(Command.TargetX, Command.TargetY, RoomResolveResult)
+			&& RoomResolveResult.Outcome == EGT_RoomResolveOutcome::MineEncountered
+			&& RunContext->MarkRunFailed(GTRunFailureReason_Mine))
+		{
+			PublishCommandEvent(GTEventType_RunFailed, Command.TargetActorId, Command.TargetX, Command.TargetY, true);
+		}
 	}
 
 	return true;

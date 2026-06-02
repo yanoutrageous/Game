@@ -5,6 +5,7 @@
 #include "Core/GT_QueryFacade.h"
 #include "Core/GT_RunContext.h"
 #include "Core/GT_RunSubsystem.h"
+#include "UI/ViewModels/GT_MiniMapViewModel.h"
 
 namespace
 {
@@ -40,6 +41,12 @@ namespace
 	const FName GTCheck_InvalidScanRejected(TEXT("InvalidScanRejected"));
 	const FName GTCheck_InvalidScanDoesNotWriteIntel(TEXT("InvalidScanDoesNotWriteIntel"));
 	const FName GTCheck_InvalidScanCommandFailedEvent(TEXT("InvalidScanCommandFailedEvent"));
+	const FName GTCheck_MiniMapViewModelBuild(TEXT("MiniMapViewModelBuild"));
+	const FName GTCheck_MiniMapViewModelSize(TEXT("MiniMapViewModelSize"));
+	const FName GTCheck_MiniMapViewModelScannedCell(TEXT("MiniMapViewModelScannedCell"));
+	const FName GTCheck_MiniMapViewModelDisplayedNumber(TEXT("MiniMapViewModelDisplayedNumber"));
+	const FName GTCheck_MiniMapViewModelCellVisibleExplored(TEXT("MiniMapViewModelCellVisibleExplored"));
+	const FName GTCheck_MiniMapViewModelReliability(TEXT("MiniMapViewModelReliability"));
 
 	const FName GTCommandType_Move(TEXT("Move"));
 	const FName GTCommandType_Scan(TEXT("Scan"));
@@ -253,6 +260,78 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 
 	const bool bCellScannedEventOk = EventBus && EventBus->HasEventOfType(GTEventType_CellScanned);
 	AddCheck(OutResults, GTCheck_CellScannedEvent, bCellScannedEventOk, bCellScannedEventOk ? TEXT("CellScanned event recorded.") : TEXT("CellScanned event was not recorded."));
+
+	UGT_MiniMapViewModel* MiniMapViewModel = NewObject<UGT_MiniMapViewModel>(this);
+	const bool bMiniMapViewModelBuildOk = MiniMapViewModel && RunContext;
+	if (bMiniMapViewModelBuildOk)
+	{
+		MiniMapViewModel->BuildFromIntelMap(RunContext->GetPlayerIntelMap());
+	}
+	AddCheck(OutResults, GTCheck_MiniMapViewModelBuild, bMiniMapViewModelBuildOk, bMiniMapViewModelBuildOk ? TEXT("MiniMapViewModel built from IntelMap.") : TEXT("MiniMapViewModel could not be built."));
+
+	TArray<FGT_MiniMapCellViewData> MiniMapCells;
+	int32 MiniMapWidth = 0;
+	int32 MiniMapHeight = 0;
+	if (MiniMapViewModel)
+	{
+		MiniMapCells = MiniMapViewModel->GetCells();
+		MiniMapWidth = MiniMapViewModel->GetWidth();
+		MiniMapHeight = MiniMapViewModel->GetHeight();
+	}
+
+	const bool bMiniMapViewModelSizeOk = MiniMapWidth == 10
+		&& MiniMapHeight == 10
+		&& MiniMapCells.Num() == 100;
+	AddCheck(
+		OutResults,
+		GTCheck_MiniMapViewModelSize,
+		bMiniMapViewModelSizeOk,
+		FString::Printf(TEXT("MiniMapViewModel size is %dx%d with %d cells."), MiniMapWidth, MiniMapHeight, MiniMapCells.Num()));
+
+	FGT_MiniMapCellViewData MiniMapScannedCell;
+	bool bFoundMiniMapScannedCell = false;
+	for (const FGT_MiniMapCellViewData& Cell : MiniMapCells)
+	{
+		if (Cell.X == 1 && Cell.Y == 1)
+		{
+			MiniMapScannedCell = Cell;
+			bFoundMiniMapScannedCell = true;
+			break;
+		}
+	}
+
+	const bool bMiniMapViewModelScannedCellOk = bFoundMiniMapScannedCell && MiniMapScannedCell.bScanned;
+	AddCheck(
+		OutResults,
+		GTCheck_MiniMapViewModelScannedCell,
+		bMiniMapViewModelScannedCellOk,
+		FString::Printf(TEXT("MiniMapViewModel cell (1,1) scanned=%s."), MiniMapScannedCell.bScanned ? TEXT("true") : TEXT("false")));
+
+	const bool bMiniMapViewModelDisplayedNumberOk = bFoundMiniMapScannedCell && MiniMapScannedCell.DisplayedNumber == 1;
+	AddCheck(
+		OutResults,
+		GTCheck_MiniMapViewModelDisplayedNumber,
+		bMiniMapViewModelDisplayedNumberOk,
+		FString::Printf(TEXT("MiniMapViewModel cell (1,1) displayed number is %d."), MiniMapScannedCell.DisplayedNumber));
+
+	const bool bMiniMapViewModelCellVisibleExploredOk = bFoundMiniMapScannedCell
+		&& MiniMapScannedCell.bVisible
+		&& MiniMapScannedCell.bExplored;
+	AddCheck(
+		OutResults,
+		GTCheck_MiniMapViewModelCellVisibleExplored,
+		bMiniMapViewModelCellVisibleExploredOk,
+		FString::Printf(TEXT("MiniMapViewModel cell (1,1) visible=%s explored=%s."),
+			MiniMapScannedCell.bVisible ? TEXT("true") : TEXT("false"),
+			MiniMapScannedCell.bExplored ? TEXT("true") : TEXT("false")));
+
+	const bool bMiniMapViewModelReliabilityOk = bFoundMiniMapScannedCell
+		&& MiniMapScannedCell.ReliabilityState == EGT_IntelReliabilityState::Accurate;
+	AddCheck(
+		OutResults,
+		GTCheck_MiniMapViewModelReliability,
+		bMiniMapViewModelReliabilityOk,
+		FString::Printf(TEXT("MiniMapViewModel cell (1,1) reliability is %d."), static_cast<int32>(MiniMapScannedCell.ReliabilityState)));
 
 	const int32 CommandFailedCountBeforeInvalidScan = EventBus ? EventBus->CountEventsOfType(GTEventType_CommandFailed) : 0;
 

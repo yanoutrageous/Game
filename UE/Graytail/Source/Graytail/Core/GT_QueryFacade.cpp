@@ -49,26 +49,16 @@ void UGT_QueryFacade::BuildMiniMapViewData(TArray<FGT_MiniMapCellViewData>& OutC
 	}
 
 	const FGT_IntelMap& IntelMap = RunContext->GetPlayerIntelMap();
-	OutWidth = IntelMap.Width;
-	OutHeight = IntelMap.Height;
-	OutCells.Reserve(IntelMap.Cells.Num());
-
-	for (const FGT_IntelCell& IntelCell : IntelMap.Cells)
+	UGT_MiniMapViewModel* MiniMapViewModel = NewObject<UGT_MiniMapViewModel>(const_cast<UGT_QueryFacade*>(this));
+	if (!MiniMapViewModel)
 	{
-		FGT_MiniMapCellViewData ViewData;
-		ViewData.X = IntelCell.X;
-		ViewData.Y = IntelCell.Y;
-		ViewData.bVisible = IntelCell.bVisible;
-		ViewData.bExplored = IntelCell.bExplored;
-		ViewData.bScanned = IntelCell.bScanned;
-		ViewData.DisplayedNumber = IntelCell.DisplayedNumber;
-		ViewData.MarkerState = IntelCell.MarkerState;
-		ViewData.VisibleRoomIcon = IntelCell.VisibleRoomIcon;
-		ViewData.bStale = IntelCell.bStale;
-		ViewData.ReliabilityState = IntelCell.ReliabilityState;
-
-		OutCells.Add(ViewData);
+		return;
 	}
+
+	MiniMapViewModel->BuildFromIntelMap(IntelMap);
+	OutWidth = MiniMapViewModel->GetWidth();
+	OutHeight = MiniMapViewModel->GetHeight();
+	OutCells = MiniMapViewModel->GetCells();
 }
 
 FName UGT_QueryFacade::GetPlayerActorId() const

@@ -146,6 +146,20 @@ bool UGT_RunContext::SetPlayerIntelCellScannedNumber(int32 X, int32 Y, int32 InD
 	return PlayerIntelMap.SetScannedNumber(X, Y, InDisplayedNumber);
 }
 
+bool UGT_RunContext::GetTruthCellSnapshot(int32 X, int32 Y, FGT_TruthCell& OutCell) const
+{
+	OutCell = FGT_TruthCell();
+
+	const FGT_TruthCell* TruthCell = TruthMap.GetCellConst(X, Y);
+	if (!TruthCell)
+	{
+		return false;
+	}
+
+	OutCell = *TruthCell;
+	return true;
+}
+
 bool UGT_RunContext::MarkTruthCellEntered(int32 X, int32 Y)
 {
 	return TruthMap.MarkCellEntered(X, Y);

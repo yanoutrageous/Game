@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
 #include "Core/GT_CommandBus.h"
+#include "Core/GT_RoomResolver.h"
 #include "GT_CommandProcessor.generated.h"
 
 class UGT_EventBus;
@@ -30,4 +31,7 @@ private:
 
 	UPROPERTY(Transient)
 	UGT_EventBus* EventBus = nullptr;
+
+	UPROPERTY(Transient)
+	UGT_RoomResolver* RoomResolver = nullptr;
 };

@@ -3,6 +3,7 @@
 #include "Core/GT_CommandBus.h"
 #include "Core/GT_EventBus.h"
 #include "Core/GT_QueryFacade.h"
+#include "Core/GT_RunContext.h"
 #include "Core/GT_RunSubsystem.h"
 
 namespace
@@ -18,6 +19,16 @@ namespace
 	const FName GTCheck_RejectedMovePreservesPosition(TEXT("RejectedMovePreservesPosition"));
 	const FName GTCheck_EventsRecorded(TEXT("EventsRecorded"));
 	const FName GTCheck_QueryFacadePlayerPosition(TEXT("QueryFacadePlayerPosition"));
+	const FName GTCheck_TruthMapSize(TEXT("TruthMapSize"));
+	const FName GTCheck_TruthMapCellCount(TEXT("TruthMapCellCount"));
+	const FName GTCheck_TruthCellOrigin(TEXT("TruthCellOrigin"));
+	const FName GTCheck_TruthCellCorner(TEXT("TruthCellCorner"));
+	const FName GTCheck_Neighbors4Corner(TEXT("Neighbors4Corner"));
+	const FName GTCheck_Neighbors4Center(TEXT("Neighbors4Center"));
+	const FName GTCheck_Neighbors8Corner(TEXT("Neighbors8Corner"));
+	const FName GTCheck_Neighbors8Center(TEXT("Neighbors8Center"));
+	const FName GTCheck_ExitCellDebug(TEXT("ExitCellDebug"));
+	const FName GTCheck_MineCellDebug(TEXT("MineCellDebug"));
 
 	const FName GTCommandType_Move(TEXT("Move"));
 	const FName GTEventType_ActorMoved(TEXT("ActorMoved"));
@@ -45,6 +56,8 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 	RunSubsystem->StartNewRun(12345, 10, 10);
 
 	UGT_QueryFacade* QueryFacade = RunSubsystem->GetQueryFacade();
+	const UGT_RunContext* RunContext = RunSubsystem->GetCurrentRunContext();
+	const FGT_TruthMap* TruthMap = RunContext ? &RunContext->GetTruthMapForDebugOnly() : nullptr;
 	UGT_EventBus* EventBus = RunSubsystem->GetEventBus();
 	if (EventBus)
 	{
@@ -73,6 +86,89 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		&& QueryFacade->IsIntelCellVisible(0, 0)
 		&& QueryFacade->IsIntelCellExplored(0, 0);
 	AddCheck(OutResults, GTCheck_InitialIntelCell, bInitialIntelOk, bInitialIntelOk ? TEXT("Initial cell is visible and explored.") : TEXT("Initial cell is not visible/explored."));
+
+	const bool bTruthMapSizeOk = TruthMap && TruthMap->Width == 10 && TruthMap->Height == 10;
+	AddCheck(
+		OutResults,
+		GTCheck_TruthMapSize,
+		bTruthMapSizeOk,
+		FString::Printf(TEXT("TruthMap size is %dx%d."), TruthMap ? TruthMap->Width : 0, TruthMap ? TruthMap->Height : 0));
+
+	const int32 TruthCellCount = TruthMap ? TruthMap->Cells.Num() : 0;
+	const bool bTruthMapCellCountOk = TruthCellCount == 100;
+	AddCheck(
+		OutResults,
+		GTCheck_TruthMapCellCount,
+		bTruthMapCellCountOk,
+		FString::Printf(TEXT("TruthMap cell count is %d."), TruthCellCount));
+
+	FGT_TruthCell TruthCell;
+	const bool bTruthCellOriginOk = QueryFacade
+		&& QueryFacade->GetTruthCellDebugOnly(0, 0, TruthCell)
+		&& TruthCell.X == 0
+		&& TruthCell.Y == 0;
+	AddCheck(
+		OutResults,
+		GTCheck_TruthCellOrigin,
+		bTruthCellOriginOk,
+		FString::Printf(TEXT("Truth origin cell is (%d,%d)."), TruthCell.X, TruthCell.Y));
+
+	TruthCell = FGT_TruthCell();
+	const bool bTruthCellCornerOk = QueryFacade
+		&& QueryFacade->GetTruthCellDebugOnly(9, 9, TruthCell)
+		&& TruthCell.X == 9
+		&& TruthCell.Y == 9;
+	AddCheck(
+		OutResults,
+		GTCheck_TruthCellCorner,
+		bTruthCellCornerOk,
+		FString::Printf(TEXT("Truth corner cell is (%d,%d)."), TruthCell.X, TruthCell.Y));
+
+	TArray<FIntPoint> AdjacentCoords;
+	const bool bNeighbors4CornerOk = QueryFacade
+		&& QueryFacade->GetTruthAdjacentCoords4DebugOnly(0, 0, AdjacentCoords)
+		&& AdjacentCoords.Num() == 2;
+	AddCheck(
+		OutResults,
+		GTCheck_Neighbors4Corner,
+		bNeighbors4CornerOk,
+		FString::Printf(TEXT("4-neighbor count at (0,0) is %d."), AdjacentCoords.Num()));
+
+	AdjacentCoords.Reset();
+	const bool bNeighbors4CenterOk = QueryFacade
+		&& QueryFacade->GetTruthAdjacentCoords4DebugOnly(1, 1, AdjacentCoords)
+		&& AdjacentCoords.Num() == 4;
+	AddCheck(
+		OutResults,
+		GTCheck_Neighbors4Center,
+		bNeighbors4CenterOk,
+		FString::Printf(TEXT("4-neighbor count at (1,1) is %d."), AdjacentCoords.Num()));
+
+	AdjacentCoords.Reset();
+	const bool bNeighbors8CornerOk = QueryFacade
+		&& QueryFacade->GetTruthAdjacentCoords8DebugOnly(0, 0, AdjacentCoords)
+		&& AdjacentCoords.Num() == 3;
+	AddCheck(
+		OutResults,
+		GTCheck_Neighbors8Corner,
+		bNeighbors8CornerOk,
+		FString::Printf(TEXT("8-neighbor count at (0,0) is %d."), AdjacentCoords.Num()));
+
+	AdjacentCoords.Reset();
+	const bool bNeighbors8CenterOk = QueryFacade
+		&& QueryFacade->GetTruthAdjacentCoords8DebugOnly(1, 1, AdjacentCoords)
+		&& AdjacentCoords.Num() == 8;
+	AddCheck(
+		OutResults,
+		GTCheck_Neighbors8Center,
+		bNeighbors8CenterOk,
+		FString::Printf(TEXT("8-neighbor count at (1,1) is %d."), AdjacentCoords.Num()));
+
+	const bool bExitCellDebugOk = QueryFacade && QueryFacade->IsTruthExitDebugOnly(9, 9);
+	AddCheck(OutResults, GTCheck_ExitCellDebug, bExitCellDebugOk, bExitCellDebugOk ? TEXT("Truth cell (9,9) is exit.") : TEXT("Truth cell (9,9) is not exit."));
+
+	const bool bMineCellDebugOk = QueryFacade && QueryFacade->IsTruthMineDebugOnly(2, 2);
+	AddCheck(OutResults, GTCheck_MineCellDebug, bMineCellDebugOk, bMineCellDebugOk ? TEXT("Truth cell (2,2) is mine.") : TEXT("Truth cell (2,2) is not mine."));
 
 	FGT_Command MoveCommand;
 	MoveCommand.CommandType = GTCommandType_Move;

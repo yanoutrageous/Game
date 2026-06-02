@@ -30,7 +30,7 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Graytail|Run")
 	int32 GetMapHeight() const;
 
-	const FGT_TruthMap& GetTruthMap() const;
+	const FGT_TruthMap& GetTruthMapForDebugOnly() const;
 	const FGT_IntelMap& GetPlayerIntelMap() const;
 	const TArray<FGT_ActorRuntimeState>& GetActorStates() const;
 	FGT_ActorRuntimeState* FindActorStateMutable(FName ActorId);
@@ -49,6 +49,8 @@ public:
 	bool MarkPlayerIntelCellVisible(int32 X, int32 Y, bool bVisible);
 
 private:
+	void InitializeBasicMapDebugLayout();
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run", meta = (AllowPrivateAccess = "true"))
 	FGuid RunId;
 

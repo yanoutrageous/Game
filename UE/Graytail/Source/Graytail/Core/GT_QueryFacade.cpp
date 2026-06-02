@@ -141,3 +141,67 @@ bool UGT_QueryFacade::IsIntelCellVisible(int32 X, int32 Y) const
 	FGT_MiniMapCellViewData Cell;
 	return GetIntelCellViewData(X, Y, Cell) && Cell.bVisible;
 }
+
+bool UGT_QueryFacade::GetTruthCellDebugOnly(int32 X, int32 Y, FGT_TruthCell& OutCell) const
+{
+	OutCell = FGT_TruthCell();
+
+	if (!HasValidRunContext())
+	{
+		return false;
+	}
+
+	const FGT_TruthMap& TruthMap = RunContext->GetTruthMapForDebugOnly();
+	const FGT_TruthCell* TruthCell = TruthMap.GetCellConst(X, Y);
+	if (!TruthCell)
+	{
+		return false;
+	}
+
+	OutCell = *TruthCell;
+	return true;
+}
+
+bool UGT_QueryFacade::IsTruthMineDebugOnly(int32 X, int32 Y) const
+{
+	if (!HasValidRunContext())
+	{
+		return false;
+	}
+
+	return RunContext->GetTruthMapForDebugOnly().IsMine(X, Y);
+}
+
+bool UGT_QueryFacade::IsTruthExitDebugOnly(int32 X, int32 Y) const
+{
+	if (!HasValidRunContext())
+	{
+		return false;
+	}
+
+	return RunContext->GetTruthMapForDebugOnly().IsExit(X, Y);
+}
+
+bool UGT_QueryFacade::GetTruthAdjacentCoords4DebugOnly(int32 X, int32 Y, TArray<FIntPoint>& OutCoords) const
+{
+	OutCoords.Reset();
+
+	if (!HasValidRunContext())
+	{
+		return false;
+	}
+
+	return RunContext->GetTruthMapForDebugOnly().GetAdjacentCoords4(X, Y, OutCoords);
+}
+
+bool UGT_QueryFacade::GetTruthAdjacentCoords8DebugOnly(int32 X, int32 Y, TArray<FIntPoint>& OutCoords) const
+{
+	OutCoords.Reset();
+
+	if (!HasValidRunContext())
+	{
+		return false;
+	}
+
+	return RunContext->GetTruthMapForDebugOnly().GetAdjacentCoords8(X, Y, OutCoords);
+}

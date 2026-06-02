@@ -8,6 +8,7 @@ void UGT_RunContext::InitializeRun(int32 InSeed, int32 InWidth, int32 InHeight)
 	MapHeight = InHeight > 0 ? InHeight : 10;
 
 	TruthMap.Initialize(MapWidth, MapHeight, Seed);
+	InitializeBasicMapDebugLayout();
 	PlayerIntelMap.Initialize(MapWidth, MapHeight, FName(TEXT("Player")));
 
 	PlayerActorId = FName(TEXT("Player"));
@@ -59,7 +60,7 @@ int32 UGT_RunContext::GetMapHeight() const
 	return MapHeight;
 }
 
-const FGT_TruthMap& UGT_RunContext::GetTruthMap() const
+const FGT_TruthMap& UGT_RunContext::GetTruthMapForDebugOnly() const
 {
 	return TruthMap;
 }
@@ -133,4 +134,10 @@ bool UGT_RunContext::MarkPlayerIntelCellExplored(int32 X, int32 Y)
 bool UGT_RunContext::MarkPlayerIntelCellVisible(int32 X, int32 Y, bool bVisible)
 {
 	return PlayerIntelMap.MarkVisible(X, Y, bVisible);
+}
+
+void UGT_RunContext::InitializeBasicMapDebugLayout()
+{
+	TruthMap.SetExit(MapWidth - 1, MapHeight - 1, true);
+	TruthMap.SetMine(2, 2, true);
 }

@@ -64,8 +64,19 @@ int32 UGT_RuntimeSmokeRunnerCommandlet::Main(const FString& Params)
 	TArray<FGT_RuntimeSmokeCheckResult> Results;
 	const bool bPassed = DebugSubsystem->RunMinimalMovementSmokeTest(Results);
 
+	int32 PassCount = 0;
+	int32 FailCount = 0;
 	for (const FGT_RuntimeSmokeCheckResult& Result : Results)
 	{
+		if (Result.bPassed)
+		{
+			++PassCount;
+		}
+		else
+		{
+			++FailCount;
+		}
+
 		UE_LOG(
 			LogGraytailRuntimeSmoke,
 			Display,
@@ -75,7 +86,14 @@ int32 UGT_RuntimeSmokeRunnerCommandlet::Main(const FString& Params)
 			*Result.Message);
 	}
 
-	UE_LOG(LogGraytailRuntimeSmoke, Display, TEXT("GRAYTAIL_SMOKE|Overall=%s|Count=%d"), bPassed ? TEXT("Pass") : TEXT("Fail"), Results.Num());
+	UE_LOG(
+		LogGraytailRuntimeSmoke,
+		Display,
+		TEXT("GRAYTAIL_SMOKE|Overall=%s|Pass=%d|Fail=%d|Count=%d"),
+		bPassed ? TEXT("Pass") : TEXT("Fail"),
+		PassCount,
+		FailCount,
+		Results.Num());
 
 	ShutdownSmokeGameInstance(GameInstance);
 	return bPassed ? 0 : 1;

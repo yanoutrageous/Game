@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
 #include "Core/GT_ActorTypes.h"
+#include "Domains/Map/GT_MapTypes.h"
 #include "UI/ViewModels/GT_MiniMapViewModel.h"
 #include "GT_QueryFacade.generated.h"
 
@@ -55,6 +56,12 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Graytail|Query")
 	bool IsIntelCellVisible(int32 X, int32 Y) const;
+
+	bool GetTruthCellDebugOnly(int32 X, int32 Y, FGT_TruthCell& OutCell) const;
+	bool IsTruthMineDebugOnly(int32 X, int32 Y) const;
+	bool IsTruthExitDebugOnly(int32 X, int32 Y) const;
+	bool GetTruthAdjacentCoords4DebugOnly(int32 X, int32 Y, TArray<FIntPoint>& OutCoords) const;
+	bool GetTruthAdjacentCoords8DebugOnly(int32 X, int32 Y, TArray<FIntPoint>& OutCoords) const;
 
 private:
 	UPROPERTY(Transient)

@@ -49,6 +49,8 @@ public:
 	bool MarkPlayerIntelCellVisible(int32 X, int32 Y, bool bVisible);
 	bool CountAdjacentMines8(int32 X, int32 Y, int32& OutMineCount) const;
 	bool SetPlayerIntelCellScannedNumber(int32 X, int32 Y, int32 InDisplayedNumber);
+	bool MarkTruthCellEntered(int32 X, int32 Y);
+	bool MarkTruthCellResolved(int32 X, int32 Y);
 
 private:
 	void InitializeBasicMapDebugLayout();

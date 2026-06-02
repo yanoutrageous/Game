@@ -127,6 +127,42 @@ struct GRAYTAIL_API FGT_TruthMap
 		return Cells.IsValidIndex(Index) ? &Cells[Index] : nullptr;
 	}
 
+	bool MarkCellEntered(int32 X, int32 Y)
+	{
+		FGT_TruthCell* Cell = GetCell(X, Y);
+		if (!Cell)
+		{
+			return false;
+		}
+
+		Cell->bTriggered = true;
+		return true;
+	}
+
+	bool MarkCellResolved(int32 X, int32 Y)
+	{
+		FGT_TruthCell* Cell = GetCell(X, Y);
+		if (!Cell)
+		{
+			return false;
+		}
+
+		Cell->bResolved = true;
+		return true;
+	}
+
+	bool IsCellResolved(int32 X, int32 Y) const
+	{
+		const FGT_TruthCell* Cell = GetCellConst(X, Y);
+		return Cell ? Cell->bResolved : false;
+	}
+
+	bool IsCellTriggered(int32 X, int32 Y) const
+	{
+		const FGT_TruthCell* Cell = GetCellConst(X, Y);
+		return Cell ? Cell->bTriggered : false;
+	}
+
 	bool SetRoomBaseType(int32 X, int32 Y, EGT_RoomBaseType InRoomBaseType)
 	{
 		FGT_TruthCell* Cell = GetCell(X, Y);

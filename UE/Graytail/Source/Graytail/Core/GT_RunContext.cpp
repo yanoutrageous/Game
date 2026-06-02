@@ -146,6 +146,16 @@ bool UGT_RunContext::SetPlayerIntelCellScannedNumber(int32 X, int32 Y, int32 InD
 	return PlayerIntelMap.SetScannedNumber(X, Y, InDisplayedNumber);
 }
 
+bool UGT_RunContext::MarkTruthCellEntered(int32 X, int32 Y)
+{
+	return TruthMap.MarkCellEntered(X, Y);
+}
+
+bool UGT_RunContext::MarkTruthCellResolved(int32 X, int32 Y)
+{
+	return TruthMap.MarkCellResolved(X, Y);
+}
+
 void UGT_RunContext::InitializeBasicMapDebugLayout()
 {
 	TruthMap.SetExit(MapWidth - 1, MapHeight - 1, true);

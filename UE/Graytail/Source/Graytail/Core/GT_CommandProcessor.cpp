@@ -8,6 +8,8 @@ namespace
 	const FName GTCommandType_Move(TEXT("Move"));
 	const FName GTCommandType_Scan(TEXT("Scan"));
 	const FName GTEventType_ActorMoved(TEXT("ActorMoved"));
+	const FName GTEventType_RoomEntered(TEXT("RoomEntered"));
+	const FName GTEventType_RoomResolved(TEXT("RoomResolved"));
 	const FName GTEventType_CellScanned(TEXT("CellScanned"));
 	const FName GTEventType_CommandFailed(TEXT("CommandFailed"));
 	const FName GTSourceSystem_CommandProcessor(TEXT("CommandProcessor"));
@@ -68,6 +70,14 @@ bool UGT_CommandProcessor::ProcessMoveCommand(const FGT_Command& Command)
 	if (Command.TargetActorId == RunContext->GetPlayerActorId())
 	{
 		RunContext->MarkPlayerIntelCellExplored(Command.TargetX, Command.TargetY);
+		if (RunContext->MarkTruthCellEntered(Command.TargetX, Command.TargetY))
+		{
+			PublishCommandEvent(GTEventType_RoomEntered, Command.TargetActorId, Command.TargetX, Command.TargetY, true);
+		}
+		if (RunContext->MarkTruthCellResolved(Command.TargetX, Command.TargetY))
+		{
+			PublishCommandEvent(GTEventType_RoomResolved, Command.TargetActorId, Command.TargetX, Command.TargetY, true);
+		}
 	}
 
 	PublishCommandEvent(GTEventType_ActorMoved, Command.TargetActorId, Command.TargetX, Command.TargetY, true);

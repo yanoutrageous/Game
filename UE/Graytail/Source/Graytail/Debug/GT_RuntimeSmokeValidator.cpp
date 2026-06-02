@@ -16,6 +16,12 @@ namespace
 	const FName GTCheck_LegalMoveAccepted(TEXT("LegalMoveAccepted"));
 	const FName GTCheck_MovedPlayerPosition(TEXT("MovedPlayerPosition"));
 	const FName GTCheck_MovedIntelCell(TEXT("MovedIntelCell"));
+	const FName GTCheck_RoomNotResolvedBeforeMove(TEXT("RoomNotResolvedBeforeMove"));
+	const FName GTCheck_MoveResolvesTargetRoom(TEXT("MoveResolvesTargetRoom"));
+	const FName GTCheck_MoveTriggersTargetRoom(TEXT("MoveTriggersTargetRoom"));
+	const FName GTCheck_RoomEnteredEvent(TEXT("RoomEnteredEvent"));
+	const FName GTCheck_RoomResolvedEvent(TEXT("RoomResolvedEvent"));
+	const FName GTCheck_InvalidMoveDoesNotResolveRoom(TEXT("InvalidMoveDoesNotResolveRoom"));
 	const FName GTCheck_OutOfBoundsMoveRejected(TEXT("OutOfBoundsMoveRejected"));
 	const FName GTCheck_RejectedMovePreservesPosition(TEXT("RejectedMovePreservesPosition"));
 	const FName GTCheck_EventsRecorded(TEXT("EventsRecorded"));
@@ -38,6 +44,7 @@ namespace
 	const FName GTCheck_ScannedIntelCellMarked(TEXT("ScannedIntelCellMarked"));
 	const FName GTCheck_ScannedDisplayedNumber(TEXT("ScannedDisplayedNumber"));
 	const FName GTCheck_CellScannedEvent(TEXT("CellScannedEvent"));
+	const FName GTCheck_ScanDoesNotResolveRoom(TEXT("ScanDoesNotResolveRoom"));
 	const FName GTCheck_InvalidScanRejected(TEXT("InvalidScanRejected"));
 	const FName GTCheck_InvalidScanDoesNotWriteIntel(TEXT("InvalidScanDoesNotWriteIntel"));
 	const FName GTCheck_InvalidScanCommandFailedEvent(TEXT("InvalidScanCommandFailedEvent"));
@@ -51,6 +58,8 @@ namespace
 	const FName GTCommandType_Move(TEXT("Move"));
 	const FName GTCommandType_Scan(TEXT("Scan"));
 	const FName GTEventType_ActorMoved(TEXT("ActorMoved"));
+	const FName GTEventType_RoomEntered(TEXT("RoomEntered"));
+	const FName GTEventType_RoomResolved(TEXT("RoomResolved"));
 	const FName GTEventType_CellScanned(TEXT("CellScanned"));
 	const FName GTEventType_CommandFailed(TEXT("CommandFailed"));
 	const FName GTActorId_Player(TEXT("Player"));
@@ -261,6 +270,19 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 	const bool bCellScannedEventOk = EventBus && EventBus->HasEventOfType(GTEventType_CellScanned);
 	AddCheck(OutResults, GTCheck_CellScannedEvent, bCellScannedEventOk, bCellScannedEventOk ? TEXT("CellScanned event recorded.") : TEXT("CellScanned event was not recorded."));
 
+	FGT_TruthCell ScannedTruthCell;
+	const bool bGotScannedTruthCell = QueryFacade && QueryFacade->GetTruthCellDebugOnly(1, 1, ScannedTruthCell);
+	const bool bScanDoesNotResolveRoomOk = bGotScannedTruthCell
+		&& !ScannedTruthCell.bResolved
+		&& !ScannedTruthCell.bTriggered;
+	AddCheck(
+		OutResults,
+		GTCheck_ScanDoesNotResolveRoom,
+		bScanDoesNotResolveRoomOk,
+		FString::Printf(TEXT("Scanned truth cell (1,1) resolved=%s triggered=%s."),
+			ScannedTruthCell.bResolved ? TEXT("true") : TEXT("false"),
+			ScannedTruthCell.bTriggered ? TEXT("true") : TEXT("false")));
+
 	UGT_MiniMapViewModel* MiniMapViewModel = NewObject<UGT_MiniMapViewModel>(this);
 	const bool bMiniMapViewModelBuildOk = MiniMapViewModel && RunContext;
 	if (bMiniMapViewModelBuildOk)
@@ -368,6 +390,19 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 			CommandFailedCountBeforeInvalidScan,
 			CommandFailedCountAfterInvalidScan));
 
+	FGT_TruthCell MoveTargetTruthCellBeforeMove;
+	const bool bGotMoveTargetBeforeMove = QueryFacade && QueryFacade->GetTruthCellDebugOnly(1, 0, MoveTargetTruthCellBeforeMove);
+	const bool bRoomNotResolvedBeforeMoveOk = bGotMoveTargetBeforeMove
+		&& !MoveTargetTruthCellBeforeMove.bResolved
+		&& !MoveTargetTruthCellBeforeMove.bTriggered;
+	AddCheck(
+		OutResults,
+		GTCheck_RoomNotResolvedBeforeMove,
+		bRoomNotResolvedBeforeMoveOk,
+		FString::Printf(TEXT("Move target room (1,0) before move resolved=%s triggered=%s."),
+			MoveTargetTruthCellBeforeMove.bResolved ? TEXT("true") : TEXT("false"),
+			MoveTargetTruthCellBeforeMove.bTriggered ? TEXT("true") : TEXT("false")));
+
 	FGT_Command MoveCommand;
 	MoveCommand.CommandType = GTCommandType_Move;
 	MoveCommand.SourceActorId = GTActorId_Player;
@@ -393,6 +428,30 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		&& QueryFacade->IsIntelCellExplored(1, 0);
 	AddCheck(OutResults, GTCheck_MovedIntelCell, bMovedIntelOk, bMovedIntelOk ? TEXT("Moved cell is visible and explored.") : TEXT("Moved cell is not visible/explored."));
 
+	FGT_TruthCell MoveTargetTruthCellAfterMove;
+	const bool bGotMoveTargetAfterMove = QueryFacade && QueryFacade->GetTruthCellDebugOnly(1, 0, MoveTargetTruthCellAfterMove);
+	const bool bMoveResolvesTargetRoomOk = bGotMoveTargetAfterMove && MoveTargetTruthCellAfterMove.bResolved;
+	AddCheck(
+		OutResults,
+		GTCheck_MoveResolvesTargetRoom,
+		bMoveResolvesTargetRoomOk,
+		FString::Printf(TEXT("Move target room (1,0) resolved=%s."),
+			MoveTargetTruthCellAfterMove.bResolved ? TEXT("true") : TEXT("false")));
+
+	const bool bMoveTriggersTargetRoomOk = bGotMoveTargetAfterMove && MoveTargetTruthCellAfterMove.bTriggered;
+	AddCheck(
+		OutResults,
+		GTCheck_MoveTriggersTargetRoom,
+		bMoveTriggersTargetRoomOk,
+		FString::Printf(TEXT("Move target room (1,0) triggered=%s."),
+			MoveTargetTruthCellAfterMove.bTriggered ? TEXT("true") : TEXT("false")));
+
+	const bool bRoomEnteredEventOk = EventBus && EventBus->HasEventOfType(GTEventType_RoomEntered);
+	AddCheck(OutResults, GTCheck_RoomEnteredEvent, bRoomEnteredEventOk, bRoomEnteredEventOk ? TEXT("RoomEntered event recorded.") : TEXT("RoomEntered event was not recorded."));
+
+	const bool bRoomResolvedEventOk = EventBus && EventBus->HasEventOfType(GTEventType_RoomResolved);
+	AddCheck(OutResults, GTCheck_RoomResolvedEvent, bRoomResolvedEventOk, bRoomResolvedEventOk ? TEXT("RoomResolved event recorded.") : TEXT("RoomResolved event was not recorded."));
+
 	FGT_Command OutOfBoundsCommand;
 	OutOfBoundsCommand.CommandType = GTCommandType_Move;
 	OutOfBoundsCommand.SourceActorId = GTActorId_Player;
@@ -402,6 +461,26 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 
 	const bool bOutOfBoundsAccepted = RunSubsystem->SubmitCommand(OutOfBoundsCommand);
 	AddCheck(OutResults, GTCheck_OutOfBoundsMoveRejected, !bOutOfBoundsAccepted, !bOutOfBoundsAccepted ? TEXT("Out-of-bounds move rejected.") : TEXT("Out-of-bounds move was accepted."));
+
+	FGT_TruthCell InvalidMoveTargetTruthCell;
+	const bool bInvalidMoveTargetExists = QueryFacade && QueryFacade->GetTruthCellDebugOnly(-1, 0, InvalidMoveTargetTruthCell);
+	FGT_TruthCell MoveTargetTruthCellAfterInvalidMove;
+	const bool bGotMoveTargetAfterInvalidMove = QueryFacade && QueryFacade->GetTruthCellDebugOnly(1, 0, MoveTargetTruthCellAfterInvalidMove);
+	const bool bInvalidMoveDoesNotResolveRoomOk = !bInvalidMoveTargetExists
+		&& bGotMoveTargetAfterInvalidMove
+		&& bGotMoveTargetAfterMove
+		&& MoveTargetTruthCellAfterInvalidMove.bResolved == MoveTargetTruthCellAfterMove.bResolved
+		&& MoveTargetTruthCellAfterInvalidMove.bTriggered == MoveTargetTruthCellAfterMove.bTriggered;
+	AddCheck(
+		OutResults,
+		GTCheck_InvalidMoveDoesNotResolveRoom,
+		bInvalidMoveDoesNotResolveRoomOk,
+		FString::Printf(TEXT("Invalid move target exists=%s; current room resolved %s->%s triggered %s->%s."),
+			bInvalidMoveTargetExists ? TEXT("true") : TEXT("false"),
+			MoveTargetTruthCellAfterMove.bResolved ? TEXT("true") : TEXT("false"),
+			MoveTargetTruthCellAfterInvalidMove.bResolved ? TEXT("true") : TEXT("false"),
+			MoveTargetTruthCellAfterMove.bTriggered ? TEXT("true") : TEXT("false"),
+			MoveTargetTruthCellAfterInvalidMove.bTriggered ? TEXT("true") : TEXT("false")));
 
 	PlayerX = INDEX_NONE;
 	PlayerY = INDEX_NONE;

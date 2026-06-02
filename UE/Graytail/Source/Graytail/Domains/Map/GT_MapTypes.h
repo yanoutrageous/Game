@@ -409,4 +409,20 @@ struct GRAYTAIL_API FGT_IntelMap
 		Cell->ReliabilityState = EGT_IntelReliabilityState::Accurate;
 		return true;
 	}
+
+	bool SetScannedNumber(int32 X, int32 Y, int32 InDisplayedNumber)
+	{
+		FGT_IntelCell* Cell = GetCell(X, Y);
+		if (!Cell)
+		{
+			return false;
+		}
+
+		Cell->bVisible = true;
+		Cell->bExplored = true;
+		Cell->bScanned = true;
+		Cell->DisplayedNumber = InDisplayedNumber;
+		Cell->ReliabilityState = EGT_IntelReliabilityState::Accurate;
+		return true;
+	}
 };

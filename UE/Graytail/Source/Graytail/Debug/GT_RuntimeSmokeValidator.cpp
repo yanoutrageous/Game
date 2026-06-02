@@ -33,9 +33,18 @@ namespace
 	const FName GTCheck_AdjacentMineCountFarFromMine(TEXT("AdjacentMineCountFarFromMine"));
 	const FName GTCheck_AdjacentMineCountMineCellSelfExcluded(TEXT("AdjacentMineCountMineCellSelfExcluded"));
 	const FName GTCheck_AdjacentMineCountInvalidCoord(TEXT("AdjacentMineCountInvalidCoord"));
+	const FName GTCheck_ScanCommandAccepted(TEXT("ScanCommandAccepted"));
+	const FName GTCheck_ScannedIntelCellMarked(TEXT("ScannedIntelCellMarked"));
+	const FName GTCheck_ScannedDisplayedNumber(TEXT("ScannedDisplayedNumber"));
+	const FName GTCheck_CellScannedEvent(TEXT("CellScannedEvent"));
+	const FName GTCheck_InvalidScanRejected(TEXT("InvalidScanRejected"));
+	const FName GTCheck_InvalidScanDoesNotWriteIntel(TEXT("InvalidScanDoesNotWriteIntel"));
+	const FName GTCheck_InvalidScanCommandFailedEvent(TEXT("InvalidScanCommandFailedEvent"));
 
 	const FName GTCommandType_Move(TEXT("Move"));
+	const FName GTCommandType_Scan(TEXT("Scan"));
 	const FName GTEventType_ActorMoved(TEXT("ActorMoved"));
+	const FName GTEventType_CellScanned(TEXT("CellScanned"));
 	const FName GTEventType_CommandFailed(TEXT("CommandFailed"));
 	const FName GTActorId_Player(TEXT("Player"));
 }
@@ -209,6 +218,76 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		GTCheck_AdjacentMineCountInvalidCoord,
 		bAdjacentMineCountInvalidOk,
 		FString::Printf(TEXT("Invalid adjacent mine count query returned %s with count %d."), bAdjacentMineCountInvalidReturned ? TEXT("true") : TEXT("false"), AdjacentMineCount));
+
+	FGT_Command ScanCommand;
+	ScanCommand.CommandType = GTCommandType_Scan;
+	ScanCommand.SourceActorId = GTActorId_Player;
+	ScanCommand.TargetActorId = GTActorId_Player;
+	ScanCommand.TargetX = 1;
+	ScanCommand.TargetY = 1;
+
+	const bool bScanAccepted = RunSubsystem->SubmitCommand(ScanCommand);
+	AddCheck(OutResults, GTCheck_ScanCommandAccepted, bScanAccepted, bScanAccepted ? TEXT("Scan command at (1,1) accepted.") : TEXT("Scan command at (1,1) was rejected."));
+
+	FGT_MiniMapCellViewData ScannedCell;
+	const bool bGotScannedCell = QueryFacade && QueryFacade->GetIntelCellViewData(1, 1, ScannedCell);
+	const bool bScannedIntelCellMarked = bGotScannedCell
+		&& ScannedCell.bScanned
+		&& ScannedCell.bVisible
+		&& ScannedCell.bExplored;
+	AddCheck(
+		OutResults,
+		GTCheck_ScannedIntelCellMarked,
+		bScannedIntelCellMarked,
+		FString::Printf(TEXT("Scanned intel cell flags are scanned=%s visible=%s explored=%s."),
+			ScannedCell.bScanned ? TEXT("true") : TEXT("false"),
+			ScannedCell.bVisible ? TEXT("true") : TEXT("false"),
+			ScannedCell.bExplored ? TEXT("true") : TEXT("false")));
+
+	const bool bScannedDisplayedNumberOk = bGotScannedCell && ScannedCell.DisplayedNumber == 1;
+	AddCheck(
+		OutResults,
+		GTCheck_ScannedDisplayedNumber,
+		bScannedDisplayedNumberOk,
+		FString::Printf(TEXT("Scanned displayed number at (1,1) is %d."), ScannedCell.DisplayedNumber));
+
+	const bool bCellScannedEventOk = EventBus && EventBus->HasEventOfType(GTEventType_CellScanned);
+	AddCheck(OutResults, GTCheck_CellScannedEvent, bCellScannedEventOk, bCellScannedEventOk ? TEXT("CellScanned event recorded.") : TEXT("CellScanned event was not recorded."));
+
+	const int32 CommandFailedCountBeforeInvalidScan = EventBus ? EventBus->CountEventsOfType(GTEventType_CommandFailed) : 0;
+
+	FGT_Command InvalidScanCommand;
+	InvalidScanCommand.CommandType = GTCommandType_Scan;
+	InvalidScanCommand.SourceActorId = GTActorId_Player;
+	InvalidScanCommand.TargetActorId = GTActorId_Player;
+	InvalidScanCommand.TargetX = -1;
+	InvalidScanCommand.TargetY = 0;
+
+	const bool bInvalidScanAccepted = RunSubsystem->SubmitCommand(InvalidScanCommand);
+	AddCheck(OutResults, GTCheck_InvalidScanRejected, !bInvalidScanAccepted, !bInvalidScanAccepted ? TEXT("Invalid scan rejected.") : TEXT("Invalid scan was accepted."));
+
+	FGT_MiniMapCellViewData UntouchedCell;
+	const bool bGotUntouchedCell = QueryFacade && QueryFacade->GetIntelCellViewData(0, 1, UntouchedCell);
+	const bool bInvalidScanDoesNotWriteIntel = bGotUntouchedCell
+		&& !UntouchedCell.bScanned
+		&& UntouchedCell.DisplayedNumber == 0;
+	AddCheck(
+		OutResults,
+		GTCheck_InvalidScanDoesNotWriteIntel,
+		bInvalidScanDoesNotWriteIntel,
+		FString::Printf(TEXT("Untouched intel cell (0,1) scanned=%s displayed=%d."),
+			UntouchedCell.bScanned ? TEXT("true") : TEXT("false"),
+			UntouchedCell.DisplayedNumber));
+
+	const int32 CommandFailedCountAfterInvalidScan = EventBus ? EventBus->CountEventsOfType(GTEventType_CommandFailed) : 0;
+	const bool bInvalidScanCommandFailedEventOk = CommandFailedCountAfterInvalidScan == CommandFailedCountBeforeInvalidScan + 1;
+	AddCheck(
+		OutResults,
+		GTCheck_InvalidScanCommandFailedEvent,
+		bInvalidScanCommandFailedEventOk,
+		FString::Printf(TEXT("CommandFailed count before invalid scan was %d, after was %d."),
+			CommandFailedCountBeforeInvalidScan,
+			CommandFailedCountAfterInvalidScan));
 
 	FGT_Command MoveCommand;
 	MoveCommand.CommandType = GTCommandType_Move;

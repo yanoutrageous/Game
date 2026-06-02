@@ -136,6 +136,16 @@ bool UGT_RunContext::MarkPlayerIntelCellVisible(int32 X, int32 Y, bool bVisible)
 	return PlayerIntelMap.MarkVisible(X, Y, bVisible);
 }
 
+bool UGT_RunContext::CountAdjacentMines8(int32 X, int32 Y, int32& OutMineCount) const
+{
+	return TruthMap.CountAdjacentMines8(X, Y, OutMineCount);
+}
+
+bool UGT_RunContext::SetPlayerIntelCellScannedNumber(int32 X, int32 Y, int32 InDisplayedNumber)
+{
+	return PlayerIntelMap.SetScannedNumber(X, Y, InDisplayedNumber);
+}
+
 void UGT_RunContext::InitializeBasicMapDebugLayout()
 {
 	TruthMap.SetExit(MapWidth - 1, MapHeight - 1, true);

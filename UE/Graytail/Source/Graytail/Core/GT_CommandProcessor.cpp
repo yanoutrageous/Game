@@ -6,7 +6,9 @@
 namespace
 {
 	const FName GTCommandType_Move(TEXT("Move"));
+	const FName GTCommandType_Scan(TEXT("Scan"));
 	const FName GTEventType_ActorMoved(TEXT("ActorMoved"));
+	const FName GTEventType_CellScanned(TEXT("CellScanned"));
 	const FName GTEventType_CommandFailed(TEXT("CommandFailed"));
 	const FName GTSourceSystem_CommandProcessor(TEXT("CommandProcessor"));
 }
@@ -19,12 +21,22 @@ void UGT_CommandProcessor::Initialize(UGT_RunContext* InRunContext, UGT_EventBus
 
 bool UGT_CommandProcessor::ProcessCommand(const FGT_Command& Command)
 {
-	if (Command.CommandType != GTCommandType_Move)
+	if (Command.CommandType == GTCommandType_Move)
 	{
-		PublishCommandEvent(GTEventType_CommandFailed, Command.TargetActorId, Command.TargetX, Command.TargetY, false);
-		return false;
+		return ProcessMoveCommand(Command);
 	}
 
+	if (Command.CommandType == GTCommandType_Scan)
+	{
+		return ProcessScanCommand(Command);
+	}
+
+	PublishCommandEvent(GTEventType_CommandFailed, Command.TargetActorId, Command.TargetX, Command.TargetY, false);
+	return false;
+}
+
+bool UGT_CommandProcessor::ProcessMoveCommand(const FGT_Command& Command)
+{
 	if (!IsValid(RunContext) || Command.TargetActorId.IsNone())
 	{
 		PublishCommandEvent(GTEventType_CommandFailed, Command.TargetActorId, Command.TargetX, Command.TargetY, false);
@@ -59,6 +71,30 @@ bool UGT_CommandProcessor::ProcessCommand(const FGT_Command& Command)
 	}
 
 	PublishCommandEvent(GTEventType_ActorMoved, Command.TargetActorId, Command.TargetX, Command.TargetY, true);
+	return true;
+}
+
+bool UGT_CommandProcessor::ProcessScanCommand(const FGT_Command& Command)
+{
+	const FName EventTargetActorId = Command.TargetActorId.IsNone() && IsValid(RunContext)
+		? RunContext->GetPlayerActorId()
+		: Command.TargetActorId;
+
+	if (!IsValid(RunContext) || !RunContext->IsValidMapCoord(Command.TargetX, Command.TargetY))
+	{
+		PublishCommandEvent(GTEventType_CommandFailed, EventTargetActorId, Command.TargetX, Command.TargetY, false);
+		return false;
+	}
+
+	int32 AdjacentMineCount = 0;
+	if (!RunContext->CountAdjacentMines8(Command.TargetX, Command.TargetY, AdjacentMineCount)
+		|| !RunContext->SetPlayerIntelCellScannedNumber(Command.TargetX, Command.TargetY, AdjacentMineCount))
+	{
+		PublishCommandEvent(GTEventType_CommandFailed, EventTargetActorId, Command.TargetX, Command.TargetY, false);
+		return false;
+	}
+
+	PublishCommandEvent(GTEventType_CellScanned, EventTargetActorId, Command.TargetX, Command.TargetY, true);
 	return true;
 }
 

@@ -7,11 +7,14 @@ namespace
 {
 	const FName GTCommandType_Move(TEXT("Move"));
 	const FName GTCommandType_Scan(TEXT("Scan"));
+	const FName GTCommandType_Extract(TEXT("Extract"));
 	const FName GTEventType_ActorMoved(TEXT("ActorMoved"));
 	const FName GTEventType_CellScanned(TEXT("CellScanned"));
 	const FName GTEventType_CommandFailed(TEXT("CommandFailed"));
 	const FName GTEventType_RunFailed(TEXT("RunFailed"));
+	const FName GTEventType_RunSucceeded(TEXT("RunSucceeded"));
 	const FName GTRunFailureReason_Mine(TEXT("Mine"));
+	const FName GTRunSuccessReason_Extract(TEXT("Extract"));
 	const FName GTSourceSystem_CommandProcessor(TEXT("CommandProcessor"));
 }
 
@@ -47,6 +50,11 @@ bool UGT_CommandProcessor::ProcessCommand(const FGT_Command& Command)
 	if (Command.CommandType == GTCommandType_Scan)
 	{
 		return ProcessScanCommand(Command);
+	}
+
+	if (Command.CommandType == GTCommandType_Extract)
+	{
+		return ProcessExtractCommand(Command);
 	}
 
 	PublishCommandEvent(GTEventType_CommandFailed, Command.TargetActorId, Command.TargetX, Command.TargetY, false);
@@ -124,6 +132,33 @@ bool UGT_CommandProcessor::ProcessScanCommand(const FGT_Command& Command)
 	}
 
 	PublishCommandEvent(GTEventType_CellScanned, EventTargetActorId, Command.TargetX, Command.TargetY, true);
+	return true;
+}
+
+bool UGT_CommandProcessor::ProcessExtractCommand(const FGT_Command& Command)
+{
+	const FName EventTargetActorId = Command.TargetActorId.IsNone() && IsValid(RunContext)
+		? RunContext->GetPlayerActorId()
+		: Command.TargetActorId;
+
+	int32 PlayerX = 0;
+	int32 PlayerY = 0;
+	const bool bPlayerPositionReadable = IsValid(RunContext) && RunContext->TryGetPlayerPosition(PlayerX, PlayerY);
+	const bool bPlayerAtExit = bPlayerPositionReadable
+		&& RunContext->GetTruthMapForDebugOnly().IsExit(PlayerX, PlayerY);
+	if (!bPlayerAtExit)
+	{
+		PublishCommandEvent(GTEventType_CommandFailed, EventTargetActorId, PlayerX, PlayerY, false);
+		return false;
+	}
+
+	if (!RunContext->MarkRunSucceeded(GTRunSuccessReason_Extract))
+	{
+		PublishCommandEvent(GTEventType_CommandFailed, EventTargetActorId, PlayerX, PlayerY, false);
+		return false;
+	}
+
+	PublishCommandEvent(GTEventType_RunSucceeded, EventTargetActorId, PlayerX, PlayerY, true);
 	return true;
 }
 

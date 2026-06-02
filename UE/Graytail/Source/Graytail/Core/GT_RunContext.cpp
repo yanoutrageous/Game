@@ -162,6 +162,18 @@ bool UGT_RunContext::MarkRunFailed(FName Reason)
 	return true;
 }
 
+bool UGT_RunContext::MarkRunSucceeded(FName Reason)
+{
+	if (RunState != EGT_RunState::Running)
+	{
+		return false;
+	}
+
+	RunState = EGT_RunState::Succeeded;
+	RunEndReason = Reason;
+	return true;
+}
+
 bool UGT_RunContext::MarkPlayerIntelCellExplored(int32 X, int32 Y)
 {
 	return PlayerIntelMap.MarkExplored(X, Y);

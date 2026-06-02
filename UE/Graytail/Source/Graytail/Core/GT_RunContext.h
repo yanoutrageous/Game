@@ -68,6 +68,7 @@ public:
 	bool IsRunSucceeded() const;
 
 	bool MarkRunFailed(FName Reason);
+	bool MarkRunSucceeded(FName Reason);
 
 	bool MarkPlayerIntelCellExplored(int32 X, int32 Y);
 	bool MarkPlayerIntelCellVisible(int32 X, int32 Y, bool bVisible);

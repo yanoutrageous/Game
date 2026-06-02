@@ -29,6 +29,10 @@ namespace
 	const FName GTCheck_Neighbors8Center(TEXT("Neighbors8Center"));
 	const FName GTCheck_ExitCellDebug(TEXT("ExitCellDebug"));
 	const FName GTCheck_MineCellDebug(TEXT("MineCellDebug"));
+	const FName GTCheck_AdjacentMineCountNearMine(TEXT("AdjacentMineCountNearMine"));
+	const FName GTCheck_AdjacentMineCountFarFromMine(TEXT("AdjacentMineCountFarFromMine"));
+	const FName GTCheck_AdjacentMineCountMineCellSelfExcluded(TEXT("AdjacentMineCountMineCellSelfExcluded"));
+	const FName GTCheck_AdjacentMineCountInvalidCoord(TEXT("AdjacentMineCountInvalidCoord"));
 
 	const FName GTCommandType_Move(TEXT("Move"));
 	const FName GTEventType_ActorMoved(TEXT("ActorMoved"));
@@ -169,6 +173,42 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 
 	const bool bMineCellDebugOk = QueryFacade && QueryFacade->IsTruthMineDebugOnly(2, 2);
 	AddCheck(OutResults, GTCheck_MineCellDebug, bMineCellDebugOk, bMineCellDebugOk ? TEXT("Truth cell (2,2) is mine.") : TEXT("Truth cell (2,2) is not mine."));
+
+	int32 AdjacentMineCount = INDEX_NONE;
+	const bool bAdjacentMineCountNearMineReturned = QueryFacade && QueryFacade->CountAdjacentMinesDebugOnly(1, 1, AdjacentMineCount);
+	const bool bAdjacentMineCountNearMineOk = bAdjacentMineCountNearMineReturned && AdjacentMineCount == 1;
+	AddCheck(
+		OutResults,
+		GTCheck_AdjacentMineCountNearMine,
+		bAdjacentMineCountNearMineOk,
+		FString::Printf(TEXT("Adjacent mine count at (1,1) is %d."), AdjacentMineCount));
+
+	AdjacentMineCount = INDEX_NONE;
+	const bool bAdjacentMineCountFarReturned = QueryFacade && QueryFacade->CountAdjacentMinesDebugOnly(0, 0, AdjacentMineCount);
+	const bool bAdjacentMineCountFarOk = bAdjacentMineCountFarReturned && AdjacentMineCount == 0;
+	AddCheck(
+		OutResults,
+		GTCheck_AdjacentMineCountFarFromMine,
+		bAdjacentMineCountFarOk,
+		FString::Printf(TEXT("Adjacent mine count at (0,0) is %d."), AdjacentMineCount));
+
+	AdjacentMineCount = INDEX_NONE;
+	const bool bAdjacentMineCountSelfReturned = QueryFacade && QueryFacade->CountAdjacentMinesDebugOnly(2, 2, AdjacentMineCount);
+	const bool bAdjacentMineCountSelfOk = bAdjacentMineCountSelfReturned && AdjacentMineCount == 0;
+	AddCheck(
+		OutResults,
+		GTCheck_AdjacentMineCountMineCellSelfExcluded,
+		bAdjacentMineCountSelfOk,
+		FString::Printf(TEXT("Adjacent mine count at mine cell (2,2) is %d."), AdjacentMineCount));
+
+	AdjacentMineCount = INDEX_NONE;
+	const bool bAdjacentMineCountInvalidReturned = QueryFacade && QueryFacade->CountAdjacentMinesDebugOnly(-1, 0, AdjacentMineCount);
+	const bool bAdjacentMineCountInvalidOk = !bAdjacentMineCountInvalidReturned && AdjacentMineCount == 0;
+	AddCheck(
+		OutResults,
+		GTCheck_AdjacentMineCountInvalidCoord,
+		bAdjacentMineCountInvalidOk,
+		FString::Printf(TEXT("Invalid adjacent mine count query returned %s with count %d."), bAdjacentMineCountInvalidReturned ? TEXT("true") : TEXT("false"), AdjacentMineCount));
 
 	FGT_Command MoveCommand;
 	MoveCommand.CommandType = GTCommandType_Move;

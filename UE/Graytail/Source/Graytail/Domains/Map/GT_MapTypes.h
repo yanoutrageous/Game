@@ -251,6 +251,27 @@ struct GRAYTAIL_API FGT_TruthMap
 
 		return true;
 	}
+
+	bool CountAdjacentMines8(int32 X, int32 Y, int32& OutMineCount) const
+	{
+		OutMineCount = 0;
+
+		TArray<FIntPoint> AdjacentCoords;
+		if (!GetAdjacentCoords8(X, Y, AdjacentCoords))
+		{
+			return false;
+		}
+
+		for (const FIntPoint& Coord : AdjacentCoords)
+		{
+			if (IsMine(Coord.X, Coord.Y))
+			{
+				++OutMineCount;
+			}
+		}
+
+		return true;
+	}
 };
 
 USTRUCT(BlueprintType)

@@ -205,3 +205,15 @@ bool UGT_QueryFacade::GetTruthAdjacentCoords8DebugOnly(int32 X, int32 Y, TArray<
 
 	return RunContext->GetTruthMapForDebugOnly().GetAdjacentCoords8(X, Y, OutCoords);
 }
+
+bool UGT_QueryFacade::CountAdjacentMinesDebugOnly(int32 X, int32 Y, int32& OutMineCount) const
+{
+	OutMineCount = 0;
+
+	if (!HasValidRunContext())
+	{
+		return false;
+	}
+
+	return RunContext->GetTruthMapForDebugOnly().CountAdjacentMines8(X, Y, OutMineCount);
+}

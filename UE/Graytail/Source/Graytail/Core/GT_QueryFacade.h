@@ -62,6 +62,7 @@ public:
 	bool IsTruthExitDebugOnly(int32 X, int32 Y) const;
 	bool GetTruthAdjacentCoords4DebugOnly(int32 X, int32 Y, TArray<FIntPoint>& OutCoords) const;
 	bool GetTruthAdjacentCoords8DebugOnly(int32 X, int32 Y, TArray<FIntPoint>& OutCoords) const;
+	bool CountAdjacentMinesDebugOnly(int32 X, int32 Y, int32& OutMineCount) const;
 
 private:
 	UPROPERTY(Transient)

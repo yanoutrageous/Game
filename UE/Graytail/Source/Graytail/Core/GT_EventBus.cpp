@@ -40,6 +40,22 @@ int32 UGT_EventBus::CountEventsOfType(FName EventType) const
 	return Count;
 }
 
+void UGT_EventBus::GetEventTypeCounts(TMap<FName, int32>& OutCounts) const
+{
+	OutCounts.Reset();
+
+	for (const FGT_GameEvent& Event : EventHistory)
+	{
+		if (Event.EventType.IsNone())
+		{
+			continue;
+		}
+
+		int32& Count = OutCounts.FindOrAdd(Event.EventType);
+		++Count;
+	}
+}
+
 const TArray<FGT_GameEvent>& UGT_EventBus::GetEventHistory() const
 {
 	return EventHistory;

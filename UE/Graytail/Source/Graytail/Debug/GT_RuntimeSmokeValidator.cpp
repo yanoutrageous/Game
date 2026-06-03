@@ -5,6 +5,8 @@
 #include "Core/GT_QueryFacade.h"
 #include "Core/GT_RunContext.h"
 #include "Core/GT_RunSubsystem.h"
+#include "Debug/GT_DebugSubsystem.h"
+#include "Debug/GT_DebugTypes.h"
 #include "UI/ViewModels/GT_MiniMapViewModel.h"
 
 namespace
@@ -105,6 +107,18 @@ namespace
 	const FName GTCheck_ScenarioSuccessPostSuccessMoveRejected(TEXT("ScenarioSuccessPostSuccessMoveRejected"));
 	const FName GTCheck_ScenarioSuccessPostSuccessScanRejected(TEXT("ScenarioSuccessPostSuccessScanRejected"));
 	const FName GTCheck_ScenarioSuccessPostSuccessExtractRejected(TEXT("ScenarioSuccessPostSuccessExtractRejected"));
+	const FName GTCheck_DebugStartNewRunAccepted(TEXT("DebugStartNewRunAccepted"));
+	const FName GTCheck_DebugSnapshotAfterStart(TEXT("DebugSnapshotAfterStart"));
+	const FName GTCheck_DebugMoveAccepted(TEXT("DebugMoveAccepted"));
+	const FName GTCheck_DebugSnapshotAfterMove(TEXT("DebugSnapshotAfterMove"));
+	const FName GTCheck_DebugScanAccepted(TEXT("DebugScanAccepted"));
+	const FName GTCheck_DebugMiniMapAfterScan(TEXT("DebugMiniMapAfterScan"));
+	const FName GTCheck_DebugExtractRejectedAwayFromExit(TEXT("DebugExtractRejectedAwayFromExit"));
+	const FName GTCheck_DebugMoveToExitPathAccepted(TEXT("DebugMoveToExitPathAccepted"));
+	const FName GTCheck_DebugExtractAcceptedAtExit(TEXT("DebugExtractAcceptedAtExit"));
+	const FName GTCheck_DebugSnapshotAfterExtract(TEXT("DebugSnapshotAfterExtract"));
+	const FName GTCheck_DebugMoveRejectedAfterSuccess(TEXT("DebugMoveRejectedAfterSuccess"));
+	const FName GTCheck_DebugEventSummaryAvailable(TEXT("DebugEventSummaryAvailable"));
 
 	const FName GTCommandType_Move(TEXT("Move"));
 	const FName GTCommandType_Scan(TEXT("Scan"));
@@ -124,6 +138,11 @@ namespace
 void UGT_RuntimeSmokeValidator::Initialize(UGT_RunSubsystem* InRunSubsystem)
 {
 	RunSubsystem = InRunSubsystem;
+}
+
+void UGT_RuntimeSmokeValidator::SetDebugSubsystem(UGT_DebugSubsystem* InDebugSubsystem)
+{
+	DebugSubsystem = InDebugSubsystem;
 }
 
 bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSmokeCheckResult>& OutResults)
@@ -1320,6 +1339,190 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		GTCheck_ScenarioSuccessPostSuccessExtractRejected,
 		!bScenarioSuccessPostSuccessExtractAccepted,
 		!bScenarioSuccessPostSuccessExtractAccepted ? TEXT("Success scenario extract after RunSucceeded was rejected.") : TEXT("Success scenario extract after RunSucceeded was accepted."));
+
+	FGT_DebugRunSnapshot DebugSnapshot;
+	const bool bDebugStartNewRunAccepted = IsValid(DebugSubsystem)
+		&& DebugSubsystem->DebugStartNewRun(42345, 10, 10, DebugSnapshot);
+	AddCheck(
+		OutResults,
+		GTCheck_DebugStartNewRunAccepted,
+		bDebugStartNewRunAccepted,
+		bDebugStartNewRunAccepted ? TEXT("DebugStartNewRun accepted.") : TEXT("DebugStartNewRun was rejected."));
+
+	const bool bDebugSnapshotAfterStartOk = bDebugStartNewRunAccepted
+		&& DebugSnapshot.RunState == EGT_RunState::Running
+		&& DebugSnapshot.PlayerX == 0
+		&& DebugSnapshot.PlayerY == 0
+		&& DebugSnapshot.MapWidth == 10
+		&& DebugSnapshot.MapHeight == 10;
+	AddCheck(
+		OutResults,
+		GTCheck_DebugSnapshotAfterStart,
+		bDebugSnapshotAfterStartOk,
+		FString::Printf(TEXT("Debug snapshot after start: state=%d player=(%d,%d) size=%dx%d events=%d."),
+			static_cast<int32>(DebugSnapshot.RunState),
+			DebugSnapshot.PlayerX,
+			DebugSnapshot.PlayerY,
+			DebugSnapshot.MapWidth,
+			DebugSnapshot.MapHeight,
+			DebugSnapshot.EventCount));
+
+	const bool bDebugMoveAccepted = IsValid(DebugSubsystem)
+		&& DebugSubsystem->DebugMoveTo(1, 0, DebugSnapshot);
+	AddCheck(
+		OutResults,
+		GTCheck_DebugMoveAccepted,
+		bDebugMoveAccepted,
+		bDebugMoveAccepted ? TEXT("DebugMoveTo(1,0) accepted.") : TEXT("DebugMoveTo(1,0) was rejected."));
+
+	const bool bDebugSnapshotAfterMoveOk = bDebugMoveAccepted
+		&& DebugSnapshot.RunState == EGT_RunState::Running
+		&& DebugSnapshot.PlayerX == 1
+		&& DebugSnapshot.PlayerY == 0;
+	AddCheck(
+		OutResults,
+		GTCheck_DebugSnapshotAfterMove,
+		bDebugSnapshotAfterMoveOk,
+		FString::Printf(TEXT("Debug snapshot after move: state=%d player=(%d,%d)."),
+			static_cast<int32>(DebugSnapshot.RunState),
+			DebugSnapshot.PlayerX,
+			DebugSnapshot.PlayerY));
+
+	const bool bDebugScanAccepted = IsValid(DebugSubsystem)
+		&& DebugSubsystem->DebugScanCell(1, 1, DebugSnapshot);
+	AddCheck(
+		OutResults,
+		GTCheck_DebugScanAccepted,
+		bDebugScanAccepted,
+		bDebugScanAccepted ? TEXT("DebugScanCell(1,1) accepted.") : TEXT("DebugScanCell(1,1) was rejected."));
+
+	TArray<FGT_MiniMapCellViewData> DebugMiniMapCells;
+	int32 DebugMiniMapWidth = 0;
+	int32 DebugMiniMapHeight = 0;
+	const bool bDebugMiniMapReadable = IsValid(DebugSubsystem)
+		&& DebugSubsystem->GetDebugMiniMapViewData(DebugMiniMapCells, DebugMiniMapWidth, DebugMiniMapHeight);
+	const FGT_MiniMapCellViewData* DebugScannedCell = DebugMiniMapCells.FindByPredicate([](const FGT_MiniMapCellViewData& Cell)
+	{
+		return Cell.X == 1 && Cell.Y == 1;
+	});
+	const bool bDebugMiniMapAfterScanOk = bDebugMiniMapReadable
+		&& DebugMiniMapWidth == 10
+		&& DebugMiniMapHeight == 10
+		&& DebugScannedCell
+		&& DebugScannedCell->bScanned
+		&& DebugScannedCell->DisplayedNumber == 1;
+	AddCheck(
+		OutResults,
+		GTCheck_DebugMiniMapAfterScan,
+		bDebugMiniMapAfterScanOk,
+		FString::Printf(TEXT("Debug minimap after scan: readable=%s size=%dx%d scanned=%s displayed=%d."),
+			bDebugMiniMapReadable ? TEXT("true") : TEXT("false"),
+			DebugMiniMapWidth,
+			DebugMiniMapHeight,
+			DebugScannedCell && DebugScannedCell->bScanned ? TEXT("true") : TEXT("false"),
+			DebugScannedCell ? DebugScannedCell->DisplayedNumber : INDEX_NONE));
+
+	const bool bDebugExtractAwayFromExitAccepted = IsValid(DebugSubsystem)
+		&& DebugSubsystem->DebugExtract(DebugSnapshot);
+	AddCheck(
+		OutResults,
+		GTCheck_DebugExtractRejectedAwayFromExit,
+		!bDebugExtractAwayFromExitAccepted,
+		!bDebugExtractAwayFromExitAccepted ? TEXT("DebugExtract away from exit was rejected.") : TEXT("DebugExtract away from exit was accepted."));
+
+	const FIntPoint DebugExitPath[] = {
+		FIntPoint(2, 0),
+		FIntPoint(3, 0),
+		FIntPoint(4, 0),
+		FIntPoint(5, 0),
+		FIntPoint(6, 0),
+		FIntPoint(7, 0),
+		FIntPoint(8, 0),
+		FIntPoint(9, 0),
+		FIntPoint(9, 1),
+		FIntPoint(9, 2),
+		FIntPoint(9, 3),
+		FIntPoint(9, 4),
+		FIntPoint(9, 5),
+		FIntPoint(9, 6),
+		FIntPoint(9, 7),
+		FIntPoint(9, 8),
+		FIntPoint(9, 9)
+	};
+
+	bool bDebugMoveToExitPathAccepted = IsValid(DebugSubsystem);
+	for (const FIntPoint& Coord : DebugExitPath)
+	{
+		if (!DebugSubsystem->DebugMoveTo(Coord.X, Coord.Y, DebugSnapshot))
+		{
+			bDebugMoveToExitPathAccepted = false;
+			break;
+		}
+	}
+	const bool bDebugMoveToExitPathOk = bDebugMoveToExitPathAccepted
+		&& DebugSnapshot.RunState == EGT_RunState::Running
+		&& DebugSnapshot.PlayerX == 9
+		&& DebugSnapshot.PlayerY == 9;
+	AddCheck(
+		OutResults,
+		GTCheck_DebugMoveToExitPathAccepted,
+		bDebugMoveToExitPathOk,
+		FString::Printf(TEXT("Debug path to exit accepted=%s player=(%d,%d) state=%d."),
+			bDebugMoveToExitPathAccepted ? TEXT("true") : TEXT("false"),
+			DebugSnapshot.PlayerX,
+			DebugSnapshot.PlayerY,
+			static_cast<int32>(DebugSnapshot.RunState)));
+
+	const bool bDebugExtractAcceptedAtExit = IsValid(DebugSubsystem)
+		&& DebugSubsystem->DebugExtract(DebugSnapshot);
+	AddCheck(
+		OutResults,
+		GTCheck_DebugExtractAcceptedAtExit,
+		bDebugExtractAcceptedAtExit,
+		bDebugExtractAcceptedAtExit ? TEXT("DebugExtract at exit accepted.") : TEXT("DebugExtract at exit was rejected."));
+
+	const bool bDebugSnapshotAfterExtractOk = bDebugExtractAcceptedAtExit
+		&& DebugSnapshot.RunState == EGT_RunState::Succeeded;
+	AddCheck(
+		OutResults,
+		GTCheck_DebugSnapshotAfterExtract,
+		bDebugSnapshotAfterExtractOk,
+		FString::Printf(TEXT("Debug snapshot after extract: state=%d player=(%d,%d)."),
+			static_cast<int32>(DebugSnapshot.RunState),
+			DebugSnapshot.PlayerX,
+			DebugSnapshot.PlayerY));
+
+	const bool bDebugMoveAfterSuccessAccepted = IsValid(DebugSubsystem)
+		&& DebugSubsystem->DebugMoveTo(9, 8, DebugSnapshot);
+	AddCheck(
+		OutResults,
+		GTCheck_DebugMoveRejectedAfterSuccess,
+		!bDebugMoveAfterSuccessAccepted,
+		!bDebugMoveAfterSuccessAccepted ? TEXT("DebugMoveTo after success was rejected.") : TEXT("DebugMoveTo after success was accepted."));
+
+	TArray<FGT_DebugEventSummary> DebugEventSummary;
+	if (IsValid(DebugSubsystem))
+	{
+		DebugSubsystem->GetDebugEventSummary(DebugEventSummary);
+	}
+
+	auto HasDebugEventType = [&DebugEventSummary](FName EventType) -> bool
+	{
+		return DebugEventSummary.ContainsByPredicate([EventType](const FGT_DebugEventSummary& Summary)
+		{
+			return Summary.EventType == EventType && Summary.Count > 0;
+		});
+	};
+
+	const bool bDebugEventSummaryAvailable = HasDebugEventType(GTEventType_ActorMoved)
+		&& HasDebugEventType(GTEventType_CellScanned)
+		&& HasDebugEventType(GTEventType_ExitFound)
+		&& HasDebugEventType(GTEventType_RunSucceeded);
+	AddCheck(
+		OutResults,
+		GTCheck_DebugEventSummaryAvailable,
+		bDebugEventSummaryAvailable,
+		FString::Printf(TEXT("Debug event summary contains %d event types."), DebugEventSummary.Num()));
 
 	for (const FGT_RuntimeSmokeCheckResult& Result : OutResults)
 	{

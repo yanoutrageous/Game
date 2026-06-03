@@ -5,6 +5,7 @@
 #include "GT_RuntimeSmokeValidator.generated.h"
 
 class UGT_RunSubsystem;
+class UGT_DebugSubsystem;
 
 USTRUCT(BlueprintType)
 struct GRAYTAIL_API FGT_RuntimeSmokeCheckResult
@@ -30,6 +31,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Smoke")
 	void Initialize(UGT_RunSubsystem* InRunSubsystem);
 
+	void SetDebugSubsystem(UGT_DebugSubsystem* InDebugSubsystem);
+
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Smoke")
 	bool RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSmokeCheckResult>& OutResults);
 
@@ -38,4 +41,7 @@ private:
 
 	UPROPERTY(Transient)
 	UGT_RunSubsystem* RunSubsystem = nullptr;
+
+	UPROPERTY(Transient)
+	UGT_DebugSubsystem* DebugSubsystem = nullptr;
 };

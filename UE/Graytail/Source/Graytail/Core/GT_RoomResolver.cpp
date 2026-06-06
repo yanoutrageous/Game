@@ -13,6 +13,14 @@ namespace
 	const FName GTEventType_EventPresented(TEXT("EventPresented"));
 	const FName GTEventType_CombatRoomEntered(TEXT("CombatRoomEntered"));
 	const FName GTEventType_CombatStarted(TEXT("CombatStarted"));
+	const FName GTEventType_EventOptionChosen(TEXT("EventOptionChosen"));
+	const FName GTEventType_EventResolved(TEXT("EventResolved"));
+	const FName GTEventType_EventOptionChooseFailed(TEXT("EventOptionChooseFailed"));
+	const FName GTEventType_CombatResolved(TEXT("CombatResolved"));
+	const FName GTEventType_CombatResolveFailed(TEXT("CombatResolveFailed"));
+	const FName GTEventOption_DefaultContinue(TEXT("Event_DebugOption_Continue"));
+	const FName GTCombatResult_Success(TEXT("Success"));
+	const FName GTCombatResult_Fail(TEXT("Fail"));
 	const FName GTSourceSystem_RoomResolver(TEXT("RoomResolver"));
 }
 
@@ -88,6 +96,141 @@ bool UGT_RoomResolver::ResolveRoomAt(int32 X, int32 Y, FGT_RoomResolveResult& Ou
 		PublishResolverEvent(GTEventType_CombatStarted, OutResult, true);
 	}
 
+	return true;
+}
+
+bool UGT_RoomResolver::ChooseEventOptionAt(int32 X, int32 Y, FName OptionId, FGT_RoomResolveResult& OutResult)
+{
+	if (!BuildResultFromTruthCell(X, Y, OutResult))
+	{
+		return false;
+	}
+
+	const FName ResolvedOptionId = OptionId.IsNone() ? GTEventOption_DefaultContinue : OptionId;
+	if (OutResult.RoomBaseType != EGT_RoomBaseType::Event)
+	{
+		PublishInteractionEvent(
+			GTEventType_EventOptionChooseFailed,
+			OutResult,
+			ResolvedOptionId,
+			false,
+			FString::Printf(TEXT("ChooseEventOption rejected: expected Event room, current RoomBaseType=%d."), static_cast<int32>(OutResult.RoomBaseType)));
+		return false;
+	}
+
+	if (!RunContext->MarkTruthCellResolved(X, Y) || !BuildResultFromTruthCell(X, Y, OutResult))
+	{
+		PublishInteractionEvent(
+			GTEventType_EventOptionChooseFailed,
+			OutResult,
+			ResolvedOptionId,
+			false,
+			TEXT("ChooseEventOption rejected: failed to mark current Event room resolved."));
+		return false;
+	}
+
+	OutResult.Outcome = EGT_RoomResolveOutcome::EventPresented;
+	PublishInteractionEvent(
+		GTEventType_EventOptionChosen,
+		OutResult,
+		ResolvedOptionId,
+		true,
+		FString::Printf(TEXT("OptionId=%s"), *ResolvedOptionId.ToString()));
+	PublishInteractionEvent(
+		GTEventType_EventResolved,
+		OutResult,
+		ResolvedOptionId,
+		true,
+		FString::Printf(TEXT("OptionId=%s"), *ResolvedOptionId.ToString()));
+	return true;
+}
+
+bool UGT_RoomResolver::ResolveCombatAt(int32 X, int32 Y, FName ResultId, FGT_RoomResolveResult& OutResult)
+{
+	if (!BuildResultFromTruthCell(X, Y, OutResult))
+	{
+		return false;
+	}
+
+	const FName ResolvedResultId = ResultId.IsNone() ? GTCombatResult_Success : ResultId;
+	if (OutResult.RoomBaseType != EGT_RoomBaseType::Combat)
+	{
+		PublishInteractionEvent(
+			GTEventType_CombatResolveFailed,
+			OutResult,
+			ResolvedResultId,
+			false,
+			FString::Printf(TEXT("ResolveCombat rejected: expected Combat room, current RoomBaseType=%d."), static_cast<int32>(OutResult.RoomBaseType)));
+		return false;
+	}
+
+	if (ResolvedResultId == GTCombatResult_Fail)
+	{
+		PublishInteractionEvent(
+			GTEventType_CombatResolveFailed,
+			OutResult,
+			ResolvedResultId,
+			false,
+			TEXT("ResolveCombat rejected: Fail result is not implemented for placeholder combat."));
+		return false;
+	}
+
+	if (ResolvedResultId != GTCombatResult_Success)
+	{
+		PublishInteractionEvent(
+			GTEventType_CombatResolveFailed,
+			OutResult,
+			ResolvedResultId,
+			false,
+			FString::Printf(TEXT("ResolveCombat rejected: unsupported Result=%s."), *ResolvedResultId.ToString()));
+		return false;
+	}
+
+	if (!RunContext->MarkTruthCellResolved(X, Y) || !BuildResultFromTruthCell(X, Y, OutResult))
+	{
+		PublishInteractionEvent(
+			GTEventType_CombatResolveFailed,
+			OutResult,
+			ResolvedResultId,
+			false,
+			TEXT("ResolveCombat rejected: failed to mark current Combat room resolved."));
+		return false;
+	}
+
+	OutResult.Outcome = EGT_RoomResolveOutcome::CombatStarted;
+	PublishInteractionEvent(
+		GTEventType_CombatResolved,
+		OutResult,
+		ResolvedResultId,
+		true,
+		FString::Printf(TEXT("Result=%s"), *ResolvedResultId.ToString()));
+	return true;
+}
+
+bool UGT_RoomResolver::BuildResultFromTruthCell(int32 X, int32 Y, FGT_RoomResolveResult& OutResult) const
+{
+	OutResult = FGT_RoomResolveResult();
+	if (!IsValid(RunContext) || !RunContext->IsValidMapCoord(X, Y))
+	{
+		return false;
+	}
+
+	FGT_TruthCell TruthCell;
+	if (!RunContext->GetTruthCellSnapshot(X, Y, TruthCell))
+	{
+		return false;
+	}
+
+	OutResult.bSuccess = true;
+	OutResult.X = X;
+	OutResult.Y = Y;
+	OutResult.RoomBaseType = TruthCell.RoomBaseType;
+	OutResult.bTriggered = TruthCell.bTriggered;
+	OutResult.bResolved = TruthCell.bResolved;
+	OutResult.RoomDefId = TruthCell.RoomDefId;
+	OutResult.RoomContentId = TruthCell.RoomContentId;
+	OutResult.RoomRuleId = TruthCell.RoomRuleId;
+	OutResult.RoomInstanceId = TruthCell.RoomInstanceId;
 	return true;
 }
 
@@ -182,6 +325,31 @@ void UGT_RoomResolver::PublishResolverEvent(FName EventType, const FGT_RoomResol
 	Event.RuleId = Result.RoomRuleId;
 	Event.NumericValue = static_cast<int32>(Result.Outcome);
 	Event.PayloadText = FString::Printf(TEXT("RoomContentId=%s RoomRuleId=%s"), *Result.RoomContentId.ToString(), *Result.RoomRuleId.ToString());
+	Event.bSuccess = bSuccess;
+	EventBus->PublishEvent(Event);
+}
+
+void UGT_RoomResolver::PublishInteractionEvent(FName EventType, const FGT_RoomResolveResult& Result, FName PayloadId, bool bSuccess, const FString& PayloadText) const
+{
+	if (!IsValid(EventBus))
+	{
+		return;
+	}
+
+	FGT_GameEvent Event;
+	Event.EventType = EventType;
+	Event.SourceSystem = GTSourceSystem_RoomResolver;
+	Event.SourceActorId = IsValid(RunContext) ? RunContext->GetPlayerActorId() : NAME_None;
+	Event.TargetActorId = Event.SourceActorId;
+	Event.X = Result.X;
+	Event.Y = Result.Y;
+	Event.RoomCoord = FIntPoint(Result.X, Result.Y);
+	Event.ContentId = Result.RoomContentId;
+	Event.RuleId = Result.RoomRuleId;
+	Event.NumericValue = static_cast<int32>(Result.Outcome);
+	Event.PayloadText = PayloadText.IsEmpty()
+		? FString::Printf(TEXT("PayloadId=%s RoomContentId=%s RoomRuleId=%s"), *PayloadId.ToString(), *Result.RoomContentId.ToString(), *Result.RoomRuleId.ToString())
+		: PayloadText;
 	Event.bSuccess = bSuccess;
 	EventBus->PublishEvent(Event);
 }

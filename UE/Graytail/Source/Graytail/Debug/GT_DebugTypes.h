@@ -59,4 +59,19 @@ struct GRAYTAIL_API FGT_DebugEventSummary
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
 	int32 Count = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	FName LastContentId = NAME_None;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	FName LastRuleId = NAME_None;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	int32 LastSequenceId = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	bool bLastSuccess = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	FString LastPayloadText;
 };

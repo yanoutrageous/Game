@@ -12,7 +12,12 @@ namespace
 	const FName GTDebugCommandType_Move(TEXT("Move"));
 	const FName GTDebugCommandType_Scan(TEXT("Scan"));
 	const FName GTDebugCommandType_Extract(TEXT("Extract"));
+	const FName GTDebugCommandType_ChooseEventOption(TEXT("ChooseEventOption"));
+	const FName GTDebugCommandType_ResolveCombat(TEXT("ResolveCombat"));
 	const FName GTDebugActorId_Player(TEXT("Player"));
+	const FName GTDefaultEventOption_Continue(TEXT("Event_DebugOption_Continue"));
+	const FName GTCombatResult_Success(TEXT("Success"));
+	const FName GTCombatResult_Fail(TEXT("Fail"));
 	const FName GTRoomIcon_Exit(TEXT("Exit"));
 	const FName GTRoomIcon_Mine(TEXT("Mine"));
 	const FName GTRoomIcon_Event(TEXT("Event"));
@@ -115,6 +120,60 @@ bool UGT_DebugSubsystem::DebugExtract(FGT_DebugRunSnapshot& OutSnapshot)
 	return SubmitDebugCommand(GTDebugCommandType_Extract, PlayerX, PlayerY, OutSnapshot);
 }
 
+bool UGT_DebugSubsystem::DebugChooseEventOption(FName OptionId, FGT_DebugRunSnapshot& OutSnapshot)
+{
+	int32 PlayerX = 0;
+	int32 PlayerY = 0;
+
+	const UGT_RunSubsystem* RunSubsystem = GetRunSubsystem();
+	const UGT_QueryFacade* QueryFacade = RunSubsystem ? RunSubsystem->GetQueryFacade() : nullptr;
+	if (QueryFacade)
+	{
+		QueryFacade->TryGetPlayerPosition(PlayerX, PlayerY);
+	}
+
+	const FName ResolvedOptionId = OptionId.IsNone() ? GTDefaultEventOption_Continue : OptionId;
+	const bool bAccepted = SubmitDebugCommand(GTDebugCommandType_ChooseEventOption, PlayerX, PlayerY, OutSnapshot, ResolvedOptionId);
+	if (!bAccepted && !OutSnapshot.Summary.Equals(TEXT("No active run")))
+	{
+		OutSnapshot.Summary = FString::Printf(
+			TEXT("ChooseEventOption rejected: expected Event room. OptionId=%s. %s"),
+			*ResolvedOptionId.ToString(),
+			*OutSnapshot.Summary);
+	}
+
+	return bAccepted;
+}
+
+bool UGT_DebugSubsystem::DebugResolveCombat(FName ResultId, FGT_DebugRunSnapshot& OutSnapshot)
+{
+	int32 PlayerX = 0;
+	int32 PlayerY = 0;
+
+	const UGT_RunSubsystem* RunSubsystem = GetRunSubsystem();
+	const UGT_QueryFacade* QueryFacade = RunSubsystem ? RunSubsystem->GetQueryFacade() : nullptr;
+	if (QueryFacade)
+	{
+		QueryFacade->TryGetPlayerPosition(PlayerX, PlayerY);
+	}
+
+	const FName ResolvedResultId = ResultId.IsNone() ? GTCombatResult_Success : ResultId;
+	const bool bAccepted = SubmitDebugCommand(GTDebugCommandType_ResolveCombat, PlayerX, PlayerY, OutSnapshot, ResolvedResultId);
+	if (!bAccepted && !OutSnapshot.Summary.Equals(TEXT("No active run")))
+	{
+		const TCHAR* Reason = ResolvedResultId == GTCombatResult_Fail
+			? TEXT("Fail result is not implemented for placeholder combat")
+			: TEXT("expected Combat room or supported placeholder result");
+		OutSnapshot.Summary = FString::Printf(
+			TEXT("ResolveCombat rejected: %s. Result=%s. %s"),
+			Reason,
+			*ResolvedResultId.ToString(),
+			*OutSnapshot.Summary);
+	}
+
+	return bAccepted;
+}
+
 bool UGT_DebugSubsystem::GetDebugRunSnapshot(FGT_DebugRunSnapshot& OutSnapshot) const
 {
 	OutSnapshot = FGT_DebugRunSnapshot();
@@ -202,11 +261,26 @@ void UGT_DebugSubsystem::GetDebugEventSummary(TArray<FGT_DebugEventSummary>& Out
 		return;
 	}
 
-	TMap<FName, int32> EventTypeCounts;
-	EventBus->GetEventTypeCounts(EventTypeCounts);
+	TMap<FName, FGT_DebugEventSummary> EventSummaries;
+	for (const FGT_GameEvent& Event : EventBus->GetEventHistory())
+	{
+		if (Event.EventType.IsNone())
+		{
+			continue;
+		}
+
+		FGT_DebugEventSummary& Summary = EventSummaries.FindOrAdd(Event.EventType);
+		Summary.EventType = Event.EventType;
+		++Summary.Count;
+		Summary.LastContentId = Event.ContentId;
+		Summary.LastRuleId = Event.RuleId;
+		Summary.LastSequenceId = Event.SequenceId;
+		Summary.bLastSuccess = Event.bSuccess;
+		Summary.LastPayloadText = Event.PayloadText;
+	}
 
 	TArray<FName> EventTypes;
-	EventTypeCounts.GetKeys(EventTypes);
+	EventSummaries.GetKeys(EventTypes);
 	EventTypes.Sort([](const FName& Left, const FName& Right)
 	{
 		return Left.LexicalLess(Right);
@@ -214,10 +288,7 @@ void UGT_DebugSubsystem::GetDebugEventSummary(TArray<FGT_DebugEventSummary>& Out
 
 	for (const FName& EventType : EventTypes)
 	{
-		FGT_DebugEventSummary Summary;
-		Summary.EventType = EventType;
-		Summary.Count = EventTypeCounts.FindRef(EventType);
-		OutEvents.Add(Summary);
+		OutEvents.Add(EventSummaries.FindRef(EventType));
 	}
 }
 
@@ -240,7 +311,7 @@ UGT_RunSubsystem* UGT_DebugSubsystem::GetRunSubsystem() const
 	return GetGameInstance() ? GetGameInstance()->GetSubsystem<UGT_RunSubsystem>() : nullptr;
 }
 
-bool UGT_DebugSubsystem::SubmitDebugCommand(FName CommandType, int32 X, int32 Y, FGT_DebugRunSnapshot& OutSnapshot)
+bool UGT_DebugSubsystem::SubmitDebugCommand(FName CommandType, int32 X, int32 Y, FGT_DebugRunSnapshot& OutSnapshot, FName PayloadId)
 {
 	OutSnapshot = FGT_DebugRunSnapshot();
 
@@ -262,6 +333,7 @@ bool UGT_DebugSubsystem::SubmitDebugCommand(FName CommandType, int32 X, int32 Y,
 	Command.TargetActorId = PlayerActorId;
 	Command.TargetX = X;
 	Command.TargetY = Y;
+	Command.PayloadId = PayloadId;
 
 	const bool bAccepted = RunSubsystem->SubmitCommand(Command);
 	GetDebugRunSnapshot(OutSnapshot);

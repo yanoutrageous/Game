@@ -4,7 +4,7 @@ Graytail is a minesweeper-style extraction game prototype. The repository now pr
 
 ## Current Active Branch
 
-`feature/room-content-rule-dispatch`
+`feature/event-combat-placeholder-interactions`
 
 ## Current Milestones
 
@@ -26,7 +26,8 @@ Graytail is a minesweeper-style extraction game prototype. The repository now pr
 - Map / Room Rule Boundary Preparation is implemented without expanding formal gameplay.
 - Editor Manual Play Validation console commands are implemented.
 - Room Content / Rule Dispatch placeholder rooms are wired into resolve and manual play observation paths.
-- Runtime smoke is `114/114 pass`; the original `108/108` behavior remains covered.
+- Event / Combat placeholder interactions can be completed through console commands without formal gameplay systems.
+- Runtime smoke is `122/122 pass`; the previous `114/114` behavior remains covered.
 - Latest repository tracking document: `docs/PROJECT_CONTENT_TRACKING.md`.
 
 ## Validation Commands
@@ -47,9 +48,9 @@ Expected smoke result:
 
 ```text
 Overall=Pass
-Pass=114
+Pass=122
 Fail=0
-Count=114
+Count=122
 ```
 
 ## Important Documents
@@ -59,6 +60,7 @@ Start with `docs/DOCUMENT_INDEX.md`.
 Current status documents:
 
 - `docs/PROJECT_CONTENT_TRACKING.md`
+- `docs/EVENT_COMBAT_PLACEHOLDER_INTERACTIONS_STATUS.md`
 - `docs/ROOM_CONTENT_RULE_DISPATCH_STATUS.md`
 - `docs/EDITOR_MANUAL_PLAY_VALIDATION_STATUS.md`
 - `docs/MAP_ROOM_RULE_BOUNDARY_STATUS.md`
@@ -88,7 +90,7 @@ Architecture and design references:
 - ModifierSystem
 - Random map generation
 - Formal Combat / Event room gameplay
-- Event option selection
+- Formal Event option selection
 - Combat actor/enemy systems
 - Meta progression
 
@@ -101,7 +103,9 @@ Architecture and design references:
 - `gt.Snapshot`
 - `gt.Minimap`
 - `gt.Events`
+- `gt.ChooseEventOption [OptionId]`
+- `gt.ResolveCombat [Result]`
 
 ## Next Suggested Stage
 
-Prepare formal room content/rule data loading and keep Event / Combat placeholder behavior observable through manual play before adding real choices or combat resolution.
+Review and tag the Event / Combat placeholder interaction milestone, then prepare formal room content/rule data loading before adding real choices, combat actors, rewards, or persistence.

@@ -67,8 +67,11 @@ class GRAYTAIL_API UGT_RoomResolver : public UObject
 public:
 	void Initialize(UGT_RunContext* InRunContext, UGT_EventBus* InEventBus);
 	bool ResolveRoomAt(int32 X, int32 Y, FGT_RoomResolveResult& OutResult);
+	bool ChooseEventOptionAt(int32 X, int32 Y, FName OptionId, FGT_RoomResolveResult& OutResult);
+	bool ResolveCombatAt(int32 X, int32 Y, FName ResultId, FGT_RoomResolveResult& OutResult);
 
 private:
+	bool BuildResultFromTruthCell(int32 X, int32 Y, FGT_RoomResolveResult& OutResult) const;
 	bool ResolveRoomByHandler(const FGT_TruthCell& TruthCell, FGT_RoomResolveResult& OutResult) const;
 	bool ResolveNormalRoom(const FGT_TruthCell& TruthCell, FGT_RoomResolveResult& OutResult) const;
 	bool ResolveMineRoom(const FGT_TruthCell& TruthCell, FGT_RoomResolveResult& OutResult) const;
@@ -77,6 +80,7 @@ private:
 	bool ResolveCombatRoomPlaceholder(const FGT_TruthCell& TruthCell, FGT_RoomResolveResult& OutResult) const;
 	bool ResolveUnsupportedRoom(const FGT_TruthCell& TruthCell, FGT_RoomResolveResult& OutResult) const;
 	void PublishResolverEvent(FName EventType, const FGT_RoomResolveResult& Result, bool bSuccess) const;
+	void PublishInteractionEvent(FName EventType, const FGT_RoomResolveResult& Result, FName PayloadId, bool bSuccess, const FString& PayloadText) const;
 
 	UPROPERTY(Transient)
 	UGT_RunContext* RunContext = nullptr;

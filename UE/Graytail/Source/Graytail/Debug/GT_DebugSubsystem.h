@@ -34,6 +34,12 @@ public:
 	bool DebugExtract(FGT_DebugRunSnapshot& OutSnapshot);
 
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
+	bool DebugChooseEventOption(FName OptionId, FGT_DebugRunSnapshot& OutSnapshot);
+
+	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
+	bool DebugResolveCombat(FName ResultId, FGT_DebugRunSnapshot& OutSnapshot);
+
+	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
 	bool GetDebugRunSnapshot(FGT_DebugRunSnapshot& OutSnapshot) const;
 
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
@@ -50,5 +56,5 @@ public:
 
 private:
 	UGT_RunSubsystem* GetRunSubsystem() const;
-	bool SubmitDebugCommand(FName CommandType, int32 X, int32 Y, FGT_DebugRunSnapshot& OutSnapshot);
+	bool SubmitDebugCommand(FName CommandType, int32 X, int32 Y, FGT_DebugRunSnapshot& OutSnapshot, FName PayloadId = NAME_None);
 };

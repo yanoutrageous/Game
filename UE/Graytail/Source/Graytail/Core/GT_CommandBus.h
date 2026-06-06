@@ -27,6 +27,9 @@ struct GRAYTAIL_API FGT_Command
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Command")
 	int32 TargetY = 0;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Command")
+	FName PayloadId = NAME_None;
+
 	FGT_Command()
 		: CommandId(FGuid::NewGuid())
 	{

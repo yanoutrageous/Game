@@ -64,6 +64,21 @@ namespace
 		return true;
 	}
 
+	FName NormalizeCombatResultArg(const FString& Arg)
+	{
+		if (Arg.Equals(TEXT("Success"), ESearchCase::IgnoreCase))
+		{
+			return FName(TEXT("Success"));
+		}
+
+		if (Arg.Equals(TEXT("Fail"), ESearchCase::IgnoreCase))
+		{
+			return FName(TEXT("Fail"));
+		}
+
+		return FName(*Arg);
+	}
+
 	FString BuildEventSummaryText(const TArray<FGT_DebugEventSummary>& EventSummary)
 	{
 		if (EventSummary.IsEmpty())
@@ -280,6 +295,50 @@ namespace
 		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.Extract %s: %s"), bAccepted ? TEXT("accepted") : TEXT("rejected"), *Snapshot.Summary);
 	}
 
+	void HandleChooseEventOption(const TArray<FString>& Args, UWorld* World)
+	{
+		FString FailureReason;
+		UGT_DebugSubsystem* DebugSubsystem = FindDebugSubsystem(World, FailureReason);
+		if (!DebugSubsystem)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("gt.ChooseEventOption failed: %s"), *FailureReason);
+			return;
+		}
+
+		if (Args.Num() > 1)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("Usage: gt.ChooseEventOption [OptionId]"));
+			return;
+		}
+
+		const FName OptionId = Args.IsValidIndex(0) ? FName(*Args[0]) : NAME_None;
+		FGT_DebugRunSnapshot Snapshot;
+		const bool bAccepted = DebugSubsystem->DebugChooseEventOption(OptionId, Snapshot);
+		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.ChooseEventOption %s: %s"), bAccepted ? TEXT("accepted") : TEXT("rejected"), *Snapshot.Summary);
+	}
+
+	void HandleResolveCombat(const TArray<FString>& Args, UWorld* World)
+	{
+		FString FailureReason;
+		UGT_DebugSubsystem* DebugSubsystem = FindDebugSubsystem(World, FailureReason);
+		if (!DebugSubsystem)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("gt.ResolveCombat failed: %s"), *FailureReason);
+			return;
+		}
+
+		if (Args.Num() > 1)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("Usage: gt.ResolveCombat [Result]"));
+			return;
+		}
+
+		const FName ResultId = Args.IsValidIndex(0) ? NormalizeCombatResultArg(Args[0]) : NAME_None;
+		FGT_DebugRunSnapshot Snapshot;
+		const bool bAccepted = DebugSubsystem->DebugResolveCombat(ResultId, Snapshot);
+		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.ResolveCombat %s: %s"), bAccepted ? TEXT("accepted") : TEXT("rejected"), *Snapshot.Summary);
+	}
+
 	void HandleSnapshot(const TArray<FString>& Args, UWorld* World)
 	{
 		if (!Args.IsEmpty())
@@ -373,7 +432,17 @@ namespace
 		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.Events: %d event type(s)."), EventSummary.Num());
 		for (const FGT_DebugEventSummary& Summary : EventSummary)
 		{
-			UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.Events: %s=%d"), *Summary.EventType.ToString(), Summary.Count);
+			UE_LOG(
+				LogGraytailManualPlay,
+				Display,
+				TEXT("gt.Events: %s=%d LastSuccess=%s LastSeq=%d LastContentId=%s LastRuleId=%s LastPayload=%s"),
+				*Summary.EventType.ToString(),
+				Summary.Count,
+				Summary.bLastSuccess ? TEXT("true") : TEXT("false"),
+				Summary.LastSequenceId,
+				*Summary.LastContentId.ToString(),
+				*Summary.LastRuleId.ToString(),
+				*Summary.LastPayloadText);
 		}
 	}
 
@@ -396,6 +465,16 @@ namespace
 		TEXT("gt.Extract"),
 		TEXT("Attempts extraction through the existing command path. Usage: gt.Extract"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleExtract));
+
+	FAutoConsoleCommandWithWorldAndArgs GTChooseEventOptionCommand(
+		TEXT("gt.ChooseEventOption"),
+		TEXT("Chooses a placeholder event option through the existing command path. Usage: gt.ChooseEventOption [OptionId]"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleChooseEventOption));
+
+	FAutoConsoleCommandWithWorldAndArgs GTResolveCombatCommand(
+		TEXT("gt.ResolveCombat"),
+		TEXT("Resolves placeholder combat through the existing command path. Usage: gt.ResolveCombat [Result]"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleResolveCombat));
 
 	FAutoConsoleCommandWithWorldAndArgs GTSnapshotCommand(
 		TEXT("gt.Snapshot"),

@@ -13,6 +13,27 @@ namespace
 	const FName GTDebugCommandType_Scan(TEXT("Scan"));
 	const FName GTDebugCommandType_Extract(TEXT("Extract"));
 	const FName GTDebugActorId_Player(TEXT("Player"));
+	const FName GTRoomIcon_Exit(TEXT("Exit"));
+	const FName GTRoomIcon_Mine(TEXT("Mine"));
+	const FName GTRoomIcon_Event(TEXT("Event"));
+	const FName GTRoomIcon_Combat(TEXT("Combat"));
+
+	FName GetDebugRoomIcon(EGT_RoomBaseType RoomBaseType)
+	{
+		switch (RoomBaseType)
+		{
+		case EGT_RoomBaseType::Exit:
+			return GTRoomIcon_Exit;
+		case EGT_RoomBaseType::Mine:
+			return GTRoomIcon_Mine;
+		case EGT_RoomBaseType::Event:
+			return GTRoomIcon_Event;
+		case EGT_RoomBaseType::Combat:
+			return GTRoomIcon_Combat;
+		default:
+			return NAME_None;
+		}
+	}
 }
 
 void UGT_DebugSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -111,16 +132,32 @@ bool UGT_DebugSubsystem::GetDebugRunSnapshot(FGT_DebugRunSnapshot& OutSnapshot) 
 	OutSnapshot.MapHeight = QueryFacade->GetMapHeight();
 	QueryFacade->TryGetPlayerPosition(OutSnapshot.PlayerX, OutSnapshot.PlayerY);
 
+	FGT_TruthCell CurrentTruthCell;
+	if (QueryFacade->GetTruthCellDebugOnly(OutSnapshot.PlayerX, OutSnapshot.PlayerY, CurrentTruthCell))
+	{
+		OutSnapshot.CurrentRoomBaseType = CurrentTruthCell.RoomBaseType;
+		OutSnapshot.CurrentRoomContentId = CurrentTruthCell.RoomContentId;
+		OutSnapshot.CurrentRoomRuleId = CurrentTruthCell.RoomRuleId;
+		OutSnapshot.CurrentRoomInstanceId = CurrentTruthCell.RoomInstanceId;
+		OutSnapshot.bCurrentRoomTriggered = CurrentTruthCell.bTriggered;
+		OutSnapshot.bCurrentRoomResolved = CurrentTruthCell.bResolved;
+	}
+
 	const UGT_EventBus* EventBus = RunSubsystem ? RunSubsystem->GetEventBus() : nullptr;
 	OutSnapshot.EventCount = EventBus ? EventBus->GetEventCount() : 0;
 	OutSnapshot.Summary = FString::Printf(
-		TEXT("RunState=%d, Player=(%d,%d), Size=%dx%d, EventCount=%d"),
+		TEXT("RunState=%d, Player=(%d,%d), Size=%dx%d, EventCount=%d, RoomBaseType=%d, RoomContentId=%s, RoomRuleId=%s, RoomTriggered=%s, RoomResolved=%s"),
 		static_cast<int32>(OutSnapshot.RunState),
 		OutSnapshot.PlayerX,
 		OutSnapshot.PlayerY,
 		OutSnapshot.MapWidth,
 		OutSnapshot.MapHeight,
-		OutSnapshot.EventCount);
+		OutSnapshot.EventCount,
+		static_cast<int32>(OutSnapshot.CurrentRoomBaseType),
+		*OutSnapshot.CurrentRoomContentId.ToString(),
+		*OutSnapshot.CurrentRoomRuleId.ToString(),
+		OutSnapshot.bCurrentRoomTriggered ? TEXT("true") : TEXT("false"),
+		OutSnapshot.bCurrentRoomResolved ? TEXT("true") : TEXT("false"));
 	return true;
 }
 
@@ -138,6 +175,19 @@ bool UGT_DebugSubsystem::GetDebugMiniMapViewData(TArray<FGT_MiniMapCellViewData>
 	}
 
 	QueryFacade->BuildMiniMapViewData(OutCells, OutWidth, OutHeight);
+	for (FGT_MiniMapCellViewData& Cell : OutCells)
+	{
+		if (!Cell.bVisible && !Cell.bExplored && !Cell.bScanned)
+		{
+			continue;
+		}
+
+		FGT_TruthCell TruthCell;
+		if (QueryFacade->GetTruthCellDebugOnly(Cell.X, Cell.Y, TruthCell))
+		{
+			Cell.VisibleRoomIcon = GetDebugRoomIcon(TruthCell.RoomBaseType);
+		}
+	}
 	return true;
 }
 

@@ -4,7 +4,7 @@ Graytail is a minesweeper-style extraction game prototype. The repository now pr
 
 ## Current Active Branch
 
-`feature/editor-manual-play-validation`
+`feature/room-content-rule-dispatch`
 
 ## Current Milestones
 
@@ -25,8 +25,8 @@ Graytail is a minesweeper-style extraction game prototype. The repository now pr
 - Editor-facing debug manual entrypoints are implemented.
 - Map / Room Rule Boundary Preparation is implemented without expanding formal gameplay.
 - Editor Manual Play Validation console commands are implemented.
-- Runtime smoke baseline is `108/108 pass`.
-- Latest implementation commit: `bc6c8678617169bc8c6d3d270994705c56fa7c2f`.
+- Room Content / Rule Dispatch placeholder rooms are wired into resolve and manual play observation paths.
+- Runtime smoke is `114/114 pass`; the original `108/108` behavior remains covered.
 - Latest repository tracking document: `docs/PROJECT_CONTENT_TRACKING.md`.
 
 ## Validation Commands
@@ -47,9 +47,9 @@ Expected smoke result:
 
 ```text
 Overall=Pass
-Pass=108
+Pass=114
 Fail=0
-Count=108
+Count=114
 ```
 
 ## Important Documents
@@ -59,6 +59,7 @@ Start with `docs/DOCUMENT_INDEX.md`.
 Current status documents:
 
 - `docs/PROJECT_CONTENT_TRACKING.md`
+- `docs/ROOM_CONTENT_RULE_DISPATCH_STATUS.md`
 - `docs/EDITOR_MANUAL_PLAY_VALIDATION_STATUS.md`
 - `docs/MAP_ROOM_RULE_BOUNDARY_STATUS.md`
 - `docs/EDITOR_PLAYABLE_PROTOTYPE_STATUS.md`
@@ -87,6 +88,8 @@ Architecture and design references:
 - ModifierSystem
 - Random map generation
 - Formal Combat / Event room gameplay
+- Event option selection
+- Combat actor/enemy systems
 - Meta progression
 
 ## Editor Manual Console Commands
@@ -101,4 +104,4 @@ Architecture and design references:
 
 ## Next Suggested Stage
 
-Prepare Room Content / Rule Dispatch and Event / Combat placeholder manual play behind the existing boundaries.
+Prepare formal room content/rule data loading and keep Event / Combat placeholder behavior observable through manual play before adding real choices or combat resolution.

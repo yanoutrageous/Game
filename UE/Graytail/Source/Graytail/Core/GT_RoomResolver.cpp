@@ -9,6 +9,10 @@ namespace
 	const FName GTEventType_RoomResolved(TEXT("RoomResolved"));
 	const FName GTEventType_MineEncountered(TEXT("MineEncountered"));
 	const FName GTEventType_ExitFound(TEXT("ExitFound"));
+	const FName GTEventType_EventRoomEntered(TEXT("EventRoomEntered"));
+	const FName GTEventType_EventPresented(TEXT("EventPresented"));
+	const FName GTEventType_CombatRoomEntered(TEXT("CombatRoomEntered"));
+	const FName GTEventType_CombatStarted(TEXT("CombatStarted"));
 	const FName GTSourceSystem_RoomResolver(TEXT("RoomResolver"));
 }
 
@@ -73,6 +77,16 @@ bool UGT_RoomResolver::ResolveRoomAt(int32 X, int32 Y, FGT_RoomResolveResult& Ou
 	{
 		PublishResolverEvent(GTEventType_ExitFound, OutResult, true);
 	}
+	else if (OutResult.Outcome == EGT_RoomResolveOutcome::EventPresented)
+	{
+		PublishResolverEvent(GTEventType_EventRoomEntered, OutResult, true);
+		PublishResolverEvent(GTEventType_EventPresented, OutResult, true);
+	}
+	else if (OutResult.Outcome == EGT_RoomResolveOutcome::CombatStarted)
+	{
+		PublishResolverEvent(GTEventType_CombatRoomEntered, OutResult, true);
+		PublishResolverEvent(GTEventType_CombatStarted, OutResult, true);
+	}
 
 	return true;
 }
@@ -92,6 +106,16 @@ bool UGT_RoomResolver::ResolveRoomByHandler(const FGT_TruthCell& TruthCell, FGT_
 	if (TruthCell.RoomBaseType == EGT_RoomBaseType::Normal)
 	{
 		return ResolveNormalRoom(TruthCell, OutResult);
+	}
+
+	if (TruthCell.RoomBaseType == EGT_RoomBaseType::Event)
+	{
+		return ResolveEventRoomPlaceholder(TruthCell, OutResult);
+	}
+
+	if (TruthCell.RoomBaseType == EGT_RoomBaseType::Combat)
+	{
+		return ResolveCombatRoomPlaceholder(TruthCell, OutResult);
 	}
 
 	return ResolveUnsupportedRoom(TruthCell, OutResult);
@@ -121,14 +145,14 @@ bool UGT_RoomResolver::ResolveExitRoom(const FGT_TruthCell& TruthCell, FGT_RoomR
 bool UGT_RoomResolver::ResolveEventRoomPlaceholder(const FGT_TruthCell& TruthCell, FGT_RoomResolveResult& OutResult) const
 {
 	OutResult.RoomBaseType = TruthCell.RoomBaseType;
-	OutResult.Outcome = EGT_RoomResolveOutcome::Unsupported;
+	OutResult.Outcome = EGT_RoomResolveOutcome::EventPresented;
 	return true;
 }
 
 bool UGT_RoomResolver::ResolveCombatRoomPlaceholder(const FGT_TruthCell& TruthCell, FGT_RoomResolveResult& OutResult) const
 {
 	OutResult.RoomBaseType = TruthCell.RoomBaseType;
-	OutResult.Outcome = EGT_RoomResolveOutcome::Unsupported;
+	OutResult.Outcome = EGT_RoomResolveOutcome::CombatStarted;
 	return true;
 }
 
@@ -149,11 +173,15 @@ void UGT_RoomResolver::PublishResolverEvent(FName EventType, const FGT_RoomResol
 	FGT_GameEvent Event;
 	Event.EventType = EventType;
 	Event.SourceSystem = GTSourceSystem_RoomResolver;
+	Event.SourceActorId = IsValid(RunContext) ? RunContext->GetPlayerActorId() : NAME_None;
+	Event.TargetActorId = Event.SourceActorId;
 	Event.X = Result.X;
 	Event.Y = Result.Y;
 	Event.RoomCoord = FIntPoint(Result.X, Result.Y);
 	Event.ContentId = Result.RoomContentId;
 	Event.RuleId = Result.RoomRuleId;
+	Event.NumericValue = static_cast<int32>(Result.Outcome);
+	Event.PayloadText = FString::Printf(TEXT("RoomContentId=%s RoomRuleId=%s"), *Result.RoomContentId.ToString(), *Result.RoomRuleId.ToString());
 	Event.bSuccess = bSuccess;
 	EventBus->PublishEvent(Event);
 }

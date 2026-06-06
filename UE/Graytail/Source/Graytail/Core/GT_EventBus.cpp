@@ -2,8 +2,14 @@
 
 void UGT_EventBus::PublishEvent(const FGT_GameEvent& Event)
 {
-	EventHistory.Add(Event);
-	OnGameEventPublished.Broadcast(Event);
+	FGT_GameEvent SequencedEvent = Event;
+	if (SequencedEvent.SequenceId <= 0)
+	{
+		SequencedEvent.SequenceId = EventHistory.Num() + 1;
+	}
+
+	EventHistory.Add(SequencedEvent);
+	OnGameEventPublished.Broadcast(SequencedEvent);
 }
 
 void UGT_EventBus::ClearEventHistory()

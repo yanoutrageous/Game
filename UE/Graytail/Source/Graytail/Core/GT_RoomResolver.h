@@ -15,7 +15,9 @@ enum class EGT_RoomResolveOutcome : uint8
 	NormalResolved UMETA(DisplayName = "Normal Resolved"),
 	MineEncountered UMETA(DisplayName = "Mine Encountered"),
 	ExitFound UMETA(DisplayName = "Exit Found"),
-	Unsupported UMETA(DisplayName = "Unsupported")
+	Unsupported UMETA(DisplayName = "Unsupported"),
+	EventPresented UMETA(DisplayName = "Event Presented"),
+	CombatStarted UMETA(DisplayName = "Combat Started")
 };
 
 USTRUCT(BlueprintType)

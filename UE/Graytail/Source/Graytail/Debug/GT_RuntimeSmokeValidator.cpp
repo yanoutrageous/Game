@@ -38,6 +38,8 @@ namespace
 	const FName GTCheck_Neighbors8Center(TEXT("Neighbors8Center"));
 	const FName GTCheck_ExitCellDebug(TEXT("ExitCellDebug"));
 	const FName GTCheck_MineCellDebug(TEXT("MineCellDebug"));
+	const FName GTCheck_EventPlaceholderCellDebug(TEXT("EventPlaceholderCellDebug"));
+	const FName GTCheck_CombatPlaceholderCellDebug(TEXT("CombatPlaceholderCellDebug"));
 	const FName GTCheck_AdjacentMineCountNearMine(TEXT("AdjacentMineCountNearMine"));
 	const FName GTCheck_AdjacentMineCountFarFromMine(TEXT("AdjacentMineCountFarFromMine"));
 	const FName GTCheck_AdjacentMineCountMineCellSelfExcluded(TEXT("AdjacentMineCountMineCellSelfExcluded"));
@@ -119,6 +121,10 @@ namespace
 	const FName GTCheck_DebugSnapshotAfterExtract(TEXT("DebugSnapshotAfterExtract"));
 	const FName GTCheck_DebugMoveRejectedAfterSuccess(TEXT("DebugMoveRejectedAfterSuccess"));
 	const FName GTCheck_DebugEventSummaryAvailable(TEXT("DebugEventSummaryAvailable"));
+	const FName GTCheck_DebugEventPlaceholderMoveAccepted(TEXT("DebugEventPlaceholderMoveAccepted"));
+	const FName GTCheck_DebugEventPlaceholderEvents(TEXT("DebugEventPlaceholderEvents"));
+	const FName GTCheck_DebugCombatPlaceholderMoveAccepted(TEXT("DebugCombatPlaceholderMoveAccepted"));
+	const FName GTCheck_DebugCombatPlaceholderEvents(TEXT("DebugCombatPlaceholderEvents"));
 
 	const FName GTCommandType_Move(TEXT("Move"));
 	const FName GTCommandType_Scan(TEXT("Scan"));
@@ -132,6 +138,14 @@ namespace
 	const FName GTEventType_RunSucceeded(TEXT("RunSucceeded"));
 	const FName GTEventType_CellScanned(TEXT("CellScanned"));
 	const FName GTEventType_CommandFailed(TEXT("CommandFailed"));
+	const FName GTEventType_EventRoomEntered(TEXT("EventRoomEntered"));
+	const FName GTEventType_EventPresented(TEXT("EventPresented"));
+	const FName GTEventType_CombatRoomEntered(TEXT("CombatRoomEntered"));
+	const FName GTEventType_CombatStarted(TEXT("CombatStarted"));
+	const FName GTRoomContent_EventDebugChoice01(TEXT("Event_DebugChoice_01"));
+	const FName GTRoomRule_EventPresentOnly(TEXT("Event_PresentOnly"));
+	const FName GTRoomContent_CombatDebugDummy01(TEXT("Combat_DebugDummy_01"));
+	const FName GTRoomRule_CombatStartOnly(TEXT("Combat_StartOnly"));
 	const FName GTActorId_Player(TEXT("Player"));
 }
 
@@ -282,6 +296,36 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 
 	const bool bMineCellDebugOk = QueryFacade && QueryFacade->IsTruthMineDebugOnly(2, 2);
 	AddCheck(OutResults, GTCheck_MineCellDebug, bMineCellDebugOk, bMineCellDebugOk ? TEXT("Truth cell (2,2) is mine.") : TEXT("Truth cell (2,2) is not mine."));
+
+	FGT_TruthCell EventPlaceholderTruthCell;
+	const bool bEventPlaceholderCellDebugOk = QueryFacade
+		&& QueryFacade->GetTruthCellDebugOnly(4, 1, EventPlaceholderTruthCell)
+		&& EventPlaceholderTruthCell.RoomBaseType == EGT_RoomBaseType::Event
+		&& EventPlaceholderTruthCell.RoomContentId == GTRoomContent_EventDebugChoice01
+		&& EventPlaceholderTruthCell.RoomRuleId == GTRoomRule_EventPresentOnly;
+	AddCheck(
+		OutResults,
+		GTCheck_EventPlaceholderCellDebug,
+		bEventPlaceholderCellDebugOk,
+		FString::Printf(TEXT("Event placeholder cell (4,1): type=%d content=%s rule=%s."),
+			static_cast<int32>(EventPlaceholderTruthCell.RoomBaseType),
+			*EventPlaceholderTruthCell.RoomContentId.ToString(),
+			*EventPlaceholderTruthCell.RoomRuleId.ToString()));
+
+	FGT_TruthCell CombatPlaceholderTruthCell;
+	const bool bCombatPlaceholderCellDebugOk = QueryFacade
+		&& QueryFacade->GetTruthCellDebugOnly(1, 4, CombatPlaceholderTruthCell)
+		&& CombatPlaceholderTruthCell.RoomBaseType == EGT_RoomBaseType::Combat
+		&& CombatPlaceholderTruthCell.RoomContentId == GTRoomContent_CombatDebugDummy01
+		&& CombatPlaceholderTruthCell.RoomRuleId == GTRoomRule_CombatStartOnly;
+	AddCheck(
+		OutResults,
+		GTCheck_CombatPlaceholderCellDebug,
+		bCombatPlaceholderCellDebugOk,
+		FString::Printf(TEXT("Combat placeholder cell (1,4): type=%d content=%s rule=%s."),
+			static_cast<int32>(CombatPlaceholderTruthCell.RoomBaseType),
+			*CombatPlaceholderTruthCell.RoomContentId.ToString(),
+			*CombatPlaceholderTruthCell.RoomRuleId.ToString()));
 
 	int32 AdjacentMineCount = INDEX_NONE;
 	const bool bAdjacentMineCountNearMineReturned = QueryFacade && QueryFacade->CountAdjacentMinesDebugOnly(1, 1, AdjacentMineCount);
@@ -1523,6 +1567,131 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		GTCheck_DebugEventSummaryAvailable,
 		bDebugEventSummaryAvailable,
 		FString::Printf(TEXT("Debug event summary contains %d event types."), DebugEventSummary.Num()));
+
+	FGT_DebugRunSnapshot PlaceholderSnapshot;
+	const bool bDebugEventPlaceholderStartAccepted = IsValid(DebugSubsystem)
+		&& DebugSubsystem->DebugStartNewRun(52345, 10, 10, PlaceholderSnapshot);
+	const int32 EventRoomEnteredCountBeforePlaceholderMove = EventBus ? EventBus->CountEventsOfType(GTEventType_EventRoomEntered) : 0;
+	const int32 EventPresentedCountBeforePlaceholderMove = EventBus ? EventBus->CountEventsOfType(GTEventType_EventPresented) : 0;
+	const FIntPoint DebugEventPlaceholderPath[] = {
+		FIntPoint(1, 0),
+		FIntPoint(2, 0),
+		FIntPoint(3, 0),
+		FIntPoint(4, 0),
+		FIntPoint(4, 1)
+	};
+
+	bool bDebugEventPlaceholderPathAccepted = bDebugEventPlaceholderStartAccepted;
+	for (const FIntPoint& Coord : DebugEventPlaceholderPath)
+	{
+		if (!bDebugEventPlaceholderPathAccepted || !IsValid(DebugSubsystem))
+		{
+			bDebugEventPlaceholderPathAccepted = false;
+			break;
+		}
+
+		if (!DebugSubsystem->DebugMoveTo(Coord.X, Coord.Y, PlaceholderSnapshot))
+		{
+			bDebugEventPlaceholderPathAccepted = false;
+			break;
+		}
+	}
+
+	const int32 EventRoomEnteredCountAfterPlaceholderMove = EventBus ? EventBus->CountEventsOfType(GTEventType_EventRoomEntered) : 0;
+	const int32 EventPresentedCountAfterPlaceholderMove = EventBus ? EventBus->CountEventsOfType(GTEventType_EventPresented) : 0;
+	const bool bDebugEventPlaceholderMoveOk = bDebugEventPlaceholderPathAccepted
+		&& PlaceholderSnapshot.RunState == EGT_RunState::Running
+		&& PlaceholderSnapshot.PlayerX == 4
+		&& PlaceholderSnapshot.PlayerY == 1
+		&& PlaceholderSnapshot.CurrentRoomBaseType == EGT_RoomBaseType::Event
+		&& PlaceholderSnapshot.CurrentRoomContentId == GTRoomContent_EventDebugChoice01
+		&& PlaceholderSnapshot.CurrentRoomRuleId == GTRoomRule_EventPresentOnly
+		&& PlaceholderSnapshot.bCurrentRoomTriggered
+		&& PlaceholderSnapshot.bCurrentRoomResolved;
+	AddCheck(
+		OutResults,
+		GTCheck_DebugEventPlaceholderMoveAccepted,
+		bDebugEventPlaceholderMoveOk,
+		FString::Printf(TEXT("Event placeholder path accepted=%s player=(%d,%d) content=%s rule=%s."),
+			bDebugEventPlaceholderPathAccepted ? TEXT("true") : TEXT("false"),
+			PlaceholderSnapshot.PlayerX,
+			PlaceholderSnapshot.PlayerY,
+			*PlaceholderSnapshot.CurrentRoomContentId.ToString(),
+			*PlaceholderSnapshot.CurrentRoomRuleId.ToString()));
+
+	const bool bDebugEventPlaceholderEventsOk = EventRoomEnteredCountAfterPlaceholderMove == EventRoomEnteredCountBeforePlaceholderMove + 1
+		&& EventPresentedCountAfterPlaceholderMove == EventPresentedCountBeforePlaceholderMove + 1;
+	AddCheck(
+		OutResults,
+		GTCheck_DebugEventPlaceholderEvents,
+		bDebugEventPlaceholderEventsOk,
+		FString::Printf(TEXT("Event placeholder events EventRoomEntered %d->%d EventPresented %d->%d."),
+			EventRoomEnteredCountBeforePlaceholderMove,
+			EventRoomEnteredCountAfterPlaceholderMove,
+			EventPresentedCountBeforePlaceholderMove,
+			EventPresentedCountAfterPlaceholderMove));
+
+	const bool bDebugCombatPlaceholderStartAccepted = IsValid(DebugSubsystem)
+		&& DebugSubsystem->DebugStartNewRun(62345, 10, 10, PlaceholderSnapshot);
+	const int32 CombatRoomEnteredCountBeforePlaceholderMove = EventBus ? EventBus->CountEventsOfType(GTEventType_CombatRoomEntered) : 0;
+	const int32 CombatStartedCountBeforePlaceholderMove = EventBus ? EventBus->CountEventsOfType(GTEventType_CombatStarted) : 0;
+	const FIntPoint DebugCombatPlaceholderPath[] = {
+		FIntPoint(0, 1),
+		FIntPoint(0, 2),
+		FIntPoint(0, 3),
+		FIntPoint(0, 4),
+		FIntPoint(1, 4)
+	};
+
+	bool bDebugCombatPlaceholderPathAccepted = bDebugCombatPlaceholderStartAccepted;
+	for (const FIntPoint& Coord : DebugCombatPlaceholderPath)
+	{
+		if (!bDebugCombatPlaceholderPathAccepted || !IsValid(DebugSubsystem))
+		{
+			bDebugCombatPlaceholderPathAccepted = false;
+			break;
+		}
+
+		if (!DebugSubsystem->DebugMoveTo(Coord.X, Coord.Y, PlaceholderSnapshot))
+		{
+			bDebugCombatPlaceholderPathAccepted = false;
+			break;
+		}
+	}
+
+	const int32 CombatRoomEnteredCountAfterPlaceholderMove = EventBus ? EventBus->CountEventsOfType(GTEventType_CombatRoomEntered) : 0;
+	const int32 CombatStartedCountAfterPlaceholderMove = EventBus ? EventBus->CountEventsOfType(GTEventType_CombatStarted) : 0;
+	const bool bDebugCombatPlaceholderMoveOk = bDebugCombatPlaceholderPathAccepted
+		&& PlaceholderSnapshot.RunState == EGT_RunState::Running
+		&& PlaceholderSnapshot.PlayerX == 1
+		&& PlaceholderSnapshot.PlayerY == 4
+		&& PlaceholderSnapshot.CurrentRoomBaseType == EGT_RoomBaseType::Combat
+		&& PlaceholderSnapshot.CurrentRoomContentId == GTRoomContent_CombatDebugDummy01
+		&& PlaceholderSnapshot.CurrentRoomRuleId == GTRoomRule_CombatStartOnly
+		&& PlaceholderSnapshot.bCurrentRoomTriggered
+		&& PlaceholderSnapshot.bCurrentRoomResolved;
+	AddCheck(
+		OutResults,
+		GTCheck_DebugCombatPlaceholderMoveAccepted,
+		bDebugCombatPlaceholderMoveOk,
+		FString::Printf(TEXT("Combat placeholder path accepted=%s player=(%d,%d) content=%s rule=%s."),
+			bDebugCombatPlaceholderPathAccepted ? TEXT("true") : TEXT("false"),
+			PlaceholderSnapshot.PlayerX,
+			PlaceholderSnapshot.PlayerY,
+			*PlaceholderSnapshot.CurrentRoomContentId.ToString(),
+			*PlaceholderSnapshot.CurrentRoomRuleId.ToString()));
+
+	const bool bDebugCombatPlaceholderEventsOk = CombatRoomEnteredCountAfterPlaceholderMove == CombatRoomEnteredCountBeforePlaceholderMove + 1
+		&& CombatStartedCountAfterPlaceholderMove == CombatStartedCountBeforePlaceholderMove + 1;
+	AddCheck(
+		OutResults,
+		GTCheck_DebugCombatPlaceholderEvents,
+		bDebugCombatPlaceholderEventsOk,
+		FString::Printf(TEXT("Combat placeholder events CombatRoomEntered %d->%d CombatStarted %d->%d."),
+			CombatRoomEnteredCountBeforePlaceholderMove,
+			CombatRoomEnteredCountAfterPlaceholderMove,
+			CombatStartedCountBeforePlaceholderMove,
+			CombatStartedCountAfterPlaceholderMove));
 
 	for (const FGT_RuntimeSmokeCheckResult& Result : OutResults)
 	{

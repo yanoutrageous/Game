@@ -95,7 +95,7 @@ namespace
 		UE_LOG(
 			LogGraytailManualPlay,
 			Display,
-			TEXT("%s: RunState=%d PlayerPosition=(%d,%d) Map=%dx%d EventCount=%d Events={%s}"),
+			TEXT("%s: RunState=%d PlayerPosition=(%d,%d) Map=%dx%d EventCount=%d RoomBaseType=%d RoomContentId=%s RoomRuleId=%s RoomTriggered=%s RoomResolved=%s Events={%s}"),
 			Prefix,
 			static_cast<int32>(Snapshot.RunState),
 			Snapshot.PlayerX,
@@ -103,6 +103,11 @@ namespace
 			Snapshot.MapWidth,
 			Snapshot.MapHeight,
 			Snapshot.EventCount,
+			static_cast<int32>(Snapshot.CurrentRoomBaseType),
+			*Snapshot.CurrentRoomContentId.ToString(),
+			*Snapshot.CurrentRoomRuleId.ToString(),
+			Snapshot.bCurrentRoomTriggered ? TEXT("true") : TEXT("false"),
+			Snapshot.bCurrentRoomResolved ? TEXT("true") : TEXT("false"),
 			*BuildEventSummaryText(EventSummary));
 	}
 
@@ -121,6 +126,16 @@ namespace
 		if (Cell.VisibleRoomIcon == FName(TEXT("Mine")))
 		{
 			return TEXT('M');
+		}
+
+		if (Cell.VisibleRoomIcon == FName(TEXT("Event")))
+		{
+			return TEXT('V');
+		}
+
+		if (Cell.VisibleRoomIcon == FName(TEXT("Combat")))
+		{
+			return TEXT('C');
 		}
 
 		if (Cell.bScanned)
@@ -316,7 +331,7 @@ namespace
 			return;
 		}
 
-		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.Minimap: size=%dx%d legend P=player K=known ?=unknown 0-9=scanned E/M=visible room icon if available"), Width, Height);
+		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.Minimap: size=%dx%d legend P=player K=known ?=unknown 0-9=scanned E/M/V/C=visible exit/mine/event/combat icon if available"), Width, Height);
 		for (int32 Y = 0; Y < Height; ++Y)
 		{
 			FString Row;

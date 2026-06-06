@@ -9,7 +9,9 @@ enum class EGT_RoomBaseType : uint8
 	Unknown UMETA(DisplayName = "Unknown"),
 	Normal UMETA(DisplayName = "Normal"),
 	Mine UMETA(DisplayName = "Mine"),
-	Exit UMETA(DisplayName = "Exit")
+	Exit UMETA(DisplayName = "Exit"),
+	Event UMETA(DisplayName = "Event"),
+	Combat UMETA(DisplayName = "Combat")
 };
 
 UENUM(BlueprintType)

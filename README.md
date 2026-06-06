@@ -4,7 +4,7 @@ Graytail is a minesweeper-style extraction game prototype. The repository now pr
 
 ## Current Active Branch
 
-`feature/prototype-v1-playability-polish`
+`feature/room-content-rule-registry-minimal`
 
 ## Current Milestones
 
@@ -28,7 +28,8 @@ Graytail is a minesweeper-style extraction game prototype. The repository now pr
 - Room Content / Rule Dispatch placeholder rooms are wired into resolve and manual play observation paths.
 - Event / Combat placeholder interactions can be completed through console commands without formal gameplay systems.
 - Prototype V1 Playability Polish adds help, status, room detail, and one-shot demo console commands.
-- Runtime smoke is `128/128 pass`; the previous `122/122` behavior remains covered.
+- Room Content / Rule Registry Minimal adds lightweight C++ definitions for placeholder room content and rules.
+- Runtime smoke is `134/134 pass`; the previous `128/128` behavior remains covered.
 - Latest repository tracking document: `docs/PROJECT_CONTENT_TRACKING.md`.
 
 ## Validation Commands
@@ -49,9 +50,9 @@ Expected smoke result:
 
 ```text
 Overall=Pass
-Pass=128
+Pass=134
 Fail=0
-Count=128
+Count=134
 ```
 
 ## Important Documents
@@ -61,6 +62,7 @@ Start with `docs/DOCUMENT_INDEX.md`.
 Current status documents:
 
 - `docs/PROJECT_CONTENT_TRACKING.md`
+- `docs/ROOM_CONTENT_RULE_REGISTRY_STATUS.md`
 - `docs/PROTOTYPE_V1_PLAYABILITY_POLISH_STATUS.md`
 - `docs/EVENT_COMBAT_PLACEHOLDER_INTERACTIONS_STATUS.md`
 - `docs/ROOM_CONTENT_RULE_DISPATCH_STATUS.md`
@@ -115,4 +117,4 @@ Architecture and design references:
 
 ## Next Suggested Stage
 
-Review and tag the Prototype V1 Playability Polish milestone, then decide whether to prepare formal room content/rule data loading or a lightweight demo handoff script.
+Review and tag the Room Content / Rule Registry milestone, then prepare formal Event option and Combat result data boundaries without adding full gameplay systems.

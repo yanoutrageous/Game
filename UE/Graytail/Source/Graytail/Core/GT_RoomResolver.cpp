@@ -1,5 +1,6 @@
 #include "Core/GT_RoomResolver.h"
 
+#include "Core/GT_ContentRegistry.h"
 #include "Core/GT_EventBus.h"
 #include "Core/GT_RunContext.h"
 
@@ -18,16 +19,18 @@ namespace
 	const FName GTEventType_EventOptionChooseFailed(TEXT("EventOptionChooseFailed"));
 	const FName GTEventType_CombatResolved(TEXT("CombatResolved"));
 	const FName GTEventType_CombatResolveFailed(TEXT("CombatResolveFailed"));
+	const FName GTEventType_RoomDefinitionMissing(TEXT("RoomDefinitionMissing"));
 	const FName GTEventOption_DefaultContinue(TEXT("Event_DebugOption_Continue"));
 	const FName GTCombatResult_Success(TEXT("Success"));
 	const FName GTCombatResult_Fail(TEXT("Fail"));
 	const FName GTSourceSystem_RoomResolver(TEXT("RoomResolver"));
 }
 
-void UGT_RoomResolver::Initialize(UGT_RunContext* InRunContext, UGT_EventBus* InEventBus)
+void UGT_RoomResolver::Initialize(UGT_RunContext* InRunContext, UGT_EventBus* InEventBus, UGT_ContentRegistry* InContentRegistry)
 {
 	RunContext = InRunContext;
 	EventBus = InEventBus;
+	ContentRegistry = InContentRegistry;
 }
 
 bool UGT_RoomResolver::ResolveRoomAt(int32 X, int32 Y, FGT_RoomResolveResult& OutResult)
@@ -106,18 +109,31 @@ bool UGT_RoomResolver::ChooseEventOptionAt(int32 X, int32 Y, FName OptionId, FGT
 		return false;
 	}
 
-	const FName ResolvedOptionId = OptionId.IsNone() ? GTEventOption_DefaultContinue : OptionId;
 	if (OutResult.RoomBaseType != EGT_RoomBaseType::Event)
 	{
+		const FName RejectedOptionId = OptionId.IsNone() ? GTEventOption_DefaultContinue : OptionId;
 		PublishInteractionEvent(
 			GTEventType_EventOptionChooseFailed,
 			OutResult,
-			ResolvedOptionId,
+			RejectedOptionId,
 			false,
 			FString::Printf(TEXT("ChooseEventOption rejected: expected Event room, current RoomBaseType=%d."), static_cast<int32>(OutResult.RoomBaseType)));
 		return false;
 	}
 
+	FString DefinitionFailureReason;
+	if (!TryGetRoomDefinitions(OutResult, EGT_RoomBaseType::Event, DefinitionFailureReason))
+	{
+		PublishInteractionEvent(
+			GTEventType_EventOptionChooseFailed,
+			OutResult,
+			OptionId,
+			false,
+			FString::Printf(TEXT("ChooseEventOption rejected: %s"), *DefinitionFailureReason));
+		return false;
+	}
+
+	const FName ResolvedOptionId = OptionId.IsNone() ? GetDefaultEventOptionId(OutResult) : OptionId;
 	if (!RunContext->MarkTruthCellResolved(X, Y) || !BuildResultFromTruthCell(X, Y, OutResult))
 	{
 		PublishInteractionEvent(
@@ -135,13 +151,13 @@ bool UGT_RoomResolver::ChooseEventOptionAt(int32 X, int32 Y, FName OptionId, FGT
 		OutResult,
 		ResolvedOptionId,
 		true,
-		FString::Printf(TEXT("OptionId=%s"), *ResolvedOptionId.ToString()));
+		BuildRoomDefinitionPayloadText(OutResult, FString::Printf(TEXT("OptionId=%s"), *ResolvedOptionId.ToString())));
 	PublishInteractionEvent(
 		GTEventType_EventResolved,
 		OutResult,
 		ResolvedOptionId,
 		true,
-		FString::Printf(TEXT("OptionId=%s"), *ResolvedOptionId.ToString()));
+		BuildRoomDefinitionPayloadText(OutResult, FString::Printf(TEXT("OptionId=%s"), *ResolvedOptionId.ToString())));
 	return true;
 }
 
@@ -152,18 +168,31 @@ bool UGT_RoomResolver::ResolveCombatAt(int32 X, int32 Y, FName ResultId, FGT_Roo
 		return false;
 	}
 
-	const FName ResolvedResultId = ResultId.IsNone() ? GTCombatResult_Success : ResultId;
 	if (OutResult.RoomBaseType != EGT_RoomBaseType::Combat)
 	{
+		const FName RejectedResultId = ResultId.IsNone() ? GTCombatResult_Success : ResultId;
 		PublishInteractionEvent(
 			GTEventType_CombatResolveFailed,
 			OutResult,
-			ResolvedResultId,
+			RejectedResultId,
 			false,
 			FString::Printf(TEXT("ResolveCombat rejected: expected Combat room, current RoomBaseType=%d."), static_cast<int32>(OutResult.RoomBaseType)));
 		return false;
 	}
 
+	FString DefinitionFailureReason;
+	if (!TryGetRoomDefinitions(OutResult, EGT_RoomBaseType::Combat, DefinitionFailureReason))
+	{
+		PublishInteractionEvent(
+			GTEventType_CombatResolveFailed,
+			OutResult,
+			ResultId,
+			false,
+			FString::Printf(TEXT("ResolveCombat rejected: %s"), *DefinitionFailureReason));
+		return false;
+	}
+
+	const FName ResolvedResultId = ResultId.IsNone() ? GetDefaultCombatResultId(OutResult) : ResultId;
 	if (ResolvedResultId == GTCombatResult_Fail)
 	{
 		PublishInteractionEvent(
@@ -203,7 +232,7 @@ bool UGT_RoomResolver::ResolveCombatAt(int32 X, int32 Y, FName ResultId, FGT_Roo
 		OutResult,
 		ResolvedResultId,
 		true,
-		FString::Printf(TEXT("Result=%s"), *ResolvedResultId.ToString()));
+		BuildRoomDefinitionPayloadText(OutResult, FString::Printf(TEXT("Result=%s"), *ResolvedResultId.ToString())));
 	return true;
 }
 
@@ -288,6 +317,14 @@ bool UGT_RoomResolver::ResolveExitRoom(const FGT_TruthCell& TruthCell, FGT_RoomR
 bool UGT_RoomResolver::ResolveEventRoomPlaceholder(const FGT_TruthCell& TruthCell, FGT_RoomResolveResult& OutResult) const
 {
 	OutResult.RoomBaseType = TruthCell.RoomBaseType;
+	FString DefinitionFailureReason;
+	if (!TryGetRoomDefinitions(OutResult, EGT_RoomBaseType::Event, DefinitionFailureReason))
+	{
+		OutResult.Outcome = EGT_RoomResolveOutcome::Unsupported;
+		PublishDefinitionFailureEvent(OutResult, DefinitionFailureReason);
+		return false;
+	}
+
 	OutResult.Outcome = EGT_RoomResolveOutcome::EventPresented;
 	return true;
 }
@@ -295,6 +332,14 @@ bool UGT_RoomResolver::ResolveEventRoomPlaceholder(const FGT_TruthCell& TruthCel
 bool UGT_RoomResolver::ResolveCombatRoomPlaceholder(const FGT_TruthCell& TruthCell, FGT_RoomResolveResult& OutResult) const
 {
 	OutResult.RoomBaseType = TruthCell.RoomBaseType;
+	FString DefinitionFailureReason;
+	if (!TryGetRoomDefinitions(OutResult, EGT_RoomBaseType::Combat, DefinitionFailureReason))
+	{
+		OutResult.Outcome = EGT_RoomResolveOutcome::Unsupported;
+		PublishDefinitionFailureEvent(OutResult, DefinitionFailureReason);
+		return false;
+	}
+
 	OutResult.Outcome = EGT_RoomResolveOutcome::CombatStarted;
 	return true;
 }
@@ -304,6 +349,113 @@ bool UGT_RoomResolver::ResolveUnsupportedRoom(const FGT_TruthCell& TruthCell, FG
 	OutResult.RoomBaseType = TruthCell.RoomBaseType;
 	OutResult.Outcome = EGT_RoomResolveOutcome::Unsupported;
 	return true;
+}
+
+bool UGT_RoomResolver::TryGetRoomDefinitions(
+	const FGT_RoomResolveResult& Result,
+	EGT_RoomBaseType ExpectedRoomBaseType,
+	FString& OutFailureReason) const
+{
+	OutFailureReason.Reset();
+	if (!IsValid(ContentRegistry))
+	{
+		OutFailureReason = TEXT("ContentRegistry is not valid.");
+		return false;
+	}
+
+	FGT_RoomContentDef ContentDefinition;
+	FGT_RoomRuleDef RuleDefinition;
+	return ContentRegistry->FindRoomDefinitions(
+		Result.RoomContentId,
+		Result.RoomRuleId,
+		ExpectedRoomBaseType,
+		ContentDefinition,
+		RuleDefinition,
+		OutFailureReason);
+}
+
+FName UGT_RoomResolver::GetDefaultEventOptionId(const FGT_RoomResolveResult& Result) const
+{
+	if (IsValid(ContentRegistry))
+	{
+		FGT_RoomContentDef ContentDefinition;
+		FGT_RoomRuleDef RuleDefinition;
+		FString FailureReason;
+		if (ContentRegistry->FindRoomDefinitions(Result.RoomContentId, Result.RoomRuleId, EGT_RoomBaseType::Event, ContentDefinition, RuleDefinition, FailureReason))
+		{
+			if (!RuleDefinition.DefaultOptionId.IsNone())
+			{
+				return RuleDefinition.DefaultOptionId;
+			}
+
+			if (!ContentDefinition.DefaultOptionId.IsNone())
+			{
+				return ContentDefinition.DefaultOptionId;
+			}
+		}
+	}
+
+	return GTEventOption_DefaultContinue;
+}
+
+FName UGT_RoomResolver::GetDefaultCombatResultId(const FGT_RoomResolveResult& Result) const
+{
+	if (IsValid(ContentRegistry))
+	{
+		FGT_RoomContentDef ContentDefinition;
+		FGT_RoomRuleDef RuleDefinition;
+		FString FailureReason;
+		if (ContentRegistry->FindRoomDefinitions(Result.RoomContentId, Result.RoomRuleId, EGT_RoomBaseType::Combat, ContentDefinition, RuleDefinition, FailureReason))
+		{
+			if (!RuleDefinition.DefaultResultId.IsNone())
+			{
+				return RuleDefinition.DefaultResultId;
+			}
+
+			if (!ContentDefinition.DefaultResultId.IsNone())
+			{
+				return ContentDefinition.DefaultResultId;
+			}
+		}
+	}
+
+	return GTCombatResult_Success;
+}
+
+FString UGT_RoomResolver::BuildRoomDefinitionPayloadText(const FGT_RoomResolveResult& Result, const FString& Prefix) const
+{
+	const FString BaseText = FString::Printf(
+		TEXT("%s RoomContentId=%s RoomRuleId=%s"),
+		*Prefix,
+		*Result.RoomContentId.ToString(),
+		*Result.RoomRuleId.ToString());
+
+	if ((Result.RoomContentId.IsNone() && Result.RoomRuleId.IsNone())
+		|| (Result.RoomBaseType != EGT_RoomBaseType::Event && Result.RoomBaseType != EGT_RoomBaseType::Combat))
+	{
+		return BaseText;
+	}
+
+	if (!IsValid(ContentRegistry))
+	{
+		return FString::Printf(TEXT("%s DefinitionLookup=false Reason=ContentRegistry is not valid."), *BaseText);
+	}
+
+	FGT_RoomContentDef ContentDefinition;
+	FGT_RoomRuleDef RuleDefinition;
+	FString FailureReason;
+	if (!ContentRegistry->FindRoomDefinitions(Result.RoomContentId, Result.RoomRuleId, Result.RoomBaseType, ContentDefinition, RuleDefinition, FailureReason))
+	{
+		return FString::Printf(TEXT("%s DefinitionLookup=false Reason=%s"), *BaseText, *FailureReason);
+	}
+
+	return FString::Printf(
+		TEXT("%s ContentDisplayName=%s RuleDisplayName=%s ContentDescription=%s RuleDescription=%s"),
+		*BaseText,
+		*ContentDefinition.DisplayName,
+		*RuleDefinition.DisplayName,
+		*ContentDefinition.DebugDescription,
+		*RuleDefinition.DebugDescription);
 }
 
 void UGT_RoomResolver::PublishResolverEvent(FName EventType, const FGT_RoomResolveResult& Result, bool bSuccess) const
@@ -324,8 +476,31 @@ void UGT_RoomResolver::PublishResolverEvent(FName EventType, const FGT_RoomResol
 	Event.ContentId = Result.RoomContentId;
 	Event.RuleId = Result.RoomRuleId;
 	Event.NumericValue = static_cast<int32>(Result.Outcome);
-	Event.PayloadText = FString::Printf(TEXT("RoomContentId=%s RoomRuleId=%s"), *Result.RoomContentId.ToString(), *Result.RoomRuleId.ToString());
+	Event.PayloadText = BuildRoomDefinitionPayloadText(Result, TEXT("RoomResolved"));
 	Event.bSuccess = bSuccess;
+	EventBus->PublishEvent(Event);
+}
+
+void UGT_RoomResolver::PublishDefinitionFailureEvent(const FGT_RoomResolveResult& Result, const FString& FailureReason) const
+{
+	if (!IsValid(EventBus))
+	{
+		return;
+	}
+
+	FGT_GameEvent Event;
+	Event.EventType = GTEventType_RoomDefinitionMissing;
+	Event.SourceSystem = GTSourceSystem_RoomResolver;
+	Event.SourceActorId = IsValid(RunContext) ? RunContext->GetPlayerActorId() : NAME_None;
+	Event.TargetActorId = Event.SourceActorId;
+	Event.X = Result.X;
+	Event.Y = Result.Y;
+	Event.RoomCoord = FIntPoint(Result.X, Result.Y);
+	Event.ContentId = Result.RoomContentId;
+	Event.RuleId = Result.RoomRuleId;
+	Event.NumericValue = static_cast<int32>(Result.Outcome);
+	Event.PayloadText = FString::Printf(TEXT("Room definition lookup failed: %s"), *FailureReason);
+	Event.bSuccess = false;
 	EventBus->PublishEvent(Event);
 }
 
@@ -348,7 +523,7 @@ void UGT_RoomResolver::PublishInteractionEvent(FName EventType, const FGT_RoomRe
 	Event.RuleId = Result.RoomRuleId;
 	Event.NumericValue = static_cast<int32>(Result.Outcome);
 	Event.PayloadText = PayloadText.IsEmpty()
-		? FString::Printf(TEXT("PayloadId=%s RoomContentId=%s RoomRuleId=%s"), *PayloadId.ToString(), *Result.RoomContentId.ToString(), *Result.RoomRuleId.ToString())
+		? BuildRoomDefinitionPayloadText(Result, FString::Printf(TEXT("PayloadId=%s"), *PayloadId.ToString()))
 		: PayloadText;
 	Event.bSuccess = bSuccess;
 	EventBus->PublishEvent(Event);

@@ -6,6 +6,7 @@
 #include "GT_RoomResolver.generated.h"
 
 class UGT_EventBus;
+class UGT_ContentRegistry;
 class UGT_RunContext;
 
 UENUM(BlueprintType)
@@ -65,7 +66,7 @@ class GRAYTAIL_API UGT_RoomResolver : public UObject
 	GENERATED_BODY()
 
 public:
-	void Initialize(UGT_RunContext* InRunContext, UGT_EventBus* InEventBus);
+	void Initialize(UGT_RunContext* InRunContext, UGT_EventBus* InEventBus, UGT_ContentRegistry* InContentRegistry);
 	bool ResolveRoomAt(int32 X, int32 Y, FGT_RoomResolveResult& OutResult);
 	bool ChooseEventOptionAt(int32 X, int32 Y, FName OptionId, FGT_RoomResolveResult& OutResult);
 	bool ResolveCombatAt(int32 X, int32 Y, FName ResultId, FGT_RoomResolveResult& OutResult);
@@ -79,7 +80,15 @@ private:
 	bool ResolveEventRoomPlaceholder(const FGT_TruthCell& TruthCell, FGT_RoomResolveResult& OutResult) const;
 	bool ResolveCombatRoomPlaceholder(const FGT_TruthCell& TruthCell, FGT_RoomResolveResult& OutResult) const;
 	bool ResolveUnsupportedRoom(const FGT_TruthCell& TruthCell, FGT_RoomResolveResult& OutResult) const;
+	bool TryGetRoomDefinitions(
+		const FGT_RoomResolveResult& Result,
+		EGT_RoomBaseType ExpectedRoomBaseType,
+		FString& OutFailureReason) const;
+	FName GetDefaultEventOptionId(const FGT_RoomResolveResult& Result) const;
+	FName GetDefaultCombatResultId(const FGT_RoomResolveResult& Result) const;
+	FString BuildRoomDefinitionPayloadText(const FGT_RoomResolveResult& Result, const FString& Prefix) const;
 	void PublishResolverEvent(FName EventType, const FGT_RoomResolveResult& Result, bool bSuccess) const;
+	void PublishDefinitionFailureEvent(const FGT_RoomResolveResult& Result, const FString& FailureReason) const;
 	void PublishInteractionEvent(FName EventType, const FGT_RoomResolveResult& Result, FName PayloadId, bool bSuccess, const FString& PayloadText) const;
 
 	UPROPERTY(Transient)
@@ -87,4 +96,7 @@ private:
 
 	UPROPERTY(Transient)
 	UGT_EventBus* EventBus = nullptr;
+
+	UPROPERTY(Transient)
+	UGT_ContentRegistry* ContentRegistry = nullptr;
 };

@@ -5,6 +5,7 @@
 | Document | Role |
 |---|---|
 | `PROJECT_CONTENT_TRACKING.md` | Repository content and milestone tracking |
+| `ROOM_CONTENT_RULE_REGISTRY_STATUS.md` | Room content/rule C++ registry status |
 | `PROTOTYPE_V1_PLAYABILITY_POLISH_STATUS.md` | Prototype V1 console playability polish status |
 | `EVENT_COMBAT_PLACEHOLDER_INTERACTIONS_STATUS.md` | Event / Combat placeholder console interaction status |
 | `ROOM_CONTENT_RULE_DISPATCH_STATUS.md` | Room content/rule dispatch placeholder status |
@@ -39,17 +40,17 @@
 
 ## Active Branch
 
-`feature/prototype-v1-playability-polish`
+`feature/room-content-rule-registry-minimal`
 
 ## Current Validated Milestone
 
-Prototype V1 Playability Polish.
+Room Content / Rule Registry Minimal.
 
 Latest known validation result:
 
 ```text
 GraytailEditor Win64 Development: passed
-GT_RuntimeSmokeRunner: 128/128 pass
+GT_RuntimeSmokeRunner: 134/134 pass
 ```
 
 ## Validation Commands
@@ -70,26 +71,27 @@ Expected smoke result:
 
 ```text
 Overall=Pass
-Pass=128
+Pass=134
 Fail=0
-Count=128
+Count=134
 ```
 
 ## Recommended Reading Order
 
 1. `README.md`
 2. `PROJECT_CONTENT_TRACKING.md`
-3. `PROTOTYPE_V1_PLAYABILITY_POLISH_STATUS.md`
-4. `EVENT_COMBAT_PLACEHOLDER_INTERACTIONS_STATUS.md`
-5. `ROOM_CONTENT_RULE_DISPATCH_STATUS.md`
-6. `EDITOR_MANUAL_PLAY_VALIDATION_STATUS.md`
-7. `MAP_ROOM_RULE_BOUNDARY_STATUS.md`
-8. `EDITOR_PLAYABLE_PROTOTYPE_STATUS.md`
-9. `GAMEPLAY_LOGIC_MVP_STATUS.md`
-10. `UE_FOUNDATION_STATUS.md`
-11. `REFACTOR_ARCHITECTURE.md`
-12. `UE_REFACTOR_IMPLEMENTATION.md`
-13. `可行性判断.md` and `难度判断.md` as design references
+3. `ROOM_CONTENT_RULE_REGISTRY_STATUS.md`
+4. `PROTOTYPE_V1_PLAYABILITY_POLISH_STATUS.md`
+5. `EVENT_COMBAT_PLACEHOLDER_INTERACTIONS_STATUS.md`
+6. `ROOM_CONTENT_RULE_DISPATCH_STATUS.md`
+7. `EDITOR_MANUAL_PLAY_VALIDATION_STATUS.md`
+8. `MAP_ROOM_RULE_BOUNDARY_STATUS.md`
+9. `EDITOR_PLAYABLE_PROTOTYPE_STATUS.md`
+10. `GAMEPLAY_LOGIC_MVP_STATUS.md`
+11. `UE_FOUNDATION_STATUS.md`
+12. `REFACTOR_ARCHITECTURE.md`
+13. `UE_REFACTOR_IMPLEMENTATION.md`
+14. `可行性判断.md` and `难度判断.md` as design references
 
 ## Current Implementation Boundary
 
@@ -105,7 +107,8 @@ Implemented and validated:
 - Room Content / Rule Dispatch placeholder rooms are implemented.
 - Event / Combat placeholder interactions are exposed through `gt.ChooseEventOption` and `gt.ResolveCombat`.
 - Prototype V1 playability polish commands are exposed through `gt.Help`, `gt.Commands`, `gt.Status`, `gt.Room`, and `gt.RunDemo`.
-- Runtime smoke is `128/128 pass`.
+- Room Content / Rule Registry Minimal is implemented as lightweight C++ definitions.
+- Runtime smoke is `134/134 pass`.
 
 Not implemented yet:
 

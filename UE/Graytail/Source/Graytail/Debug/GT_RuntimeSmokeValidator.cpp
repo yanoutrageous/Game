@@ -1,6 +1,7 @@
 #include "Debug/GT_RuntimeSmokeValidator.h"
 
 #include "Core/GT_CommandBus.h"
+#include "Core/GT_ContentRegistry.h"
 #include "Core/GT_EventBus.h"
 #include "Core/GT_QueryFacade.h"
 #include "Core/GT_RunContext.h"
@@ -139,6 +140,12 @@ namespace
 	const FName GTCheck_DebugManualPlayRoomAfterStart(TEXT("DebugManualPlayRoomAfterStart"));
 	const FName GTCheck_DebugManualPlayRunDemoCompleted(TEXT("DebugManualPlayRunDemoCompleted"));
 	const FName GTCheck_DebugManualPlayRunDemoEvents(TEXT("DebugManualPlayRunDemoEvents"));
+	const FName GTCheck_RoomRegistryEventContent(TEXT("RoomRegistryEventContent"));
+	const FName GTCheck_RoomRegistryEventRule(TEXT("RoomRegistryEventRule"));
+	const FName GTCheck_RoomRegistryCombatContent(TEXT("RoomRegistryCombatContent"));
+	const FName GTCheck_RoomRegistryCombatRule(TEXT("RoomRegistryCombatRule"));
+	const FName GTCheck_DebugEventRoomUsesRegistryDefinition(TEXT("DebugEventRoomUsesRegistryDefinition"));
+	const FName GTCheck_DebugCombatRoomUsesRegistryDefinition(TEXT("DebugCombatRoomUsesRegistryDefinition"));
 
 	const FName GTCommandType_Move(TEXT("Move"));
 	const FName GTCommandType_Scan(TEXT("Scan"));
@@ -165,6 +172,10 @@ namespace
 	const FName GTRoomRule_EventPresentOnly(TEXT("Event_PresentOnly"));
 	const FName GTRoomContent_CombatDebugDummy01(TEXT("Combat_DebugDummy_01"));
 	const FName GTRoomRule_CombatStartOnly(TEXT("Combat_StartOnly"));
+	const FString GTEventContentDisplayName(TEXT("Debug Event Choice"));
+	const FString GTEventRuleDisplayName(TEXT("Present Only Event"));
+	const FString GTCombatContentDisplayName(TEXT("Debug Dummy Combat"));
+	const FString GTCombatRuleDisplayName(TEXT("Start Only Combat"));
 	const FName GTEventOption_DefaultContinue(TEXT("Event_DebugOption_Continue"));
 	const FName GTCombatResult_Success(TEXT("Success"));
 	const FName GTActorId_Player(TEXT("Player"));
@@ -191,6 +202,65 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 	}
 
 	AddCheck(OutResults, GTCheck_RunSubsystemValid, true, TEXT("RunSubsystem is valid."));
+
+	UGT_ContentRegistry* ContentRegistry = RunSubsystem->GetContentRegistry();
+	FGT_RoomContentDef EventContentDefinition;
+	const bool bEventContentRegistered = IsValid(ContentRegistry)
+		&& ContentRegistry->FindRoomContentDef(GTRoomContent_EventDebugChoice01, EventContentDefinition)
+		&& EventContentDefinition.RoomBaseType == EGT_RoomBaseType::Event
+		&& EventContentDefinition.DefaultRuleId == GTRoomRule_EventPresentOnly
+		&& EventContentDefinition.DefaultOptionId == GTEventOption_DefaultContinue
+		&& EventContentDefinition.DisplayName == GTEventContentDisplayName;
+	AddCheck(
+		OutResults,
+		GTCheck_RoomRegistryEventContent,
+		bEventContentRegistered,
+		FString::Printf(TEXT("Event content def display=%s defaultRule=%s."),
+			*EventContentDefinition.DisplayName,
+			*EventContentDefinition.DefaultRuleId.ToString()));
+
+	FGT_RoomRuleDef EventRuleDefinition;
+	const bool bEventRuleRegistered = IsValid(ContentRegistry)
+		&& ContentRegistry->FindRoomRuleDef(GTRoomRule_EventPresentOnly, EventRuleDefinition)
+		&& EventRuleDefinition.RoomBaseType == EGT_RoomBaseType::Event
+		&& EventRuleDefinition.DefaultOptionId == GTEventOption_DefaultContinue
+		&& EventRuleDefinition.DisplayName == GTEventRuleDisplayName;
+	AddCheck(
+		OutResults,
+		GTCheck_RoomRegistryEventRule,
+		bEventRuleRegistered,
+		FString::Printf(TEXT("Event rule def display=%s defaultOption=%s."),
+			*EventRuleDefinition.DisplayName,
+			*EventRuleDefinition.DefaultOptionId.ToString()));
+
+	FGT_RoomContentDef CombatContentDefinition;
+	const bool bCombatContentRegistered = IsValid(ContentRegistry)
+		&& ContentRegistry->FindRoomContentDef(GTRoomContent_CombatDebugDummy01, CombatContentDefinition)
+		&& CombatContentDefinition.RoomBaseType == EGT_RoomBaseType::Combat
+		&& CombatContentDefinition.DefaultRuleId == GTRoomRule_CombatStartOnly
+		&& CombatContentDefinition.DefaultResultId == GTCombatResult_Success
+		&& CombatContentDefinition.DisplayName == GTCombatContentDisplayName;
+	AddCheck(
+		OutResults,
+		GTCheck_RoomRegistryCombatContent,
+		bCombatContentRegistered,
+		FString::Printf(TEXT("Combat content def display=%s defaultRule=%s."),
+			*CombatContentDefinition.DisplayName,
+			*CombatContentDefinition.DefaultRuleId.ToString()));
+
+	FGT_RoomRuleDef CombatRuleDefinition;
+	const bool bCombatRuleRegistered = IsValid(ContentRegistry)
+		&& ContentRegistry->FindRoomRuleDef(GTRoomRule_CombatStartOnly, CombatRuleDefinition)
+		&& CombatRuleDefinition.RoomBaseType == EGT_RoomBaseType::Combat
+		&& CombatRuleDefinition.DefaultResultId == GTCombatResult_Success
+		&& CombatRuleDefinition.DisplayName == GTCombatRuleDisplayName;
+	AddCheck(
+		OutResults,
+		GTCheck_RoomRegistryCombatRule,
+		bCombatRuleRegistered,
+		FString::Printf(TEXT("Combat rule def display=%s defaultResult=%s."),
+			*CombatRuleDefinition.DisplayName,
+			*CombatRuleDefinition.DefaultResultId.ToString()));
 
 	TArray<FString> ManualPlayHelpLines;
 	if (IsValid(DebugSubsystem))
@@ -1703,6 +1773,19 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 			*PlaceholderSnapshot.CurrentRoomContentId.ToString(),
 			*PlaceholderSnapshot.CurrentRoomRuleId.ToString()));
 
+	const bool bDebugEventRoomUsesRegistryDefinition = bDebugEventPlaceholderMoveOk
+		&& PlaceholderSnapshot.CurrentRoomContentDisplayName == GTEventContentDisplayName
+		&& PlaceholderSnapshot.CurrentRoomRuleDisplayName == GTEventRuleDisplayName
+		&& !PlaceholderSnapshot.CurrentRoomContentDebugDescription.IsEmpty()
+		&& !PlaceholderSnapshot.CurrentRoomRuleDebugDescription.IsEmpty();
+	AddCheck(
+		OutResults,
+		GTCheck_DebugEventRoomUsesRegistryDefinition,
+		bDebugEventRoomUsesRegistryDefinition,
+		FString::Printf(TEXT("Event registry display content=%s rule=%s."),
+			*PlaceholderSnapshot.CurrentRoomContentDisplayName,
+			*PlaceholderSnapshot.CurrentRoomRuleDisplayName));
+
 	const bool bDebugEventPlaceholderEventsOk = EventRoomEnteredCountAfterPlaceholderMove == EventRoomEnteredCountBeforePlaceholderMove + 1
 		&& EventPresentedCountAfterPlaceholderMove == EventPresentedCountBeforePlaceholderMove + 1;
 	AddCheck(
@@ -1801,6 +1884,19 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 			PlaceholderSnapshot.PlayerY,
 			*PlaceholderSnapshot.CurrentRoomContentId.ToString(),
 			*PlaceholderSnapshot.CurrentRoomRuleId.ToString()));
+
+	const bool bDebugCombatRoomUsesRegistryDefinition = bDebugCombatPlaceholderMoveOk
+		&& PlaceholderSnapshot.CurrentRoomContentDisplayName == GTCombatContentDisplayName
+		&& PlaceholderSnapshot.CurrentRoomRuleDisplayName == GTCombatRuleDisplayName
+		&& !PlaceholderSnapshot.CurrentRoomContentDebugDescription.IsEmpty()
+		&& !PlaceholderSnapshot.CurrentRoomRuleDebugDescription.IsEmpty();
+	AddCheck(
+		OutResults,
+		GTCheck_DebugCombatRoomUsesRegistryDefinition,
+		bDebugCombatRoomUsesRegistryDefinition,
+		FString::Printf(TEXT("Combat registry display content=%s rule=%s."),
+			*PlaceholderSnapshot.CurrentRoomContentDisplayName,
+			*PlaceholderSnapshot.CurrentRoomRuleDisplayName));
 
 	const bool bDebugCombatPlaceholderEventsOk = CombatRoomEnteredCountAfterPlaceholderMove == CombatRoomEnteredCountBeforePlaceholderMove + 1
 		&& CombatStartedCountAfterPlaceholderMove == CombatStartedCountBeforePlaceholderMove + 1;

@@ -1,6 +1,7 @@
 #include "Debug/GT_DebugSubsystem.h"
 
 #include "Core/GT_CommandBus.h"
+#include "Core/GT_ContentRegistry.h"
 #include "Core/GT_EventBus.h"
 #include "Core/GT_QueryFacade.h"
 #include "Core/GT_RunSubsystem.h"
@@ -15,8 +16,6 @@ namespace
 	const FName GTDebugCommandType_ChooseEventOption(TEXT("ChooseEventOption"));
 	const FName GTDebugCommandType_ResolveCombat(TEXT("ResolveCombat"));
 	const FName GTDebugActorId_Player(TEXT("Player"));
-	const FName GTDefaultEventOption_Continue(TEXT("Event_DebugOption_Continue"));
-	const FName GTCombatResult_Success(TEXT("Success"));
 	const FName GTCombatResult_Fail(TEXT("Fail"));
 	const FName GTDebugEventType_EventResolved(TEXT("EventResolved"));
 	const FName GTDebugEventType_CombatResolved(TEXT("CombatResolved"));
@@ -199,13 +198,12 @@ bool UGT_DebugSubsystem::DebugChooseEventOption(FName OptionId, FGT_DebugRunSnap
 		QueryFacade->TryGetPlayerPosition(PlayerX, PlayerY);
 	}
 
-	const FName ResolvedOptionId = OptionId.IsNone() ? GTDefaultEventOption_Continue : OptionId;
-	const bool bAccepted = SubmitDebugCommand(GTDebugCommandType_ChooseEventOption, PlayerX, PlayerY, OutSnapshot, ResolvedOptionId);
+	const bool bAccepted = SubmitDebugCommand(GTDebugCommandType_ChooseEventOption, PlayerX, PlayerY, OutSnapshot, OptionId);
 	if (!bAccepted && !OutSnapshot.Summary.Equals(TEXT("No active run")))
 	{
 		OutSnapshot.Summary = FString::Printf(
 			TEXT("ChooseEventOption rejected: expected Event room. OptionId=%s. %s"),
-			*ResolvedOptionId.ToString(),
+			OptionId.IsNone() ? TEXT("RegistryDefault") : *OptionId.ToString(),
 			*OutSnapshot.Summary);
 	}
 
@@ -224,17 +222,16 @@ bool UGT_DebugSubsystem::DebugResolveCombat(FName ResultId, FGT_DebugRunSnapshot
 		QueryFacade->TryGetPlayerPosition(PlayerX, PlayerY);
 	}
 
-	const FName ResolvedResultId = ResultId.IsNone() ? GTCombatResult_Success : ResultId;
-	const bool bAccepted = SubmitDebugCommand(GTDebugCommandType_ResolveCombat, PlayerX, PlayerY, OutSnapshot, ResolvedResultId);
+	const bool bAccepted = SubmitDebugCommand(GTDebugCommandType_ResolveCombat, PlayerX, PlayerY, OutSnapshot, ResultId);
 	if (!bAccepted && !OutSnapshot.Summary.Equals(TEXT("No active run")))
 	{
-		const TCHAR* Reason = ResolvedResultId == GTCombatResult_Fail
+		const TCHAR* Reason = ResultId == GTCombatResult_Fail
 			? TEXT("Fail result is not implemented for placeholder combat")
 			: TEXT("expected Combat room or supported placeholder result");
 		OutSnapshot.Summary = FString::Printf(
 			TEXT("ResolveCombat rejected: %s. Result=%s. %s"),
 			Reason,
-			*ResolvedResultId.ToString(),
+			ResultId.IsNone() ? TEXT("RegistryDefault") : *ResultId.ToString(),
 			*OutSnapshot.Summary);
 	}
 
@@ -267,12 +264,31 @@ bool UGT_DebugSubsystem::GetDebugRunSnapshot(FGT_DebugRunSnapshot& OutSnapshot) 
 		OutSnapshot.CurrentRoomInstanceId = CurrentTruthCell.RoomInstanceId;
 		OutSnapshot.bCurrentRoomTriggered = CurrentTruthCell.bTriggered;
 		OutSnapshot.bCurrentRoomResolved = CurrentTruthCell.bResolved;
+
+		const UGT_ContentRegistry* ContentRegistry = RunSubsystem ? RunSubsystem->GetContentRegistry() : nullptr;
+		FGT_RoomContentDef ContentDefinition;
+		FGT_RoomRuleDef RuleDefinition;
+		FString DefinitionFailureReason;
+		if (ContentRegistry
+			&& ContentRegistry->FindRoomDefinitions(
+				CurrentTruthCell.RoomContentId,
+				CurrentTruthCell.RoomRuleId,
+				CurrentTruthCell.RoomBaseType,
+				ContentDefinition,
+				RuleDefinition,
+				DefinitionFailureReason))
+		{
+			OutSnapshot.CurrentRoomContentDisplayName = ContentDefinition.DisplayName;
+			OutSnapshot.CurrentRoomContentDebugDescription = ContentDefinition.DebugDescription;
+			OutSnapshot.CurrentRoomRuleDisplayName = RuleDefinition.DisplayName;
+			OutSnapshot.CurrentRoomRuleDebugDescription = RuleDefinition.DebugDescription;
+		}
 	}
 
 	const UGT_EventBus* EventBus = RunSubsystem ? RunSubsystem->GetEventBus() : nullptr;
 	OutSnapshot.EventCount = EventBus ? EventBus->GetEventCount() : 0;
 	OutSnapshot.Summary = FString::Printf(
-		TEXT("RunState=%d, Player=(%d,%d), Size=%dx%d, EventCount=%d, RoomBaseType=%d, RoomContentId=%s, RoomRuleId=%s, RoomTriggered=%s, RoomResolved=%s"),
+		TEXT("RunState=%d, Player=(%d,%d), Size=%dx%d, EventCount=%d, RoomBaseType=%d, RoomContentId=%s, RoomRuleId=%s, RoomContentName=%s, RoomRuleName=%s, RoomTriggered=%s, RoomResolved=%s"),
 		static_cast<int32>(OutSnapshot.RunState),
 		OutSnapshot.PlayerX,
 		OutSnapshot.PlayerY,
@@ -282,6 +298,8 @@ bool UGT_DebugSubsystem::GetDebugRunSnapshot(FGT_DebugRunSnapshot& OutSnapshot) 
 		static_cast<int32>(OutSnapshot.CurrentRoomBaseType),
 		*OutSnapshot.CurrentRoomContentId.ToString(),
 		*OutSnapshot.CurrentRoomRuleId.ToString(),
+		*OutSnapshot.CurrentRoomContentDisplayName,
+		*OutSnapshot.CurrentRoomRuleDisplayName,
 		OutSnapshot.bCurrentRoomTriggered ? TEXT("true") : TEXT("false"),
 		OutSnapshot.bCurrentRoomResolved ? TEXT("true") : TEXT("false"));
 	return true;
@@ -323,6 +341,7 @@ void UGT_DebugSubsystem::GetDebugEventSummary(TArray<FGT_DebugEventSummary>& Out
 
 	const UGT_RunSubsystem* RunSubsystem = GetRunSubsystem();
 	const UGT_EventBus* EventBus = RunSubsystem ? RunSubsystem->GetEventBus() : nullptr;
+	const UGT_ContentRegistry* ContentRegistry = RunSubsystem ? RunSubsystem->GetContentRegistry() : nullptr;
 	if (!EventBus)
 	{
 		return;
@@ -344,6 +363,28 @@ void UGT_DebugSubsystem::GetDebugEventSummary(TArray<FGT_DebugEventSummary>& Out
 		Summary.LastSequenceId = Event.SequenceId;
 		Summary.bLastSuccess = Event.bSuccess;
 		Summary.LastPayloadText = Event.PayloadText;
+
+		if (ContentRegistry)
+		{
+			FGT_RoomContentDef ContentDefinition;
+			if (ContentRegistry->FindRoomContentDef(Event.ContentId, ContentDefinition))
+			{
+				Summary.LastContentDisplayName = ContentDefinition.DisplayName;
+			}
+
+			FGT_RoomRuleDef RuleDefinition;
+			if (ContentRegistry->FindRoomRuleDef(Event.RuleId, RuleDefinition))
+			{
+				Summary.LastRuleDisplayName = RuleDefinition.DisplayName;
+			}
+
+			if (!Summary.LastContentDisplayName.IsEmpty() || !Summary.LastRuleDisplayName.IsEmpty())
+			{
+				const FString ContentDescription = ContentDefinition.DebugDescription.IsEmpty() ? TEXT("None") : ContentDefinition.DebugDescription;
+				const FString RuleDescription = RuleDefinition.DebugDescription.IsEmpty() ? TEXT("None") : RuleDefinition.DebugDescription;
+				Summary.LastDebugDescription = FString::Printf(TEXT("Content=%s Rule=%s"), *ContentDescription, *RuleDescription);
+			}
+		}
 	}
 
 	TArray<FName> EventTypes;
@@ -394,13 +435,17 @@ bool UGT_DebugSubsystem::GetDebugStatusText(FString& OutStatus) const
 	TArray<FGT_DebugEventSummary> EventSummary;
 	GetDebugEventSummary(EventSummary);
 	OutStatus = FString::Printf(
-		TEXT("gt.Status: RunState=%s PlayerPosition=(%d,%d) RoomBaseType=%s RoomContentId=%s RoomRuleId=%s Triggered=%s Resolved=%s EventCount=%d Events={%s}"),
+		TEXT("gt.Status: RunState=%s PlayerPosition=(%d,%d) RoomBaseType=%s RoomContentId=%s RoomRuleId=%s ContentName=%s RuleName=%s ContentDescription=%s RuleDescription=%s Triggered=%s Resolved=%s EventCount=%d Events={%s}"),
 		*GetRunStateText(Snapshot.RunState),
 		Snapshot.PlayerX,
 		Snapshot.PlayerY,
 		*GetRoomBaseTypeText(Snapshot.CurrentRoomBaseType),
 		*Snapshot.CurrentRoomContentId.ToString(),
 		*Snapshot.CurrentRoomRuleId.ToString(),
+		*Snapshot.CurrentRoomContentDisplayName,
+		*Snapshot.CurrentRoomRuleDisplayName,
+		*Snapshot.CurrentRoomContentDebugDescription,
+		*Snapshot.CurrentRoomRuleDebugDescription,
 		Snapshot.bCurrentRoomTriggered ? TEXT("true") : TEXT("false"),
 		Snapshot.bCurrentRoomResolved ? TEXT("true") : TEXT("false"),
 		Snapshot.EventCount,
@@ -428,13 +473,17 @@ bool UGT_DebugSubsystem::GetDebugRoomText(FString& OutRoomText) const
 	}
 
 	OutRoomText = FString::Printf(
-		TEXT("gt.Room: Position=(%d,%d) RoomBaseType=%s RoomContentId=%s RoomRuleId=%s RoomInstanceId=%s Triggered=%s Resolved=%s Hint=%s"),
+		TEXT("gt.Room: Position=(%d,%d) RoomBaseType=%s RoomContentId=%s RoomRuleId=%s RoomInstanceId=%s ContentName=%s RuleName=%s ContentDescription=%s RuleDescription=%s Triggered=%s Resolved=%s Hint=%s"),
 		Snapshot.PlayerX,
 		Snapshot.PlayerY,
 		*GetRoomBaseTypeText(Snapshot.CurrentRoomBaseType),
 		*Snapshot.CurrentRoomContentId.ToString(),
 		*Snapshot.CurrentRoomRuleId.ToString(),
 		*Snapshot.CurrentRoomInstanceId.ToString(),
+		*Snapshot.CurrentRoomContentDisplayName,
+		*Snapshot.CurrentRoomRuleDisplayName,
+		*Snapshot.CurrentRoomContentDebugDescription,
+		*Snapshot.CurrentRoomRuleDebugDescription,
 		Snapshot.bCurrentRoomTriggered ? TEXT("true") : TEXT("false"),
 		Snapshot.bCurrentRoomResolved ? TEXT("true") : TEXT("false"),
 		*Hint);

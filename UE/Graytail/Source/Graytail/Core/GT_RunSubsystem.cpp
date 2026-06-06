@@ -17,6 +17,10 @@ void UGT_RunSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	EventBus = NewObject<UGT_EventBus>(this);
 	EffectSystem = NewObject<UGT_EffectSystem>(this);
 	ContentRegistry = NewObject<UGT_ContentRegistry>(this);
+	if (ContentRegistry)
+	{
+		ContentRegistry->InitializeDefaultRoomDefinitions();
+	}
 	QueryFacade = NewObject<UGT_QueryFacade>(this);
 }
 
@@ -46,7 +50,7 @@ UGT_RunContext* UGT_RunSubsystem::StartNewRun(int32 Seed, int32 Width, int32 Hei
 
 	if (CommandProcessor)
 	{
-		CommandProcessor->Initialize(CurrentRunContext, EventBus);
+		CommandProcessor->Initialize(CurrentRunContext, EventBus, ContentRegistry);
 	}
 
 	if (EventBus)
@@ -101,7 +105,7 @@ void UGT_RunSubsystem::EndCurrentRun()
 
 	if (CommandProcessor)
 	{
-		CommandProcessor->Initialize(nullptr, EventBus);
+		CommandProcessor->Initialize(nullptr, EventBus, ContentRegistry);
 	}
 }
 

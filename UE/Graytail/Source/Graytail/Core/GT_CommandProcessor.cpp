@@ -1,5 +1,6 @@
 #include "Core/GT_CommandProcessor.h"
 
+#include "Core/GT_ContentRegistry.h"
 #include "Core/GT_EventBus.h"
 #include "Core/GT_RunContext.h"
 
@@ -20,10 +21,11 @@ namespace
 	const FName GTSourceSystem_CommandProcessor(TEXT("CommandProcessor"));
 }
 
-void UGT_CommandProcessor::Initialize(UGT_RunContext* InRunContext, UGT_EventBus* InEventBus)
+void UGT_CommandProcessor::Initialize(UGT_RunContext* InRunContext, UGT_EventBus* InEventBus, UGT_ContentRegistry* InContentRegistry)
 {
 	RunContext = InRunContext;
 	EventBus = InEventBus;
+	ContentRegistry = InContentRegistry;
 
 	if (!RoomResolver)
 	{
@@ -32,7 +34,7 @@ void UGT_CommandProcessor::Initialize(UGT_RunContext* InRunContext, UGT_EventBus
 
 	if (RoomResolver)
 	{
-		RoomResolver->Initialize(RunContext, EventBus);
+		RoomResolver->Initialize(RunContext, EventBus, ContentRegistry);
 	}
 }
 

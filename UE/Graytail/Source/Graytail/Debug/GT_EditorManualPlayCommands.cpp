@@ -110,7 +110,7 @@ namespace
 		UE_LOG(
 			LogGraytailManualPlay,
 			Display,
-			TEXT("%s: RunState=%d PlayerPosition=(%d,%d) Map=%dx%d EventCount=%d RoomBaseType=%d RoomContentId=%s RoomRuleId=%s RoomTriggered=%s RoomResolved=%s Events={%s}"),
+			TEXT("%s: RunState=%d PlayerPosition=(%d,%d) Map=%dx%d EventCount=%d RoomBaseType=%d RoomContentId=%s RoomRuleId=%s ContentName=%s RuleName=%s RoomTriggered=%s RoomResolved=%s Events={%s}"),
 			Prefix,
 			static_cast<int32>(Snapshot.RunState),
 			Snapshot.PlayerX,
@@ -121,6 +121,8 @@ namespace
 			static_cast<int32>(Snapshot.CurrentRoomBaseType),
 			*Snapshot.CurrentRoomContentId.ToString(),
 			*Snapshot.CurrentRoomRuleId.ToString(),
+			*Snapshot.CurrentRoomContentDisplayName,
+			*Snapshot.CurrentRoomRuleDisplayName,
 			Snapshot.bCurrentRoomTriggered ? TEXT("true") : TEXT("false"),
 			Snapshot.bCurrentRoomResolved ? TEXT("true") : TEXT("false"),
 			*BuildEventSummaryText(EventSummary));
@@ -517,13 +519,16 @@ namespace
 			UE_LOG(
 				LogGraytailManualPlay,
 				Display,
-				TEXT("gt.Events: %s=%d LastSuccess=%s LastSeq=%d LastContentId=%s LastRuleId=%s LastPayload=%s"),
+				TEXT("gt.Events: %s=%d LastSuccess=%s LastSeq=%d LastContentId=%s LastRuleId=%s LastContentName=%s LastRuleName=%s LastDescription=%s LastPayload=%s"),
 				*Summary.EventType.ToString(),
 				Summary.Count,
 				Summary.bLastSuccess ? TEXT("true") : TEXT("false"),
 				Summary.LastSequenceId,
 				*Summary.LastContentId.ToString(),
 				*Summary.LastRuleId.ToString(),
+				*Summary.LastContentDisplayName,
+				*Summary.LastRuleDisplayName,
+				*Summary.LastDebugDescription,
 				*Summary.LastPayloadText);
 		}
 	}

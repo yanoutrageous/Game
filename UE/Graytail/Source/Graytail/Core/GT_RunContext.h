@@ -79,8 +79,6 @@ public:
 	bool MarkTruthCellResolved(int32 X, int32 Y);
 
 private:
-	void InitializeBasicMapDebugLayout();
-
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run", meta = (AllowPrivateAccess = "true"))
 	FGuid RunId;
 

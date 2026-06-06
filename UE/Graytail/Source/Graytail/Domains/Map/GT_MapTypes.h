@@ -13,6 +13,13 @@ enum class EGT_RoomBaseType : uint8
 };
 
 UENUM(BlueprintType)
+enum class EGT_MapMode : uint8
+{
+	Unknown UMETA(DisplayName = "Unknown"),
+	BasicDebug UMETA(DisplayName = "Basic Debug")
+};
+
+UENUM(BlueprintType)
 enum class EGT_IntelReliabilityState : uint8
 {
 	Unknown UMETA(DisplayName = "Unknown"),
@@ -51,6 +58,15 @@ struct GRAYTAIL_API FGT_TruthCell
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Map")
 	FName RoomDefId = NAME_None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Map")
+	FName RoomContentId = NAME_None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Map")
+	FName RoomRuleId = NAME_None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Map")
+	FName RoomInstanceId = NAME_None;
 
 	FGT_TruthCell() = default;
 

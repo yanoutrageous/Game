@@ -43,6 +43,18 @@ struct GRAYTAIL_API FGT_RoomResolveResult
 
 	UPROPERTY(BlueprintReadOnly, Category = "Graytail|Room")
 	bool bResolved = false;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Graytail|Room")
+	FName RoomDefId = NAME_None;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Graytail|Room")
+	FName RoomContentId = NAME_None;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Graytail|Room")
+	FName RoomRuleId = NAME_None;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Graytail|Room")
+	FName RoomInstanceId = NAME_None;
 };
 
 UCLASS(BlueprintType)
@@ -55,7 +67,14 @@ public:
 	bool ResolveRoomAt(int32 X, int32 Y, FGT_RoomResolveResult& OutResult);
 
 private:
-	void PublishResolverEvent(FName EventType, int32 X, int32 Y, bool bSuccess) const;
+	bool ResolveRoomByHandler(const FGT_TruthCell& TruthCell, FGT_RoomResolveResult& OutResult) const;
+	bool ResolveNormalRoom(const FGT_TruthCell& TruthCell, FGT_RoomResolveResult& OutResult) const;
+	bool ResolveMineRoom(const FGT_TruthCell& TruthCell, FGT_RoomResolveResult& OutResult) const;
+	bool ResolveExitRoom(const FGT_TruthCell& TruthCell, FGT_RoomResolveResult& OutResult) const;
+	bool ResolveEventRoomPlaceholder(const FGT_TruthCell& TruthCell, FGT_RoomResolveResult& OutResult) const;
+	bool ResolveCombatRoomPlaceholder(const FGT_TruthCell& TruthCell, FGT_RoomResolveResult& OutResult) const;
+	bool ResolveUnsupportedRoom(const FGT_TruthCell& TruthCell, FGT_RoomResolveResult& OutResult) const;
+	void PublishResolverEvent(FName EventType, const FGT_RoomResolveResult& Result, bool bSuccess) const;
 
 	UPROPERTY(Transient)
 	UGT_RunContext* RunContext = nullptr;

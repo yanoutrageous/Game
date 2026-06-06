@@ -19,6 +19,9 @@ struct GRAYTAIL_API FGT_GameEvent
 	FName SourceSystem = NAME_None;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Event")
+	FName SourceActorId = NAME_None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Event")
 	FName TargetActorId = NAME_None;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Event")
@@ -26,6 +29,24 @@ struct GRAYTAIL_API FGT_GameEvent
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Event")
 	int32 Y = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Event")
+	FIntPoint RoomCoord = FIntPoint::ZeroValue;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Event")
+	FName ContentId = NAME_None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Event")
+	FName RuleId = NAME_None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Event")
+	int32 NumericValue = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Event")
+	int32 SequenceId = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Event")
+	FString PayloadText;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Event")
 	bool bSuccess = false;

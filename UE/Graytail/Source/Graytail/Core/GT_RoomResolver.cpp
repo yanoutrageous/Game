@@ -52,40 +52,94 @@ bool UGT_RoomResolver::ResolveRoomAt(int32 X, int32 Y, FGT_RoomResolveResult& Ou
 	OutResult.RoomBaseType = UpdatedTruthCell.RoomBaseType;
 	OutResult.bTriggered = UpdatedTruthCell.bTriggered;
 	OutResult.bResolved = UpdatedTruthCell.bResolved;
+	OutResult.RoomDefId = UpdatedTruthCell.RoomDefId;
+	OutResult.RoomContentId = UpdatedTruthCell.RoomContentId;
+	OutResult.RoomRuleId = UpdatedTruthCell.RoomRuleId;
+	OutResult.RoomInstanceId = UpdatedTruthCell.RoomInstanceId;
 
-	if (UpdatedTruthCell.bHasMine || UpdatedTruthCell.RoomBaseType == EGT_RoomBaseType::Mine)
+	if (!ResolveRoomByHandler(UpdatedTruthCell, OutResult))
 	{
-		OutResult.Outcome = EGT_RoomResolveOutcome::MineEncountered;
-	}
-	else if (UpdatedTruthCell.bIsExit || UpdatedTruthCell.RoomBaseType == EGT_RoomBaseType::Exit)
-	{
-		OutResult.Outcome = EGT_RoomResolveOutcome::ExitFound;
-	}
-	else if (UpdatedTruthCell.RoomBaseType == EGT_RoomBaseType::Normal)
-	{
-		OutResult.Outcome = EGT_RoomResolveOutcome::NormalResolved;
-	}
-	else
-	{
-		OutResult.Outcome = EGT_RoomResolveOutcome::Unsupported;
+		return false;
 	}
 
-	PublishResolverEvent(GTEventType_RoomEntered, X, Y, true);
-	PublishResolverEvent(GTEventType_RoomResolved, X, Y, true);
+	PublishResolverEvent(GTEventType_RoomEntered, OutResult, true);
+	PublishResolverEvent(GTEventType_RoomResolved, OutResult, true);
 
 	if (OutResult.Outcome == EGT_RoomResolveOutcome::MineEncountered)
 	{
-		PublishResolverEvent(GTEventType_MineEncountered, X, Y, true);
+		PublishResolverEvent(GTEventType_MineEncountered, OutResult, true);
 	}
 	else if (OutResult.Outcome == EGT_RoomResolveOutcome::ExitFound)
 	{
-		PublishResolverEvent(GTEventType_ExitFound, X, Y, true);
+		PublishResolverEvent(GTEventType_ExitFound, OutResult, true);
 	}
 
 	return true;
 }
 
-void UGT_RoomResolver::PublishResolverEvent(FName EventType, int32 X, int32 Y, bool bSuccess) const
+bool UGT_RoomResolver::ResolveRoomByHandler(const FGT_TruthCell& TruthCell, FGT_RoomResolveResult& OutResult) const
+{
+	if (TruthCell.bHasMine || TruthCell.RoomBaseType == EGT_RoomBaseType::Mine)
+	{
+		return ResolveMineRoom(TruthCell, OutResult);
+	}
+
+	if (TruthCell.bIsExit || TruthCell.RoomBaseType == EGT_RoomBaseType::Exit)
+	{
+		return ResolveExitRoom(TruthCell, OutResult);
+	}
+
+	if (TruthCell.RoomBaseType == EGT_RoomBaseType::Normal)
+	{
+		return ResolveNormalRoom(TruthCell, OutResult);
+	}
+
+	return ResolveUnsupportedRoom(TruthCell, OutResult);
+}
+
+bool UGT_RoomResolver::ResolveNormalRoom(const FGT_TruthCell& TruthCell, FGT_RoomResolveResult& OutResult) const
+{
+	OutResult.RoomBaseType = TruthCell.RoomBaseType;
+	OutResult.Outcome = EGT_RoomResolveOutcome::NormalResolved;
+	return true;
+}
+
+bool UGT_RoomResolver::ResolveMineRoom(const FGT_TruthCell& TruthCell, FGT_RoomResolveResult& OutResult) const
+{
+	OutResult.RoomBaseType = TruthCell.RoomBaseType;
+	OutResult.Outcome = EGT_RoomResolveOutcome::MineEncountered;
+	return true;
+}
+
+bool UGT_RoomResolver::ResolveExitRoom(const FGT_TruthCell& TruthCell, FGT_RoomResolveResult& OutResult) const
+{
+	OutResult.RoomBaseType = TruthCell.RoomBaseType;
+	OutResult.Outcome = EGT_RoomResolveOutcome::ExitFound;
+	return true;
+}
+
+bool UGT_RoomResolver::ResolveEventRoomPlaceholder(const FGT_TruthCell& TruthCell, FGT_RoomResolveResult& OutResult) const
+{
+	OutResult.RoomBaseType = TruthCell.RoomBaseType;
+	OutResult.Outcome = EGT_RoomResolveOutcome::Unsupported;
+	return true;
+}
+
+bool UGT_RoomResolver::ResolveCombatRoomPlaceholder(const FGT_TruthCell& TruthCell, FGT_RoomResolveResult& OutResult) const
+{
+	OutResult.RoomBaseType = TruthCell.RoomBaseType;
+	OutResult.Outcome = EGT_RoomResolveOutcome::Unsupported;
+	return true;
+}
+
+bool UGT_RoomResolver::ResolveUnsupportedRoom(const FGT_TruthCell& TruthCell, FGT_RoomResolveResult& OutResult) const
+{
+	OutResult.RoomBaseType = TruthCell.RoomBaseType;
+	OutResult.Outcome = EGT_RoomResolveOutcome::Unsupported;
+	return true;
+}
+
+void UGT_RoomResolver::PublishResolverEvent(FName EventType, const FGT_RoomResolveResult& Result, bool bSuccess) const
 {
 	if (!IsValid(EventBus))
 	{
@@ -95,8 +149,11 @@ void UGT_RoomResolver::PublishResolverEvent(FName EventType, int32 X, int32 Y, b
 	FGT_GameEvent Event;
 	Event.EventType = EventType;
 	Event.SourceSystem = GTSourceSystem_RoomResolver;
-	Event.X = X;
-	Event.Y = Y;
+	Event.X = Result.X;
+	Event.Y = Result.Y;
+	Event.RoomCoord = FIntPoint(Result.X, Result.Y);
+	Event.ContentId = Result.RoomContentId;
+	Event.RuleId = Result.RoomRuleId;
 	Event.bSuccess = bSuccess;
 	EventBus->PublishEvent(Event);
 }

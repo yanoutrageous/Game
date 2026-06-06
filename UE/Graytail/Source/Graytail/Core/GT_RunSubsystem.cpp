@@ -58,9 +58,11 @@ UGT_RunContext* UGT_RunSubsystem::StartNewRun(int32 Seed, int32 Width, int32 Hei
 		FGT_GameEvent Event;
 		Event.EventType = FName(TEXT("RunStarted"));
 		Event.SourceSystem = FName(TEXT("RunSubsystem"));
+		Event.SourceActorId = CurrentRunContext->GetPlayerActorId();
 		Event.TargetActorId = CurrentRunContext->GetPlayerActorId();
 		Event.X = PlayerX;
 		Event.Y = PlayerY;
+		Event.RoomCoord = FIntPoint(PlayerX, PlayerY);
 		Event.bSuccess = true;
 		EventBus->PublishEvent(Event);
 	}

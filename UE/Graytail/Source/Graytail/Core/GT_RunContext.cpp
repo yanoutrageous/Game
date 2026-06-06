@@ -1,16 +1,25 @@
 #include "Core/GT_RunContext.h"
 
+#include "Domains/Map/GT_MapGenerator.h"
+
 void UGT_RunContext::InitializeRun(int32 InSeed, int32 InWidth, int32 InHeight)
 {
+	FGT_MapGenerationSpec MapSpec;
+	MapSpec.MapMode = EGT_MapMode::BasicDebug;
+	MapSpec.Seed = InSeed;
+	MapSpec.Width = InWidth;
+	MapSpec.Height = InHeight;
+
+	FGT_MapGenerationResult MapResult;
+	UGT_MapGenerator::GenerateMap(MapSpec, MapResult);
+
 	RunId = FGuid::NewGuid();
 	RunState = EGT_RunState::Running;
 	RunEndReason = NAME_None;
-	Seed = InSeed;
-	MapWidth = InWidth > 0 ? InWidth : 10;
-	MapHeight = InHeight > 0 ? InHeight : 10;
-
-	TruthMap.Initialize(MapWidth, MapHeight, Seed);
-	InitializeBasicMapDebugLayout();
+	Seed = MapResult.Seed;
+	MapWidth = MapResult.Width;
+	MapHeight = MapResult.Height;
+	TruthMap = MapResult.TruthMap;
 	PlayerIntelMap.Initialize(MapWidth, MapHeight, FName(TEXT("Player")));
 
 	PlayerActorId = FName(TEXT("Player"));
@@ -216,10 +225,4 @@ bool UGT_RunContext::MarkTruthCellEntered(int32 X, int32 Y)
 bool UGT_RunContext::MarkTruthCellResolved(int32 X, int32 Y)
 {
 	return TruthMap.MarkCellResolved(X, Y);
-}
-
-void UGT_RunContext::InitializeBasicMapDebugLayout()
-{
-	TruthMap.SetExit(MapWidth - 1, MapHeight - 1, true);
-	TruthMap.SetMine(2, 2, true);
 }

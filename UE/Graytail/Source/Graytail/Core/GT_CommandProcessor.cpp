@@ -38,7 +38,7 @@ bool UGT_CommandProcessor::ProcessCommand(const FGT_Command& Command)
 {
 	if (!IsValid(RunContext) || !RunContext->IsRunActive())
 	{
-		PublishCommandEvent(GTEventType_CommandFailed, Command.TargetActorId, Command.TargetX, Command.TargetY, false);
+		PublishCommandEvent(GTEventType_CommandFailed, Command.SourceActorId, Command.TargetActorId, Command.TargetX, Command.TargetY, false);
 		return false;
 	}
 
@@ -57,7 +57,7 @@ bool UGT_CommandProcessor::ProcessCommand(const FGT_Command& Command)
 		return ProcessExtractCommand(Command);
 	}
 
-	PublishCommandEvent(GTEventType_CommandFailed, Command.TargetActorId, Command.TargetX, Command.TargetY, false);
+	PublishCommandEvent(GTEventType_CommandFailed, Command.SourceActorId, Command.TargetActorId, Command.TargetX, Command.TargetY, false);
 	return false;
 }
 
@@ -65,26 +65,26 @@ bool UGT_CommandProcessor::ProcessMoveCommand(const FGT_Command& Command)
 {
 	if (!IsValid(RunContext) || Command.TargetActorId.IsNone())
 	{
-		PublishCommandEvent(GTEventType_CommandFailed, Command.TargetActorId, Command.TargetX, Command.TargetY, false);
+		PublishCommandEvent(GTEventType_CommandFailed, Command.SourceActorId, Command.TargetActorId, Command.TargetX, Command.TargetY, false);
 		return false;
 	}
 
 	if (!RunContext->IsValidMapCoord(Command.TargetX, Command.TargetY))
 	{
-		PublishCommandEvent(GTEventType_CommandFailed, Command.TargetActorId, Command.TargetX, Command.TargetY, false);
+		PublishCommandEvent(GTEventType_CommandFailed, Command.SourceActorId, Command.TargetActorId, Command.TargetX, Command.TargetY, false);
 		return false;
 	}
 
 	FGT_ActorRuntimeState* ActorState = RunContext->FindActorStateMutable(Command.TargetActorId);
 	if (!ActorState)
 	{
-		PublishCommandEvent(GTEventType_CommandFailed, Command.TargetActorId, Command.TargetX, Command.TargetY, false);
+		PublishCommandEvent(GTEventType_CommandFailed, Command.SourceActorId, Command.TargetActorId, Command.TargetX, Command.TargetY, false);
 		return false;
 	}
 
 	if (FMath::Abs(Command.TargetX - ActorState->X) + FMath::Abs(Command.TargetY - ActorState->Y) != 1)
 	{
-		PublishCommandEvent(GTEventType_CommandFailed, Command.TargetActorId, Command.TargetX, Command.TargetY, false);
+		PublishCommandEvent(GTEventType_CommandFailed, Command.SourceActorId, Command.TargetActorId, Command.TargetX, Command.TargetY, false);
 		return false;
 	}
 
@@ -96,7 +96,7 @@ bool UGT_CommandProcessor::ProcessMoveCommand(const FGT_Command& Command)
 		RunContext->MarkPlayerIntelCellExplored(Command.TargetX, Command.TargetY);
 	}
 
-	PublishCommandEvent(GTEventType_ActorMoved, Command.TargetActorId, Command.TargetX, Command.TargetY, true);
+	PublishCommandEvent(GTEventType_ActorMoved, Command.SourceActorId, Command.TargetActorId, Command.TargetX, Command.TargetY, true);
 	if (Command.TargetActorId == RunContext->GetPlayerActorId() && IsValid(RoomResolver))
 	{
 		FGT_RoomResolveResult RoomResolveResult;
@@ -104,7 +104,7 @@ bool UGT_CommandProcessor::ProcessMoveCommand(const FGT_Command& Command)
 			&& RoomResolveResult.Outcome == EGT_RoomResolveOutcome::MineEncountered
 			&& RunContext->MarkRunFailed(GTRunFailureReason_Mine))
 		{
-			PublishCommandEvent(GTEventType_RunFailed, Command.TargetActorId, Command.TargetX, Command.TargetY, true);
+			PublishCommandEvent(GTEventType_RunFailed, Command.SourceActorId, Command.TargetActorId, Command.TargetX, Command.TargetY, true);
 		}
 	}
 
@@ -119,7 +119,7 @@ bool UGT_CommandProcessor::ProcessScanCommand(const FGT_Command& Command)
 
 	if (!IsValid(RunContext) || !RunContext->IsValidMapCoord(Command.TargetX, Command.TargetY))
 	{
-		PublishCommandEvent(GTEventType_CommandFailed, EventTargetActorId, Command.TargetX, Command.TargetY, false);
+		PublishCommandEvent(GTEventType_CommandFailed, Command.SourceActorId, EventTargetActorId, Command.TargetX, Command.TargetY, false);
 		return false;
 	}
 
@@ -127,11 +127,11 @@ bool UGT_CommandProcessor::ProcessScanCommand(const FGT_Command& Command)
 	if (!RunContext->CountAdjacentMines8(Command.TargetX, Command.TargetY, AdjacentMineCount)
 		|| !RunContext->SetPlayerIntelCellScannedNumber(Command.TargetX, Command.TargetY, AdjacentMineCount))
 	{
-		PublishCommandEvent(GTEventType_CommandFailed, EventTargetActorId, Command.TargetX, Command.TargetY, false);
+		PublishCommandEvent(GTEventType_CommandFailed, Command.SourceActorId, EventTargetActorId, Command.TargetX, Command.TargetY, false);
 		return false;
 	}
 
-	PublishCommandEvent(GTEventType_CellScanned, EventTargetActorId, Command.TargetX, Command.TargetY, true);
+	PublishCommandEvent(GTEventType_CellScanned, Command.SourceActorId, EventTargetActorId, Command.TargetX, Command.TargetY, true);
 	return true;
 }
 
@@ -148,21 +148,21 @@ bool UGT_CommandProcessor::ProcessExtractCommand(const FGT_Command& Command)
 		&& RunContext->GetTruthMapForDebugOnly().IsExit(PlayerX, PlayerY);
 	if (!bPlayerAtExit)
 	{
-		PublishCommandEvent(GTEventType_CommandFailed, EventTargetActorId, PlayerX, PlayerY, false);
+		PublishCommandEvent(GTEventType_CommandFailed, Command.SourceActorId, EventTargetActorId, PlayerX, PlayerY, false);
 		return false;
 	}
 
 	if (!RunContext->MarkRunSucceeded(GTRunSuccessReason_Extract))
 	{
-		PublishCommandEvent(GTEventType_CommandFailed, EventTargetActorId, PlayerX, PlayerY, false);
+		PublishCommandEvent(GTEventType_CommandFailed, Command.SourceActorId, EventTargetActorId, PlayerX, PlayerY, false);
 		return false;
 	}
 
-	PublishCommandEvent(GTEventType_RunSucceeded, EventTargetActorId, PlayerX, PlayerY, true);
+	PublishCommandEvent(GTEventType_RunSucceeded, Command.SourceActorId, EventTargetActorId, PlayerX, PlayerY, true);
 	return true;
 }
 
-void UGT_CommandProcessor::PublishCommandEvent(FName EventType, FName TargetActorId, int32 X, int32 Y, bool bSuccess) const
+void UGT_CommandProcessor::PublishCommandEvent(FName EventType, FName SourceActorId, FName TargetActorId, int32 X, int32 Y, bool bSuccess) const
 {
 	if (!IsValid(EventBus))
 	{
@@ -172,9 +172,11 @@ void UGT_CommandProcessor::PublishCommandEvent(FName EventType, FName TargetActo
 	FGT_GameEvent Event;
 	Event.EventType = EventType;
 	Event.SourceSystem = GTSourceSystem_CommandProcessor;
+	Event.SourceActorId = SourceActorId.IsNone() ? TargetActorId : SourceActorId;
 	Event.TargetActorId = TargetActorId;
 	Event.X = X;
 	Event.Y = Y;
+	Event.RoomCoord = FIntPoint(X, Y);
 	Event.bSuccess = bSuccess;
 	EventBus->PublishEvent(Event);
 }

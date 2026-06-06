@@ -4,7 +4,7 @@ Graytail is a minesweeper-style extraction game prototype. The repository now pr
 
 ## Current Active Branch
 
-`feature/event-combat-placeholder-interactions`
+`feature/prototype-v1-playability-polish`
 
 ## Current Milestones
 
@@ -27,7 +27,8 @@ Graytail is a minesweeper-style extraction game prototype. The repository now pr
 - Editor Manual Play Validation console commands are implemented.
 - Room Content / Rule Dispatch placeholder rooms are wired into resolve and manual play observation paths.
 - Event / Combat placeholder interactions can be completed through console commands without formal gameplay systems.
-- Runtime smoke is `122/122 pass`; the previous `114/114` behavior remains covered.
+- Prototype V1 Playability Polish adds help, status, room detail, and one-shot demo console commands.
+- Runtime smoke is `128/128 pass`; the previous `122/122` behavior remains covered.
 - Latest repository tracking document: `docs/PROJECT_CONTENT_TRACKING.md`.
 
 ## Validation Commands
@@ -48,9 +49,9 @@ Expected smoke result:
 
 ```text
 Overall=Pass
-Pass=122
+Pass=128
 Fail=0
-Count=122
+Count=128
 ```
 
 ## Important Documents
@@ -60,6 +61,7 @@ Start with `docs/DOCUMENT_INDEX.md`.
 Current status documents:
 
 - `docs/PROJECT_CONTENT_TRACKING.md`
+- `docs/PROTOTYPE_V1_PLAYABILITY_POLISH_STATUS.md`
 - `docs/EVENT_COMBAT_PLACEHOLDER_INTERACTIONS_STATUS.md`
 - `docs/ROOM_CONTENT_RULE_DISPATCH_STATUS.md`
 - `docs/EDITOR_MANUAL_PLAY_VALIDATION_STATUS.md`
@@ -97,6 +99,10 @@ Architecture and design references:
 ## Editor Manual Console Commands
 
 - `gt.StartRun [Seed] [Width Height]`
+- `gt.Help`
+- `gt.Commands`
+- `gt.Status`
+- `gt.Room`
 - `gt.Move X Y`
 - `gt.Scan X Y`
 - `gt.Extract`
@@ -105,7 +111,8 @@ Architecture and design references:
 - `gt.Events`
 - `gt.ChooseEventOption [OptionId]`
 - `gt.ResolveCombat [Result]`
+- `gt.RunDemo`
 
 ## Next Suggested Stage
 
-Review and tag the Event / Combat placeholder interaction milestone, then prepare formal room content/rule data loading before adding real choices, combat actors, rewards, or persistence.
+Review and tag the Prototype V1 Playability Polish milestone, then decide whether to prepare formal room content/rule data loading or a lightweight demo handoff script.

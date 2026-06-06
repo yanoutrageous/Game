@@ -182,6 +182,46 @@ namespace
 		return true;
 	}
 
+	void LogManualPlayLines(const TArray<FString>& Lines)
+	{
+		for (const FString& Line : Lines)
+		{
+			UE_LOG(LogGraytailManualPlay, Display, TEXT("%s"), *Line);
+		}
+	}
+
+	void HandleHelp(const TArray<FString>& Args, UWorld* World)
+	{
+		if (!Args.IsEmpty())
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("Usage: gt.Help"));
+			return;
+		}
+
+		FString FailureReason;
+		UGT_DebugSubsystem* DebugSubsystem = FindDebugSubsystem(World, FailureReason);
+		if (!DebugSubsystem)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("gt.Help failed: %s"), *FailureReason);
+			return;
+		}
+
+		TArray<FString> HelpLines;
+		DebugSubsystem->GetDebugCommandHelpLines(HelpLines);
+		LogManualPlayLines(HelpLines);
+	}
+
+	void HandleCommands(const TArray<FString>& Args, UWorld* World)
+	{
+		if (!Args.IsEmpty())
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("Usage: gt.Commands"));
+			return;
+		}
+
+		HandleHelp(Args, World);
+	}
+
 	void HandleStartRun(const TArray<FString>& Args, UWorld* World)
 	{
 		FString FailureReason;
@@ -339,6 +379,48 @@ namespace
 		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.ResolveCombat %s: %s"), bAccepted ? TEXT("accepted") : TEXT("rejected"), *Snapshot.Summary);
 	}
 
+	void HandleStatus(const TArray<FString>& Args, UWorld* World)
+	{
+		if (!Args.IsEmpty())
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("Usage: gt.Status"));
+			return;
+		}
+
+		FString FailureReason;
+		UGT_DebugSubsystem* DebugSubsystem = FindDebugSubsystem(World, FailureReason);
+		if (!DebugSubsystem)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("gt.Status failed: %s"), *FailureReason);
+			return;
+		}
+
+		FString StatusText;
+		DebugSubsystem->GetDebugStatusText(StatusText);
+		UE_LOG(LogGraytailManualPlay, Display, TEXT("%s"), *StatusText);
+	}
+
+	void HandleRoom(const TArray<FString>& Args, UWorld* World)
+	{
+		if (!Args.IsEmpty())
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("Usage: gt.Room"));
+			return;
+		}
+
+		FString FailureReason;
+		UGT_DebugSubsystem* DebugSubsystem = FindDebugSubsystem(World, FailureReason);
+		if (!DebugSubsystem)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("gt.Room failed: %s"), *FailureReason);
+			return;
+		}
+
+		FString RoomText;
+		DebugSubsystem->GetDebugRoomText(RoomText);
+		UE_LOG(LogGraytailManualPlay, Display, TEXT("%s"), *RoomText);
+	}
+
 	void HandleSnapshot(const TArray<FString>& Args, UWorld* World)
 	{
 		if (!Args.IsEmpty())
@@ -446,10 +528,54 @@ namespace
 		}
 	}
 
+	void HandleRunDemo(const TArray<FString>& Args, UWorld* World)
+	{
+		if (!Args.IsEmpty())
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("Usage: gt.RunDemo"));
+			return;
+		}
+
+		FString FailureReason;
+		UGT_DebugSubsystem* DebugSubsystem = FindDebugSubsystem(World, FailureReason);
+		if (!DebugSubsystem)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("gt.RunDemo failed: %s"), *FailureReason);
+			return;
+		}
+
+		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.RunDemo: running a single deterministic path through Event (4,1) and Combat (1,4)."));
+		TArray<FString> DemoLogLines;
+		FGT_DebugRunSnapshot Snapshot;
+		const bool bCompleted = DebugSubsystem->DebugRunDemo(DemoLogLines, Snapshot);
+		LogManualPlayLines(DemoLogLines);
+		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.RunDemo %s: %s"), bCompleted ? TEXT("completed") : TEXT("failed"), *Snapshot.Summary);
+	}
+
+	FAutoConsoleCommandWithWorldAndArgs GTHelpCommand(
+		TEXT("gt.Help"),
+		TEXT("Shows Graytail manual play command help. Usage: gt.Help"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleHelp));
+
+	FAutoConsoleCommandWithWorldAndArgs GTCommandsCommand(
+		TEXT("gt.Commands"),
+		TEXT("Shows Graytail manual play command help. Usage: gt.Commands"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleCommands));
+
 	FAutoConsoleCommandWithWorldAndArgs GTStartRunCommand(
 		TEXT("gt.StartRun"),
 		TEXT("Starts a Graytail debug run. Usage: gt.StartRun [Seed] [Width Height]"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleStartRun));
+
+	FAutoConsoleCommandWithWorldAndArgs GTStatusCommand(
+		TEXT("gt.Status"),
+		TEXT("Logs the current manual play status. Usage: gt.Status"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleStatus));
+
+	FAutoConsoleCommandWithWorldAndArgs GTRoomCommand(
+		TEXT("gt.Room"),
+		TEXT("Logs the current room details and placeholder action hints. Usage: gt.Room"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleRoom));
 
 	FAutoConsoleCommandWithWorldAndArgs GTMoveCommand(
 		TEXT("gt.Move"),
@@ -490,4 +616,9 @@ namespace
 		TEXT("gt.Events"),
 		TEXT("Logs debug event type counts. Usage: gt.Events"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleEvents));
+
+	FAutoConsoleCommandWithWorldAndArgs GTRunDemoCommand(
+		TEXT("gt.RunDemo"),
+		TEXT("Runs a deterministic Event and Combat placeholder demo path. Usage: gt.RunDemo"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleRunDemo));
 }

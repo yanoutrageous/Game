@@ -48,6 +48,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
 	void GetDebugEventSummary(TArray<FGT_DebugEventSummary>& OutEvents) const;
 
+	void GetDebugCommandHelpLines(TArray<FString>& OutLines) const;
+	bool GetDebugStatusText(FString& OutStatus) const;
+	bool GetDebugRoomText(FString& OutRoomText) const;
+	bool DebugRunDemo(TArray<FString>& OutLogLines, FGT_DebugRunSnapshot& OutSnapshot);
+
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
 	void GetCurrentMiniMapDebugCells(TArray<FGT_MiniMapCellViewData>& OutCells, int32& OutWidth, int32& OutHeight) const;
 

@@ -133,6 +133,12 @@ namespace
 	const FName GTCheck_DebugChooseEventOptionFailureEvent(TEXT("DebugChooseEventOptionFailureEvent"));
 	const FName GTCheck_DebugResolveCombatRejectedOutsideCombat(TEXT("DebugResolveCombatRejectedOutsideCombat"));
 	const FName GTCheck_DebugResolveCombatFailureEvent(TEXT("DebugResolveCombatFailureEvent"));
+	const FName GTCheck_DebugManualPlayHelpAvailable(TEXT("DebugManualPlayHelpAvailable"));
+	const FName GTCheck_DebugManualPlayStatusNoRunSafe(TEXT("DebugManualPlayStatusNoRunSafe"));
+	const FName GTCheck_DebugManualPlayStatusAfterStart(TEXT("DebugManualPlayStatusAfterStart"));
+	const FName GTCheck_DebugManualPlayRoomAfterStart(TEXT("DebugManualPlayRoomAfterStart"));
+	const FName GTCheck_DebugManualPlayRunDemoCompleted(TEXT("DebugManualPlayRunDemoCompleted"));
+	const FName GTCheck_DebugManualPlayRunDemoEvents(TEXT("DebugManualPlayRunDemoEvents"));
 
 	const FName GTCommandType_Move(TEXT("Move"));
 	const FName GTCommandType_Scan(TEXT("Scan"));
@@ -185,6 +191,44 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 	}
 
 	AddCheck(OutResults, GTCheck_RunSubsystemValid, true, TEXT("RunSubsystem is valid."));
+
+	TArray<FString> ManualPlayHelpLines;
+	if (IsValid(DebugSubsystem))
+	{
+		DebugSubsystem->GetDebugCommandHelpLines(ManualPlayHelpLines);
+	}
+
+	auto HasHelpLineContaining = [&ManualPlayHelpLines](const TCHAR* Needle) -> bool
+	{
+		return ManualPlayHelpLines.ContainsByPredicate([Needle](const FString& Line)
+		{
+			return Line.Contains(Needle);
+		});
+	};
+
+	const bool bManualPlayHelpAvailable = IsValid(DebugSubsystem)
+		&& HasHelpLineContaining(TEXT("gt.Help"))
+		&& HasHelpLineContaining(TEXT("gt.Commands"))
+		&& HasHelpLineContaining(TEXT("gt.Status"))
+		&& HasHelpLineContaining(TEXT("gt.Room"))
+		&& HasHelpLineContaining(TEXT("gt.RunDemo"));
+	AddCheck(
+		OutResults,
+		GTCheck_DebugManualPlayHelpAvailable,
+		bManualPlayHelpAvailable,
+		FString::Printf(TEXT("Manual play help line count is %d."), ManualPlayHelpLines.Num()));
+
+	FString ManualPlayStatusTextBeforeRun;
+	const bool bManualPlayStatusBeforeRunActive = IsValid(DebugSubsystem)
+		&& DebugSubsystem->GetDebugStatusText(ManualPlayStatusTextBeforeRun);
+	const bool bManualPlayStatusNoRunSafe = IsValid(DebugSubsystem)
+		&& !bManualPlayStatusBeforeRunActive
+		&& ManualPlayStatusTextBeforeRun.Contains(TEXT("gt.StartRun"));
+	AddCheck(
+		OutResults,
+		GTCheck_DebugManualPlayStatusNoRunSafe,
+		bManualPlayStatusNoRunSafe,
+		ManualPlayStatusTextBeforeRun);
 
 	RunSubsystem->StartNewRun(12345, 10, 10);
 
@@ -1426,6 +1470,31 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 			DebugSnapshot.MapHeight,
 			DebugSnapshot.EventCount));
 
+	FString ManualPlayStatusTextAfterStart;
+	const bool bManualPlayStatusAfterStartActive = IsValid(DebugSubsystem)
+		&& DebugSubsystem->GetDebugStatusText(ManualPlayStatusTextAfterStart);
+	const bool bManualPlayStatusAfterStartOk = bManualPlayStatusAfterStartActive
+		&& ManualPlayStatusTextAfterStart.Contains(TEXT("RunState=Running"))
+		&& ManualPlayStatusTextAfterStart.Contains(TEXT("PlayerPosition=(0,0)"))
+		&& ManualPlayStatusTextAfterStart.Contains(TEXT("RoomBaseType=Normal"));
+	AddCheck(
+		OutResults,
+		GTCheck_DebugManualPlayStatusAfterStart,
+		bManualPlayStatusAfterStartOk,
+		ManualPlayStatusTextAfterStart);
+
+	FString ManualPlayRoomTextAfterStart;
+	const bool bManualPlayRoomAfterStartReadable = IsValid(DebugSubsystem)
+		&& DebugSubsystem->GetDebugRoomText(ManualPlayRoomTextAfterStart);
+	const bool bManualPlayRoomAfterStartOk = bManualPlayRoomAfterStartReadable
+		&& ManualPlayRoomTextAfterStart.Contains(TEXT("RoomBaseType=Normal"))
+		&& ManualPlayRoomTextAfterStart.Contains(TEXT("Resolved=false"));
+	AddCheck(
+		OutResults,
+		GTCheck_DebugManualPlayRoomAfterStart,
+		bManualPlayRoomAfterStartOk,
+		ManualPlayRoomTextAfterStart);
+
 	const bool bDebugMoveAccepted = IsValid(DebugSubsystem)
 		&& DebugSubsystem->DebugMoveTo(1, 0, DebugSnapshot);
 	AddCheck(
@@ -1823,6 +1892,39 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		GTCheck_DebugResolveCombatFailureEvent,
 		bDebugResolveCombatFailureEventOk,
 		FString::Printf(TEXT("CombatResolveFailed events %d->%d."), CombatResolveFailedCountBeforeNegative, CombatResolveFailedCountAfterNegative));
+
+	TArray<FString> ManualPlayDemoLogLines;
+	FGT_DebugRunSnapshot ManualPlayDemoSnapshot;
+	const bool bManualPlayRunDemoCompleted = IsValid(DebugSubsystem)
+		&& DebugSubsystem->DebugRunDemo(ManualPlayDemoLogLines, ManualPlayDemoSnapshot);
+	AddCheck(
+		OutResults,
+		GTCheck_DebugManualPlayRunDemoCompleted,
+		bManualPlayRunDemoCompleted,
+		FString::Printf(TEXT("RunDemo completed=%s logLines=%d summary=%s."),
+			bManualPlayRunDemoCompleted ? TEXT("true") : TEXT("false"),
+			ManualPlayDemoLogLines.Num(),
+			*ManualPlayDemoSnapshot.Summary));
+
+	TArray<FGT_DebugEventSummary> ManualPlayDemoEventSummary;
+	if (IsValid(DebugSubsystem))
+	{
+		DebugSubsystem->GetDebugEventSummary(ManualPlayDemoEventSummary);
+	}
+
+	const bool bManualPlayRunDemoEventsOk = ManualPlayDemoEventSummary.ContainsByPredicate([](const FGT_DebugEventSummary& Summary)
+		{
+			return Summary.EventType == GTEventType_EventResolved && Summary.Count > 0;
+		})
+		&& ManualPlayDemoEventSummary.ContainsByPredicate([](const FGT_DebugEventSummary& Summary)
+		{
+			return Summary.EventType == GTEventType_CombatResolved && Summary.Count > 0;
+		});
+	AddCheck(
+		OutResults,
+		GTCheck_DebugManualPlayRunDemoEvents,
+		bManualPlayRunDemoEventsOk,
+		FString::Printf(TEXT("RunDemo event summary contains %d event types."), ManualPlayDemoEventSummary.Num()));
 
 	for (const FGT_RuntimeSmokeCheckResult& Result : OutResults)
 	{

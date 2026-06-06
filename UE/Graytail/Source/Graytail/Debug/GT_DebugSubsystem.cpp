@@ -18,6 +18,8 @@ namespace
 	const FName GTDefaultEventOption_Continue(TEXT("Event_DebugOption_Continue"));
 	const FName GTCombatResult_Success(TEXT("Success"));
 	const FName GTCombatResult_Fail(TEXT("Fail"));
+	const FName GTDebugEventType_EventResolved(TEXT("EventResolved"));
+	const FName GTDebugEventType_CombatResolved(TEXT("CombatResolved"));
 	const FName GTRoomIcon_Exit(TEXT("Exit"));
 	const FName GTRoomIcon_Mine(TEXT("Mine"));
 	const FName GTRoomIcon_Event(TEXT("Event"));
@@ -38,6 +40,71 @@ namespace
 		default:
 			return NAME_None;
 		}
+	}
+
+	FString GetRunStateText(EGT_RunState RunState)
+	{
+		switch (RunState)
+		{
+		case EGT_RunState::NotStarted:
+			return TEXT("NotStarted");
+		case EGT_RunState::Running:
+			return TEXT("Running");
+		case EGT_RunState::Failed:
+			return TEXT("Failed");
+		case EGT_RunState::Succeeded:
+			return TEXT("Succeeded");
+		case EGT_RunState::Ended:
+			return TEXT("Ended");
+		default:
+			return TEXT("Unknown");
+		}
+	}
+
+	FString GetRoomBaseTypeText(EGT_RoomBaseType RoomBaseType)
+	{
+		switch (RoomBaseType)
+		{
+		case EGT_RoomBaseType::Unknown:
+			return TEXT("Unknown");
+		case EGT_RoomBaseType::Normal:
+			return TEXT("Normal");
+		case EGT_RoomBaseType::Mine:
+			return TEXT("Mine");
+		case EGT_RoomBaseType::Exit:
+			return TEXT("Exit");
+		case EGT_RoomBaseType::Event:
+			return TEXT("Event");
+		case EGT_RoomBaseType::Combat:
+			return TEXT("Combat");
+		default:
+			return TEXT("Unknown");
+		}
+	}
+
+	FString BuildDebugEventSummaryText(const TArray<FGT_DebugEventSummary>& EventSummary)
+	{
+		if (EventSummary.IsEmpty())
+		{
+			return TEXT("none");
+		}
+
+		TArray<FString> Parts;
+		Parts.Reserve(EventSummary.Num());
+		for (const FGT_DebugEventSummary& Summary : EventSummary)
+		{
+			Parts.Add(FString::Printf(TEXT("%s=%d"), *Summary.EventType.ToString(), Summary.Count));
+		}
+
+		return FString::Join(Parts, TEXT(", "));
+	}
+
+	bool HasDebugEventSummaryType(const TArray<FGT_DebugEventSummary>& EventSummary, FName EventType)
+	{
+		return EventSummary.ContainsByPredicate([EventType](const FGT_DebugEventSummary& Summary)
+		{
+			return Summary.EventType == EventType && Summary.Count > 0;
+		});
 	}
 }
 
@@ -290,6 +357,167 @@ void UGT_DebugSubsystem::GetDebugEventSummary(TArray<FGT_DebugEventSummary>& Out
 	{
 		OutEvents.Add(EventSummaries.FindRef(EventType));
 	}
+}
+
+void UGT_DebugSubsystem::GetDebugCommandHelpLines(TArray<FString>& OutLines) const
+{
+	OutLines.Reset();
+	OutLines.Add(TEXT("Graytail manual play console commands:"));
+	OutLines.Add(TEXT("  gt.Help - Show commands and recommended demo flow."));
+	OutLines.Add(TEXT("  gt.Commands - Alias for gt.Help."));
+	OutLines.Add(TEXT("  gt.StartRun [Seed] [Width Height] - Start a debug/basic run."));
+	OutLines.Add(TEXT("  gt.Status - Show run state, player position, current room, and event counts."));
+	OutLines.Add(TEXT("  gt.Room - Show current room details and placeholder action hints."));
+	OutLines.Add(TEXT("  gt.Move X Y - Move to an adjacent coordinate through the command path."));
+	OutLines.Add(TEXT("  gt.Scan X Y - Scan a cell through the command path."));
+	OutLines.Add(TEXT("  gt.Extract - Attempt extraction at the current cell."));
+	OutLines.Add(TEXT("  gt.Snapshot - Log the raw debug run snapshot."));
+	OutLines.Add(TEXT("  gt.Minimap - Log a text minimap."));
+	OutLines.Add(TEXT("  gt.Events - Log event type counts and recent payload fields."));
+	OutLines.Add(TEXT("  gt.ChooseEventOption [OptionId] - Resolve the Event placeholder room."));
+	OutLines.Add(TEXT("  gt.ResolveCombat [Result] - Resolve the Combat placeholder room. Default Result=Success."));
+	OutLines.Add(TEXT("  gt.RunDemo - Run a fixed Event and Combat placeholder demo path."));
+	OutLines.Add(TEXT("Recommended manual flow: gt.StartRun -> gt.Minimap -> gt.Move 1 0 -> gt.Scan 1 1 -> gt.Status -> gt.Room."));
+	OutLines.Add(TEXT("Event demo path: gt.StartRun -> gt.Move 1 0 -> gt.Move 2 0 -> gt.Move 3 0 -> gt.Move 4 0 -> gt.Move 4 1 -> gt.ChooseEventOption -> gt.Events."));
+	OutLines.Add(TEXT("Combat demo path: gt.StartRun -> gt.Move 0 1 -> gt.Move 0 2 -> gt.Move 0 3 -> gt.Move 0 4 -> gt.Move 1 4 -> gt.ResolveCombat -> gt.Events."));
+}
+
+bool UGT_DebugSubsystem::GetDebugStatusText(FString& OutStatus) const
+{
+	FGT_DebugRunSnapshot Snapshot;
+	if (!GetDebugRunSnapshot(Snapshot))
+	{
+		OutStatus = TEXT("gt.Status: No active run. Start with gt.StartRun.");
+		return false;
+	}
+
+	TArray<FGT_DebugEventSummary> EventSummary;
+	GetDebugEventSummary(EventSummary);
+	OutStatus = FString::Printf(
+		TEXT("gt.Status: RunState=%s PlayerPosition=(%d,%d) RoomBaseType=%s RoomContentId=%s RoomRuleId=%s Triggered=%s Resolved=%s EventCount=%d Events={%s}"),
+		*GetRunStateText(Snapshot.RunState),
+		Snapshot.PlayerX,
+		Snapshot.PlayerY,
+		*GetRoomBaseTypeText(Snapshot.CurrentRoomBaseType),
+		*Snapshot.CurrentRoomContentId.ToString(),
+		*Snapshot.CurrentRoomRuleId.ToString(),
+		Snapshot.bCurrentRoomTriggered ? TEXT("true") : TEXT("false"),
+		Snapshot.bCurrentRoomResolved ? TEXT("true") : TEXT("false"),
+		Snapshot.EventCount,
+		*BuildDebugEventSummaryText(EventSummary));
+	return true;
+}
+
+bool UGT_DebugSubsystem::GetDebugRoomText(FString& OutRoomText) const
+{
+	FGT_DebugRunSnapshot Snapshot;
+	if (!GetDebugRunSnapshot(Snapshot))
+	{
+		OutRoomText = TEXT("gt.Room: No active run. Start with gt.StartRun.");
+		return false;
+	}
+
+	FString Hint = TEXT("No placeholder room action is available here.");
+	if (Snapshot.CurrentRoomBaseType == EGT_RoomBaseType::Event)
+	{
+		Hint = TEXT("Event placeholder action: gt.ChooseEventOption [OptionId].");
+	}
+	else if (Snapshot.CurrentRoomBaseType == EGT_RoomBaseType::Combat)
+	{
+		Hint = TEXT("Combat placeholder action: gt.ResolveCombat [Result].");
+	}
+
+	OutRoomText = FString::Printf(
+		TEXT("gt.Room: Position=(%d,%d) RoomBaseType=%s RoomContentId=%s RoomRuleId=%s RoomInstanceId=%s Triggered=%s Resolved=%s Hint=%s"),
+		Snapshot.PlayerX,
+		Snapshot.PlayerY,
+		*GetRoomBaseTypeText(Snapshot.CurrentRoomBaseType),
+		*Snapshot.CurrentRoomContentId.ToString(),
+		*Snapshot.CurrentRoomRuleId.ToString(),
+		*Snapshot.CurrentRoomInstanceId.ToString(),
+		Snapshot.bCurrentRoomTriggered ? TEXT("true") : TEXT("false"),
+		Snapshot.bCurrentRoomResolved ? TEXT("true") : TEXT("false"),
+		*Hint);
+	return true;
+}
+
+bool UGT_DebugSubsystem::DebugRunDemo(TArray<FString>& OutLogLines, FGT_DebugRunSnapshot& OutSnapshot)
+{
+	OutLogLines.Reset();
+	OutSnapshot = FGT_DebugRunSnapshot();
+
+	auto AppendStep = [&OutLogLines](const FString& StepName, bool bAccepted, const FGT_DebugRunSnapshot& Snapshot)
+	{
+		OutLogLines.Add(FString::Printf(TEXT("%s %s: %s"), *StepName, bAccepted ? TEXT("accepted") : TEXT("rejected"), *Snapshot.Summary));
+	};
+
+	auto MovePath = [this, &OutLogLines, &OutSnapshot, &AppendStep](const TCHAR* Label, const TArray<FIntPoint>& Path) -> bool
+	{
+		for (const FIntPoint& Coord : Path)
+		{
+			const bool bMoved = DebugMoveTo(Coord.X, Coord.Y, OutSnapshot);
+			AppendStep(FString::Printf(TEXT("%s gt.Move %d %d"), Label, Coord.X, Coord.Y), bMoved, OutSnapshot);
+			if (!bMoved)
+			{
+				return false;
+			}
+		}
+
+		return true;
+	};
+
+	bool bDemoOk = DebugStartNewRun(42345, 10, 10, OutSnapshot);
+	AppendStep(TEXT("gt.RunDemo StartRun"), bDemoOk, OutSnapshot);
+	if (!bDemoOk)
+	{
+		return false;
+	}
+
+	const bool bScanned = DebugScanCell(1, 1, OutSnapshot);
+	AppendStep(TEXT("gt.RunDemo Scan 1 1"), bScanned, OutSnapshot);
+	bDemoOk = bDemoOk && bScanned;
+
+	const TArray<FIntPoint> EventPath = {
+		FIntPoint(1, 0),
+		FIntPoint(2, 0),
+		FIntPoint(3, 0),
+		FIntPoint(4, 0),
+		FIntPoint(4, 1)
+	};
+	bDemoOk = bDemoOk && MovePath(TEXT("gt.RunDemo EventPath"), EventPath);
+
+	const bool bChooseEvent = bDemoOk && DebugChooseEventOption(NAME_None, OutSnapshot);
+	AppendStep(TEXT("gt.RunDemo ChooseEventOption"), bChooseEvent, OutSnapshot);
+	bDemoOk = bDemoOk && bChooseEvent;
+
+	const TArray<FIntPoint> CombatPath = {
+		FIntPoint(3, 1),
+		FIntPoint(2, 1),
+		FIntPoint(1, 1),
+		FIntPoint(1, 2),
+		FIntPoint(1, 3),
+		FIntPoint(1, 4)
+	};
+	bDemoOk = bDemoOk && MovePath(TEXT("gt.RunDemo CombatPath"), CombatPath);
+
+	const bool bResolveCombat = bDemoOk && DebugResolveCombat(NAME_None, OutSnapshot);
+	AppendStep(TEXT("gt.RunDemo ResolveCombat"), bResolveCombat, OutSnapshot);
+	bDemoOk = bDemoOk && bResolveCombat;
+
+	TArray<FGT_DebugEventSummary> EventSummary;
+	GetDebugEventSummary(EventSummary);
+	const bool bHasEventResolved = HasDebugEventSummaryType(EventSummary, GTDebugEventType_EventResolved);
+	const bool bHasCombatResolved = HasDebugEventSummaryType(EventSummary, GTDebugEventType_CombatResolved);
+	OutLogLines.Add(FString::Printf(
+		TEXT("gt.RunDemo Events: %s EventResolved=%s CombatResolved=%s"),
+		*BuildDebugEventSummaryText(EventSummary),
+		bHasEventResolved ? TEXT("true") : TEXT("false"),
+		bHasCombatResolved ? TEXT("true") : TEXT("false")));
+
+	FString StatusText;
+	GetDebugStatusText(StatusText);
+	OutLogLines.Add(StatusText);
+	return bDemoOk && bHasEventResolved && bHasCombatResolved;
 }
 
 void UGT_DebugSubsystem::GetCurrentMiniMapDebugCells(TArray<FGT_MiniMapCellViewData>& OutCells, int32& OutWidth, int32& OutHeight) const

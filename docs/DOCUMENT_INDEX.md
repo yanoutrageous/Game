@@ -5,6 +5,7 @@
 | Document | Role |
 |---|---|
 | `PROJECT_CONTENT_TRACKING.md` | Repository content and milestone tracking |
+| `PROTOTYPE_V1_PLAYABILITY_POLISH_STATUS.md` | Prototype V1 console playability polish status |
 | `EVENT_COMBAT_PLACEHOLDER_INTERACTIONS_STATUS.md` | Event / Combat placeholder console interaction status |
 | `ROOM_CONTENT_RULE_DISPATCH_STATUS.md` | Room content/rule dispatch placeholder status |
 | `EDITOR_MANUAL_PLAY_VALIDATION_STATUS.md` | Editor manual play console command status |
@@ -38,17 +39,17 @@
 
 ## Active Branch
 
-`feature/event-combat-placeholder-interactions`
+`feature/prototype-v1-playability-polish`
 
 ## Current Validated Milestone
 
-Event / Combat Placeholder Interaction.
+Prototype V1 Playability Polish.
 
 Latest known validation result:
 
 ```text
 GraytailEditor Win64 Development: passed
-GT_RuntimeSmokeRunner: 122/122 pass
+GT_RuntimeSmokeRunner: 128/128 pass
 ```
 
 ## Validation Commands
@@ -69,25 +70,26 @@ Expected smoke result:
 
 ```text
 Overall=Pass
-Pass=122
+Pass=128
 Fail=0
-Count=122
+Count=128
 ```
 
 ## Recommended Reading Order
 
 1. `README.md`
 2. `PROJECT_CONTENT_TRACKING.md`
-3. `EVENT_COMBAT_PLACEHOLDER_INTERACTIONS_STATUS.md`
-4. `ROOM_CONTENT_RULE_DISPATCH_STATUS.md`
-5. `EDITOR_MANUAL_PLAY_VALIDATION_STATUS.md`
-6. `MAP_ROOM_RULE_BOUNDARY_STATUS.md`
-7. `EDITOR_PLAYABLE_PROTOTYPE_STATUS.md`
-8. `GAMEPLAY_LOGIC_MVP_STATUS.md`
-9. `UE_FOUNDATION_STATUS.md`
-10. `REFACTOR_ARCHITECTURE.md`
-11. `UE_REFACTOR_IMPLEMENTATION.md`
-12. `可行性判断.md` and `难度判断.md` as design references
+3. `PROTOTYPE_V1_PLAYABILITY_POLISH_STATUS.md`
+4. `EVENT_COMBAT_PLACEHOLDER_INTERACTIONS_STATUS.md`
+5. `ROOM_CONTENT_RULE_DISPATCH_STATUS.md`
+6. `EDITOR_MANUAL_PLAY_VALIDATION_STATUS.md`
+7. `MAP_ROOM_RULE_BOUNDARY_STATUS.md`
+8. `EDITOR_PLAYABLE_PROTOTYPE_STATUS.md`
+9. `GAMEPLAY_LOGIC_MVP_STATUS.md`
+10. `UE_FOUNDATION_STATUS.md`
+11. `REFACTOR_ARCHITECTURE.md`
+12. `UE_REFACTOR_IMPLEMENTATION.md`
+13. `可行性判断.md` and `难度判断.md` as design references
 
 ## Current Implementation Boundary
 
@@ -102,7 +104,8 @@ Implemented and validated:
 - Manual play commands call `UGT_DebugSubsystem` and do not directly mutate run state or map state.
 - Room Content / Rule Dispatch placeholder rooms are implemented.
 - Event / Combat placeholder interactions are exposed through `gt.ChooseEventOption` and `gt.ResolveCombat`.
-- Runtime smoke is `122/122 pass`.
+- Prototype V1 playability polish commands are exposed through `gt.Help`, `gt.Commands`, `gt.Status`, `gt.Room`, and `gt.RunDemo`.
+- Runtime smoke is `128/128 pass`.
 
 Not implemented yet:
 

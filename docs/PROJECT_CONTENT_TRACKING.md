@@ -2,11 +2,11 @@
 
 ## Repository State
 
-- Branch: feature/map-room-rule-boundary
-- HEAD: bbd9fc9e1fd2df5d63d0962201171c8394551c29
+- Branch: feature/editor-manual-play-validation
+- HEAD: bc6c8678617169bc8c6d3d270994705c56fa7c2f
 - Remote: https://github.com/yanoutrageous/Game.git
-- Validation tags: lua-prototype-baseline, ue-foundation-validated, gameplay-logic-mvp, editor-debug-entrypoints, map-room-rule-boundary
-- Remote branches: origin/main, origin/refactor/ue-foundation, origin/feature/gameplay-vertical-slice, origin/feature/editor-playable-prototype, origin/feature/map-room-rule-boundary
+- Validation tags: lua-prototype-baseline, ue-foundation-validated, gameplay-logic-mvp, editor-debug-entrypoints, map-room-rule-boundary, editor-manual-play-validation
+- Remote branches: origin/main, origin/refactor/ue-foundation, origin/feature/gameplay-vertical-slice, origin/feature/editor-playable-prototype, origin/feature/map-room-rule-boundary, origin/feature/editor-manual-play-validation
 
 ## Milestone Timeline
 
@@ -17,6 +17,7 @@
 | Gameplay logic MVP | gameplay-logic-mvp / 004e746 | Logic-level playable MVP recorded; validation commit was acffc62 | docs/GAMEPLAY_LOGIC_MVP_STATUS.md |
 | Editor-facing debug entrypoints | editor-debug-entrypoints / df4702b | Editor-facing debug-operation layer recorded; validation commit was 298049b | docs/EDITOR_PLAYABLE_PROTOTYPE_STATUS.md |
 | Map / Room Rule Boundary Preparation | map-room-rule-boundary / bbd9fc9 | Boundary preparation implemented and validated | docs/MAP_ROOM_RULE_BOUNDARY_STATUS.md |
+| Editor Manual Play Validation | editor-manual-play-validation / bc6c867 | Console manual play commands implemented and validated | docs/EDITOR_MANUAL_PLAY_VALIDATION_STATUS.md |
 
 ## Current Validated Scope
 
@@ -25,6 +26,7 @@
 - Gameplay logic MVP covers run start, movement, scan, room resolution, mine failure, exit extraction, event recording, and commandlet smoke validation.
 - Editor-facing debug entrypoints expose debug start, move, scan, extract, snapshot, minimap view data, and event summary through `UGT_DebugSubsystem`.
 - Map / Room Rule Boundary Preparation adds map generation, room identity, room resolver handler, and event payload extension boundaries without expanding formal gameplay.
+- Editor Manual Play Validation adds `gt.*` console commands through `UGT_DebugSubsystem` without directly mutating `RunContext`, `TruthMap`, `IntelMap`, or `RunState`.
 
 ## Project Content Inventory
 
@@ -37,15 +39,15 @@
 | UE Data definitions | `UE/Graytail/Source/Graytail/Data` | Tracked | 12 tracked DataAsset and effect/type definition files. |
 | UE UI ViewModels | `UE/Graytail/Source/Graytail/UI/ViewModels` | Tracked | MiniMap ViewModel source/header plus `.gitkeep`; no UMG assets are tracked. |
 | UE Save / Debug | `UE/Graytail/Source/Graytail/Save`, `UE/Graytail/Source/Graytail/Debug` | Tracked | 12 tracked save/debug files; `GT_DebugTypes.h`, `GT_RuntimeSmokeRunner`, and `GT_RuntimeSmokeValidator` are present. |
-| Docs | `docs/`, `README.md` | Tracked | Status docs and design/planning docs coexist; current milestone status is `docs/MAP_ROOM_RULE_BOUNDARY_STATUS.md`. |
+| Docs | `docs/`, `README.md` | Tracked | Status docs and design/planning docs coexist; current milestone status is `docs/EDITOR_MANUAL_PLAY_VALIDATION_STATUS.md`. |
 | Tools | `tools/`, `.cli/`, `.claude/skills` | Tracked | Local tooling, CLI helpers, Lua LSP helpers, and skill install scripts are tracked. |
 | Assets / game_material | `assets/`, `game_material/`, `.project/game_material/` | Tracked | 410 tracked art/audio/video/material files and metadata. |
 | Config / project metadata | `.project/`, `.gitignore` | Tracked | Project metadata and ignore rules are tracked. |
 
 ## Runtime Validation
 
-- GraytailEditor: latest known validation passed during the map / room rule boundary milestone.
-- Runtime smoke: latest known commandlet validation passed during the map / room rule boundary milestone.
+- GraytailEditor: latest known validation passed during the Editor Manual Play Validation milestone.
+- Runtime smoke: latest known commandlet validation passed during the Editor Manual Play Validation milestone.
 - Latest known smoke result: `Overall=Pass`, `Pass=108`, `Fail=0`, `Count=108`.
 - Current tracking check: no `.uasset` files are tracked.
 - Current tracking check: `Binaries`, `Intermediate`, `Saved`, and `DerivedDataCache` are not tracked by Git.
@@ -58,6 +60,7 @@
 | `docs/GAMEPLAY_LOGIC_MVP_STATUS.md` | Gameplay logic MVP status | Current milestone status | Tag points to status commit `004e746`; validation commit recorded as `acffc62`. |
 | `docs/EDITOR_PLAYABLE_PROTOTYPE_STATUS.md` | Editor-facing debug entrypoints status | Current milestone status | Tag points to status commit `df4702b`; validation commit recorded as `298049b`. |
 | `docs/MAP_ROOM_RULE_BOUNDARY_STATUS.md` | Map / room rule boundary status | Current milestone status | Tag points to implementation commit `bbd9fc9`. |
+| `docs/EDITOR_MANUAL_PLAY_VALIDATION_STATUS.md` | Editor manual play status | Current milestone status | Tag points to implementation commit `bc6c867`. |
 | `docs/可行性判断.md` | Feasibility and balance analysis | Current design analysis | Added with `298049b`; supports design feasibility and risk judgment. |
 | `docs/难度判断.md` | Difficulty and balance analysis | Current design analysis | Added with `298049b`; supports difficulty scaling and demo positioning. |
 | `docs/CODEX_TASKS.md` | Codex implementation plan | Historical planning | Useful for original UE refactor scope; not a current status source for completed debug entrypoints. |

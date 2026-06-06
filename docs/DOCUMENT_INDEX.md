@@ -32,6 +32,7 @@
 | `gameplay-logic-mvp` | Validated logic-level playable MVP |
 | `editor-debug-entrypoints` | Validated editor-facing debug manual entrypoints |
 | `map-room-rule-boundary` | Validated map / room rule boundary preparation |
+| `editor-manual-play-validation` | Validated editor manual play console command entrypoint |
 
 ## Active Branch
 
@@ -46,6 +47,12 @@ Latest known validation result:
 ```text
 GraytailEditor Win64 Development: passed
 GT_RuntimeSmokeRunner: 108/108 pass
+```
+
+Implementation commit:
+
+```text
+bc6c8678617169bc8c6d3d270994705c56fa7c2f
 ```
 
 ## Validation Commands
@@ -94,6 +101,7 @@ Implemented and validated:
 - Editor-facing debug manual entrypoints are implemented.
 - Map / Room Rule Boundary Preparation is implemented.
 - Editor Manual Play Validation console commands are implemented.
+- Manual play commands call `UGT_DebugSubsystem` and do not directly mutate run state or map state.
 - Runtime smoke baseline is `108/108 pass`.
 
 Not implemented yet:

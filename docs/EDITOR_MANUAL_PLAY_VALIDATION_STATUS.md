@@ -8,6 +8,15 @@ Editor Manual Play Validation
 
 feature/editor-manual-play-validation
 
+## Implementation Commit
+
+bc6c8678617169bc8c6d3d270994705c56fa7c2f
+
+## Validation
+
+- GraytailEditor Win64 Development: passed
+- GT_RuntimeSmokeRunner: Overall=Pass, Pass=108, Fail=0, Count=108
+
 ## Console Commands
 
 - `gt.StartRun [Seed] [Width Height]`
@@ -27,6 +36,7 @@ feature/editor-manual-play-validation
 - `gt.Snapshot` reads `UGT_DebugSubsystem::GetDebugRunSnapshot` and `GetDebugEventSummary`.
 - `gt.Minimap` reads `UGT_DebugSubsystem::GetDebugMiniMapViewData`.
 - `gt.Events` reads `UGT_DebugSubsystem::GetDebugEventSummary`.
+- Console commands only call `UGT_DebugSubsystem`; they do not directly modify `RunContext`, `TruthMap`, `IntelMap`, or `RunState`.
 
 ## Output
 
@@ -46,3 +56,8 @@ feature/editor-manual-play-validation
 - Inventory / reward gameplay
 - Save / Load disk flow
 - Meta progression
+
+## Next Suggested Stage
+
+- Room Content / Rule Dispatch
+- Event / Combat placeholder manual play

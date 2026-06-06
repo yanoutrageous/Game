@@ -1,25 +1,86 @@
-# 灰尾回收
+# Game / Graytail
 
-扫雷、搜刮，然后尽量完整地撤离。
+Graytail is a minesweeper-style extraction game prototype. The repository now preserves the original Lua / UrhoX prototype and carries the Unreal Engine implementation under `UE/Graytail`.
 
-你是一名灰尾临时回收员，在封锁区中依靠区域扫描图判断雷险，搜刮异常回收物，清理或绕开异常体，并在五四三二一撤离协议恶化前找到撤离信标。
+## Current Active Branch
 
-## 当前 Demo 核心
+`feature/editor-playable-prototype`
 
-- 看数字：数字表示周围 8 个区域中的雷险数量。
-- 做判断：异常体、物资、事件和撤离信标不计入雷险数字。
-- 拿物资：搜索、物资箱、事件会获得待结算币或异常回收物。
-- 找信标：成功撤离后，待结算币入账，物资进入后勤仓库。
-- 控风险：失败时待结算币丢失，仅保留已锁定收益和有限物资。
+## Current Milestones
 
-## 核心文档
+| Milestone | Tag | Status |
+|---|---|---|
+| Lua / UrhoX Prototype Baseline | `lua-prototype-baseline` | Preserved |
+| UE Foundation | `ue-foundation-validated` | Validated |
+| Gameplay Logic MVP | `gameplay-logic-mvp` | Validated |
+| Editor Debug Entry Points | `editor-debug-entrypoints` | Validated |
 
-- `docs/game-design.md`
-- `docs/dev-plan.md`
+## Current Validated Scope
 
-## 核心逻辑
+- Lua / UrhoX prototype is preserved under `scripts/`, `assets/`, `.project/`, `.cli/`, and `game_material/`.
+- Unreal Engine project exists under `UE/Graytail`.
+- Gameplay Logic MVP is implemented.
+- Editor-facing debug manual entrypoints are implemented.
+- Runtime smoke baseline is `108/108 pass`.
+- Latest repository tracking document: `docs/PROJECT_CONTENT_TRACKING.md`.
 
-- `scripts/systems/Minefield.lua`
-- `scripts/systems/ExtractionRun.lua`
-- `scripts/systems/RunInventory.lua`
-- `scripts/scenes/DungeonRoom.lua`
+## Validation Commands
+
+Build:
+
+```powershell
+& "D:\UE\UE_5.7\Engine\Binaries\ThirdParty\DotNet\8.0.412\win-x64\dotnet.exe" "D:\UE\UE_5.7\Engine\Binaries\DotNET\UnrealBuildTool\UnrealBuildTool.dll" GraytailEditor Win64 Development -Project="<repo>\UE\Graytail\Graytail.uproject" -WaitMutex -FromMsBuild
+```
+
+Smoke:
+
+```powershell
+& "D:\UE\UE_5.7\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "<repo>\UE\Graytail\Graytail.uproject" -run=GT_RuntimeSmokeRunner -unattended -nop4 -nosplash -NoShaderCompile -log
+```
+
+Expected smoke result:
+
+```text
+Overall=Pass
+Pass=108
+Fail=0
+Count=108
+```
+
+## Important Documents
+
+Start with `docs/DOCUMENT_INDEX.md`.
+
+Current status documents:
+
+- `docs/PROJECT_CONTENT_TRACKING.md`
+- `docs/EDITOR_PLAYABLE_PROTOTYPE_STATUS.md`
+- `docs/GAMEPLAY_LOGIC_MVP_STATUS.md`
+- `docs/UE_FOUNDATION_STATUS.md`
+
+Architecture and design references:
+
+- `docs/REFACTOR_ARCHITECTURE.md`
+- `docs/UE_REFACTOR_IMPLEMENTATION.md`
+- `docs/可行性判断.md`
+- `docs/难度判断.md`
+
+## Explicitly Not Implemented Yet
+
+- Player-facing UI / UMG
+- Blueprint assets
+- Input binding
+- Map rendering
+- Loot / inventory gameplay
+- Combat gameplay
+- Event room effects
+- Reward settlement
+- Save / Load disk flow
+- Effect interpreter
+- ModifierSystem
+- Random map generation
+- Meta progression
+
+## Next Suggested Stage
+
+Editor-facing manual play validation, then decide whether to build a lightweight debug UI or a minimal UMG prototype.

@@ -52,6 +52,12 @@ struct GRAYTAIL_API FGT_DebugRunSnapshot
 	FString CurrentRoomRuleDebugDescription;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	FString CurrentRoomAvailableEventOptions;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	FString CurrentRoomAvailableCombatResults;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
 	bool bCurrentRoomTriggered = false;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")

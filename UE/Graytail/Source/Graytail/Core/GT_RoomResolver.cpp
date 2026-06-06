@@ -21,8 +21,7 @@ namespace
 	const FName GTEventType_CombatResolveFailed(TEXT("CombatResolveFailed"));
 	const FName GTEventType_RoomDefinitionMissing(TEXT("RoomDefinitionMissing"));
 	const FName GTEventOption_DefaultContinue(TEXT("Event_DebugOption_Continue"));
-	const FName GTCombatResult_Success(TEXT("Success"));
-	const FName GTCombatResult_Fail(TEXT("Fail"));
+	const FName GTCombatResult_Success(TEXT("Combat_DebugResult_Success"));
 	const FName GTSourceSystem_RoomResolver(TEXT("RoomResolver"));
 }
 
@@ -134,7 +133,21 @@ bool UGT_RoomResolver::ChooseEventOptionAt(int32 X, int32 Y, FName OptionId, FGT
 	}
 
 	const FName ResolvedOptionId = OptionId.IsNone() ? GetDefaultEventOptionId(OutResult) : OptionId;
-	if (!RunContext->MarkTruthCellResolved(X, Y) || !BuildResultFromTruthCell(X, Y, OutResult))
+	FGT_EventOptionDef OptionDefinition;
+	FString OptionFailureReason;
+	if (!ContentRegistry->FindEventOptionDefForRoom(OutResult.RoomContentId, OutResult.RoomRuleId, ResolvedOptionId, OptionDefinition, OptionFailureReason))
+	{
+		PublishInteractionEvent(
+			GTEventType_EventOptionChooseFailed,
+			OutResult,
+			ResolvedOptionId,
+			false,
+			FString::Printf(TEXT("ChooseEventOption rejected: %s"), *OptionFailureReason));
+		return false;
+	}
+
+	if (OptionDefinition.bResolvesRoom
+		&& (!RunContext->MarkTruthCellResolved(X, Y) || !BuildResultFromTruthCell(X, Y, OutResult)))
 	{
 		PublishInteractionEvent(
 			GTEventType_EventOptionChooseFailed,
@@ -151,13 +164,16 @@ bool UGT_RoomResolver::ChooseEventOptionAt(int32 X, int32 Y, FName OptionId, FGT
 		OutResult,
 		ResolvedOptionId,
 		true,
-		BuildRoomDefinitionPayloadText(OutResult, FString::Printf(TEXT("OptionId=%s"), *ResolvedOptionId.ToString())));
-	PublishInteractionEvent(
-		GTEventType_EventResolved,
-		OutResult,
-		ResolvedOptionId,
-		true,
-		BuildRoomDefinitionPayloadText(OutResult, FString::Printf(TEXT("OptionId=%s"), *ResolvedOptionId.ToString())));
+		BuildEventOptionPayloadText(OutResult, OptionDefinition, FString::Printf(TEXT("OptionId=%s"), *ResolvedOptionId.ToString())));
+	if (OptionDefinition.bResolvesRoom)
+	{
+		PublishInteractionEvent(
+			GTEventType_EventResolved,
+			OutResult,
+			ResolvedOptionId,
+			true,
+			BuildEventOptionPayloadText(OutResult, OptionDefinition, FString::Printf(TEXT("OptionId=%s"), *ResolvedOptionId.ToString())));
+	}
 	return true;
 }
 
@@ -193,29 +209,21 @@ bool UGT_RoomResolver::ResolveCombatAt(int32 X, int32 Y, FName ResultId, FGT_Roo
 	}
 
 	const FName ResolvedResultId = ResultId.IsNone() ? GetDefaultCombatResultId(OutResult) : ResultId;
-	if (ResolvedResultId == GTCombatResult_Fail)
+	FGT_CombatResultDef ResultDefinition;
+	FString ResultFailureReason;
+	if (!ContentRegistry->FindCombatResultDefForRoom(OutResult.RoomContentId, OutResult.RoomRuleId, ResolvedResultId, ResultDefinition, ResultFailureReason))
 	{
 		PublishInteractionEvent(
 			GTEventType_CombatResolveFailed,
 			OutResult,
 			ResolvedResultId,
 			false,
-			TEXT("ResolveCombat rejected: Fail result is not implemented for placeholder combat."));
+			FString::Printf(TEXT("ResolveCombat rejected: %s"), *ResultFailureReason));
 		return false;
 	}
 
-	if (ResolvedResultId != GTCombatResult_Success)
-	{
-		PublishInteractionEvent(
-			GTEventType_CombatResolveFailed,
-			OutResult,
-			ResolvedResultId,
-			false,
-			FString::Printf(TEXT("ResolveCombat rejected: unsupported Result=%s."), *ResolvedResultId.ToString()));
-		return false;
-	}
-
-	if (!RunContext->MarkTruthCellResolved(X, Y) || !BuildResultFromTruthCell(X, Y, OutResult))
+	if (ResultDefinition.bResolvesRoom
+		&& (!RunContext->MarkTruthCellResolved(X, Y) || !BuildResultFromTruthCell(X, Y, OutResult)))
 	{
 		PublishInteractionEvent(
 			GTEventType_CombatResolveFailed,
@@ -227,12 +235,13 @@ bool UGT_RoomResolver::ResolveCombatAt(int32 X, int32 Y, FName ResultId, FGT_Roo
 	}
 
 	OutResult.Outcome = EGT_RoomResolveOutcome::CombatStarted;
+	const FName ResultEventType = ResultDefinition.EventType.IsNone() ? GTEventType_CombatResolved : ResultDefinition.EventType;
 	PublishInteractionEvent(
-		GTEventType_CombatResolved,
+		ResultEventType,
 		OutResult,
 		ResolvedResultId,
 		true,
-		BuildRoomDefinitionPayloadText(OutResult, FString::Printf(TEXT("Result=%s"), *ResolvedResultId.ToString())));
+		BuildCombatResultPayloadText(OutResult, ResultDefinition, FString::Printf(TEXT("Result=%s"), *ResolvedResultId.ToString())));
 	return true;
 }
 
@@ -456,6 +465,26 @@ FString UGT_RoomResolver::BuildRoomDefinitionPayloadText(const FGT_RoomResolveRe
 		*RuleDefinition.DisplayName,
 		*ContentDefinition.DebugDescription,
 		*RuleDefinition.DebugDescription);
+}
+
+FString UGT_RoomResolver::BuildEventOptionPayloadText(const FGT_RoomResolveResult& Result, const FGT_EventOptionDef& OptionDefinition, const FString& Prefix) const
+{
+	return FString::Printf(
+		TEXT("%s OptionDisplayName=%s OptionDescription=%s OptionPayload=%s"),
+		*BuildRoomDefinitionPayloadText(Result, Prefix),
+		*OptionDefinition.DisplayName,
+		*OptionDefinition.DebugDescription,
+		*OptionDefinition.PayloadText);
+}
+
+FString UGT_RoomResolver::BuildCombatResultPayloadText(const FGT_RoomResolveResult& Result, const FGT_CombatResultDef& ResultDefinition, const FString& Prefix) const
+{
+	return FString::Printf(
+		TEXT("%s ResultDisplayName=%s ResultDescription=%s ResultPayload=%s"),
+		*BuildRoomDefinitionPayloadText(Result, Prefix),
+		*ResultDefinition.DisplayName,
+		*ResultDefinition.DebugDescription,
+		*ResultDefinition.PayloadText);
 }
 
 void UGT_RoomResolver::PublishResolverEvent(FName EventType, const FGT_RoomResolveResult& Result, bool bSuccess) const

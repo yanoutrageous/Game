@@ -30,6 +30,12 @@ struct GRAYTAIL_API FGT_RoomContentDef
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Content")
 	FName DefaultResultId = NAME_None;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Content")
+	TArray<FName> AvailableOptionIds;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Content")
+	TArray<FName> AvailableResultIds;
 };
 
 USTRUCT(BlueprintType)
@@ -54,6 +60,57 @@ struct GRAYTAIL_API FGT_RoomRuleDef
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Content")
 	FName DefaultResultId = NAME_None;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Content")
+	TArray<FName> AvailableOptionIds;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Content")
+	TArray<FName> AvailableResultIds;
+};
+
+USTRUCT(BlueprintType)
+struct GRAYTAIL_API FGT_EventOptionDef
+{
+	GENERATED_BODY()
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Content")
+	FName Id = NAME_None;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Content")
+	FString DisplayName;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Content")
+	FString DebugDescription;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Content")
+	bool bResolvesRoom = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Content")
+	FString PayloadText;
+};
+
+USTRUCT(BlueprintType)
+struct GRAYTAIL_API FGT_CombatResultDef
+{
+	GENERATED_BODY()
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Content")
+	FName Id = NAME_None;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Content")
+	FString DisplayName;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Content")
+	FString DebugDescription;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Content")
+	bool bResolvesRoom = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Content")
+	FString PayloadText;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Content")
+	FName EventType = NAME_None;
 };
 
 UCLASS(BlueprintType)
@@ -69,14 +126,40 @@ public:
 
 	bool RegisterRoomContentDef(const FGT_RoomContentDef& Definition);
 	bool RegisterRoomRuleDef(const FGT_RoomRuleDef& Definition);
+	bool RegisterEventOptionDef(const FGT_EventOptionDef& Definition);
+	bool RegisterCombatResultDef(const FGT_CombatResultDef& Definition);
 	bool FindRoomContentDef(FName ContentId, FGT_RoomContentDef& OutDefinition) const;
 	bool FindRoomRuleDef(FName RuleId, FGT_RoomRuleDef& OutDefinition) const;
+	bool FindEventOptionDef(FName OptionId, FGT_EventOptionDef& OutDefinition) const;
+	bool FindCombatResultDef(FName ResultId, FGT_CombatResultDef& OutDefinition) const;
 	bool FindRoomDefinitions(
 		FName ContentId,
 		FName RuleId,
 		EGT_RoomBaseType ExpectedRoomBaseType,
 		FGT_RoomContentDef& OutContentDefinition,
 		FGT_RoomRuleDef& OutRuleDefinition,
+		FString& OutFailureReason) const;
+	bool FindEventOptionDefForRoom(
+		FName ContentId,
+		FName RuleId,
+		FName OptionId,
+		FGT_EventOptionDef& OutDefinition,
+		FString& OutFailureReason) const;
+	bool FindCombatResultDefForRoom(
+		FName ContentId,
+		FName RuleId,
+		FName ResultId,
+		FGT_CombatResultDef& OutDefinition,
+		FString& OutFailureReason) const;
+	bool GetEventOptionDefsForRoom(
+		FName ContentId,
+		FName RuleId,
+		TArray<FGT_EventOptionDef>& OutDefinitions,
+		FString& OutFailureReason) const;
+	bool GetCombatResultDefsForRoom(
+		FName ContentId,
+		FName RuleId,
+		TArray<FGT_CombatResultDef>& OutDefinitions,
 		FString& OutFailureReason) const;
 
 	UFUNCTION(BlueprintPure, Category = "Graytail|Content")
@@ -94,4 +177,10 @@ private:
 
 	UPROPERTY(Transient)
 	TMap<FName, FGT_RoomRuleDef> RoomRuleDefs;
+
+	UPROPERTY(Transient)
+	TMap<FName, FGT_EventOptionDef> EventOptionDefs;
+
+	UPROPERTY(Transient)
+	TMap<FName, FGT_CombatResultDef> CombatResultDefs;
 };

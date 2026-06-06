@@ -68,7 +68,12 @@ namespace
 	{
 		if (Arg.Equals(TEXT("Success"), ESearchCase::IgnoreCase))
 		{
-			return FName(TEXT("Success"));
+			return FName(TEXT("Combat_DebugResult_Success"));
+		}
+
+		if (Arg.Equals(TEXT("Retreat"), ESearchCase::IgnoreCase))
+		{
+			return FName(TEXT("Combat_DebugResult_Retreat"));
 		}
 
 		if (Arg.Equals(TEXT("Fail"), ESearchCase::IgnoreCase))
@@ -110,7 +115,7 @@ namespace
 		UE_LOG(
 			LogGraytailManualPlay,
 			Display,
-			TEXT("%s: RunState=%d PlayerPosition=(%d,%d) Map=%dx%d EventCount=%d RoomBaseType=%d RoomContentId=%s RoomRuleId=%s ContentName=%s RuleName=%s RoomTriggered=%s RoomResolved=%s Events={%s}"),
+			TEXT("%s: RunState=%d PlayerPosition=(%d,%d) Map=%dx%d EventCount=%d RoomBaseType=%d RoomContentId=%s RoomRuleId=%s ContentName=%s RuleName=%s EventOptions=%s CombatResults=%s RoomTriggered=%s RoomResolved=%s Events={%s}"),
 			Prefix,
 			static_cast<int32>(Snapshot.RunState),
 			Snapshot.PlayerX,
@@ -123,6 +128,8 @@ namespace
 			*Snapshot.CurrentRoomRuleId.ToString(),
 			*Snapshot.CurrentRoomContentDisplayName,
 			*Snapshot.CurrentRoomRuleDisplayName,
+			Snapshot.CurrentRoomAvailableEventOptions.IsEmpty() ? TEXT("none") : *Snapshot.CurrentRoomAvailableEventOptions,
+			Snapshot.CurrentRoomAvailableCombatResults.IsEmpty() ? TEXT("none") : *Snapshot.CurrentRoomAvailableCombatResults,
 			Snapshot.bCurrentRoomTriggered ? TEXT("true") : TEXT("false"),
 			Snapshot.bCurrentRoomResolved ? TEXT("true") : TEXT("false"),
 			*BuildEventSummaryText(EventSummary));
@@ -599,12 +606,12 @@ namespace
 
 	FAutoConsoleCommandWithWorldAndArgs GTChooseEventOptionCommand(
 		TEXT("gt.ChooseEventOption"),
-		TEXT("Chooses a placeholder event option through the existing command path. Usage: gt.ChooseEventOption [OptionId]"),
+		TEXT("Chooses a placeholder event option through the existing command path. Usage: gt.ChooseEventOption [Event_DebugOption_Continue|Event_DebugOption_Scout]"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleChooseEventOption));
 
 	FAutoConsoleCommandWithWorldAndArgs GTResolveCombatCommand(
 		TEXT("gt.ResolveCombat"),
-		TEXT("Resolves placeholder combat through the existing command path. Usage: gt.ResolveCombat [Result]"),
+		TEXT("Resolves placeholder combat through the existing command path. Usage: gt.ResolveCombat [Combat_DebugResult_Success|Combat_DebugResult_Retreat]"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleResolveCombat));
 
 	FAutoConsoleCommandWithWorldAndArgs GTSnapshotCommand(

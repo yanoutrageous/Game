@@ -4,7 +4,7 @@ Graytail is a minesweeper-style extraction game prototype. The repository now pr
 
 ## Current Active Branch
 
-`feature/room-content-rule-registry-minimal`
+`feature/event-option-combat-result-data-minimal`
 
 ## Current Milestones
 
@@ -29,7 +29,9 @@ Graytail is a minesweeper-style extraction game prototype. The repository now pr
 - Event / Combat placeholder interactions can be completed through console commands without formal gameplay systems.
 - Prototype V1 Playability Polish adds help, status, room detail, and one-shot demo console commands.
 - Room Content / Rule Registry Minimal adds lightweight C++ definitions for placeholder room content and rules.
-- Runtime smoke is `134/134 pass`; the previous `128/128` behavior remains covered.
+- Event Option / Combat Result Data Minimal adds lightweight C++ Event option and Combat result definitions.
+- `gt.ChooseEventOption` and `gt.ResolveCombat` validate through the registry before resolving placeholder rooms.
+- Runtime smoke is `144/144 pass`; the previous `134/134` behavior remains covered.
 - Latest repository tracking document: `docs/PROJECT_CONTENT_TRACKING.md`.
 
 ## Validation Commands
@@ -50,9 +52,9 @@ Expected smoke result:
 
 ```text
 Overall=Pass
-Pass=134
+Pass=144
 Fail=0
-Count=134
+Count=144
 ```
 
 ## Important Documents
@@ -62,6 +64,7 @@ Start with `docs/DOCUMENT_INDEX.md`.
 Current status documents:
 
 - `docs/PROJECT_CONTENT_TRACKING.md`
+- `docs/EVENT_OPTION_COMBAT_RESULT_DATA_STATUS.md`
 - `docs/ROOM_CONTENT_RULE_REGISTRY_STATUS.md`
 - `docs/PROTOTYPE_V1_PLAYABILITY_POLISH_STATUS.md`
 - `docs/EVENT_COMBAT_PLACEHOLDER_INTERACTIONS_STATUS.md`
@@ -95,6 +98,7 @@ Architecture and design references:
 - Random map generation
 - Formal Combat / Event room gameplay
 - Formal Event option selection
+- Formal Event option effect execution
 - Combat actor/enemy systems
 - Meta progression
 
@@ -115,6 +119,13 @@ Architecture and design references:
 - `gt.ResolveCombat [Result]`
 - `gt.RunDemo`
 
+Current placeholder data ids:
+
+- `gt.ChooseEventOption Event_DebugOption_Continue`
+- `gt.ChooseEventOption Event_DebugOption_Scout`
+- `gt.ResolveCombat Combat_DebugResult_Success`
+- `gt.ResolveCombat Combat_DebugResult_Retreat`
+
 ## Next Suggested Stage
 
-Review and tag the Room Content / Rule Registry milestone, then prepare formal Event option and Combat result data boundaries without adding full gameplay systems.
+Review and tag the Event Option / Combat Result Data milestone, then prepare the next data boundary without adding full combat, rewards, inventory, or UI systems.

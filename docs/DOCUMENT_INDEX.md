@@ -5,6 +5,7 @@
 | Document | Role |
 |---|---|
 | `PROJECT_CONTENT_TRACKING.md` | Repository content and milestone tracking |
+| `EDITOR_MANUAL_PLAY_VALIDATION_STATUS.md` | Editor manual play console command status |
 | `MAP_ROOM_RULE_BOUNDARY_STATUS.md` | Map / Room Rule Boundary Preparation status |
 | `EDITOR_PLAYABLE_PROTOTYPE_STATUS.md` | Editor-facing debug entrypoints status |
 | `GAMEPLAY_LOGIC_MVP_STATUS.md` | Gameplay logic MVP validation status |
@@ -34,11 +35,11 @@
 
 ## Active Branch
 
-`feature/map-room-rule-boundary`
+`feature/editor-manual-play-validation`
 
 ## Current Validated Milestone
 
-Map / Room Rule Boundary Preparation.
+Editor Manual Play Validation.
 
 Latest known validation result:
 
@@ -74,13 +75,14 @@ Count=108
 
 1. `README.md`
 2. `PROJECT_CONTENT_TRACKING.md`
-3. `MAP_ROOM_RULE_BOUNDARY_STATUS.md`
-4. `EDITOR_PLAYABLE_PROTOTYPE_STATUS.md`
-5. `GAMEPLAY_LOGIC_MVP_STATUS.md`
-6. `UE_FOUNDATION_STATUS.md`
-7. `REFACTOR_ARCHITECTURE.md`
-8. `UE_REFACTOR_IMPLEMENTATION.md`
-9. `可行性判断.md` and `难度判断.md` as design references
+3. `EDITOR_MANUAL_PLAY_VALIDATION_STATUS.md`
+4. `MAP_ROOM_RULE_BOUNDARY_STATUS.md`
+5. `EDITOR_PLAYABLE_PROTOTYPE_STATUS.md`
+6. `GAMEPLAY_LOGIC_MVP_STATUS.md`
+7. `UE_FOUNDATION_STATUS.md`
+8. `REFACTOR_ARCHITECTURE.md`
+9. `UE_REFACTOR_IMPLEMENTATION.md`
+10. `可行性判断.md` and `难度判断.md` as design references
 
 ## Current Implementation Boundary
 
@@ -91,6 +93,7 @@ Implemented and validated:
 - Gameplay Logic MVP is implemented.
 - Editor-facing debug manual entrypoints are implemented.
 - Map / Room Rule Boundary Preparation is implemented.
+- Editor Manual Play Validation console commands are implemented.
 - Runtime smoke baseline is `108/108 pass`.
 
 Not implemented yet:

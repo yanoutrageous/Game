@@ -4,7 +4,7 @@ Graytail is a minesweeper-style extraction game prototype. The repository now pr
 
 ## Current Active Branch
 
-`feature/map-room-rule-boundary`
+`feature/editor-manual-play-validation`
 
 ## Current Milestones
 
@@ -23,6 +23,7 @@ Graytail is a minesweeper-style extraction game prototype. The repository now pr
 - Gameplay Logic MVP is implemented.
 - Editor-facing debug manual entrypoints are implemented.
 - Map / Room Rule Boundary Preparation is implemented without expanding formal gameplay.
+- Editor Manual Play Validation console commands are implemented.
 - Runtime smoke baseline is `108/108 pass`.
 - Latest repository tracking document: `docs/PROJECT_CONTENT_TRACKING.md`.
 
@@ -56,6 +57,7 @@ Start with `docs/DOCUMENT_INDEX.md`.
 Current status documents:
 
 - `docs/PROJECT_CONTENT_TRACKING.md`
+- `docs/EDITOR_MANUAL_PLAY_VALIDATION_STATUS.md`
 - `docs/MAP_ROOM_RULE_BOUNDARY_STATUS.md`
 - `docs/EDITOR_PLAYABLE_PROTOTYPE_STATUS.md`
 - `docs/GAMEPLAY_LOGIC_MVP_STATUS.md`
@@ -84,6 +86,16 @@ Architecture and design references:
 - Random map generation
 - Formal Combat / Event room gameplay
 - Meta progression
+
+## Editor Manual Console Commands
+
+- `gt.StartRun [Seed] [Width Height]`
+- `gt.Move X Y`
+- `gt.Scan X Y`
+- `gt.Extract`
+- `gt.Snapshot`
+- `gt.Minimap`
+- `gt.Events`
 
 ## Next Suggested Stage
 

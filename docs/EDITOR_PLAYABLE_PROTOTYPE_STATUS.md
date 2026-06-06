@@ -59,6 +59,10 @@ feature/editor-playable-prototype
 
 editor-debug-entrypoints
 
+## Follow-up Milestone
+
+Map / Room Rule Boundary Preparation is recorded in `docs/MAP_ROOM_RULE_BOUNDARY_STATUS.md` and tagged as `map-room-rule-boundary`.
+
 ## Notes
 
 This milestone represents an Editor-facing debug-operation layer over the validated gameplay logic MVP. It is still not a full player-facing UI prototype.

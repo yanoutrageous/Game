@@ -5,6 +5,7 @@
 | Document | Role |
 |---|---|
 | `PROJECT_CONTENT_TRACKING.md` | Repository content and milestone tracking |
+| `MAP_ROOM_RULE_BOUNDARY_STATUS.md` | Map / Room Rule Boundary Preparation status |
 | `EDITOR_PLAYABLE_PROTOTYPE_STATUS.md` | Editor-facing debug entrypoints status |
 | `GAMEPLAY_LOGIC_MVP_STATUS.md` | Gameplay logic MVP validation status |
 | `UE_FOUNDATION_STATUS.md` | UE foundation validation status |
@@ -29,14 +30,15 @@
 | `ue-foundation-validated` | Validated UE foundation |
 | `gameplay-logic-mvp` | Validated logic-level playable MVP |
 | `editor-debug-entrypoints` | Validated editor-facing debug manual entrypoints |
+| `map-room-rule-boundary` | Validated map / room rule boundary preparation |
 
 ## Active Branch
 
-`feature/editor-playable-prototype`
+`feature/map-room-rule-boundary`
 
 ## Current Validated Milestone
 
-Editor-facing Debug Entry Points.
+Map / Room Rule Boundary Preparation.
 
 Latest known validation result:
 
@@ -72,12 +74,13 @@ Count=108
 
 1. `README.md`
 2. `PROJECT_CONTENT_TRACKING.md`
-3. `EDITOR_PLAYABLE_PROTOTYPE_STATUS.md`
-4. `GAMEPLAY_LOGIC_MVP_STATUS.md`
-5. `UE_FOUNDATION_STATUS.md`
-6. `REFACTOR_ARCHITECTURE.md`
-7. `UE_REFACTOR_IMPLEMENTATION.md`
-8. `可行性判断.md` and `难度判断.md` as design references
+3. `MAP_ROOM_RULE_BOUNDARY_STATUS.md`
+4. `EDITOR_PLAYABLE_PROTOTYPE_STATUS.md`
+5. `GAMEPLAY_LOGIC_MVP_STATUS.md`
+6. `UE_FOUNDATION_STATUS.md`
+7. `REFACTOR_ARCHITECTURE.md`
+8. `UE_REFACTOR_IMPLEMENTATION.md`
+9. `可行性判断.md` and `难度判断.md` as design references
 
 ## Current Implementation Boundary
 
@@ -87,6 +90,7 @@ Implemented and validated:
 - UE project shell exists under `UE/Graytail`.
 - Gameplay Logic MVP is implemented.
 - Editor-facing debug manual entrypoints are implemented.
+- Map / Room Rule Boundary Preparation is implemented.
 - Runtime smoke baseline is `108/108 pass`.
 
 Not implemented yet:
@@ -103,4 +107,5 @@ Not implemented yet:
 - Effect interpreter
 - ModifierSystem
 - Random map generation
+- Real map mode expansion
 - Meta progression

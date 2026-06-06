@@ -4,7 +4,7 @@ Graytail is a minesweeper-style extraction game prototype. The repository now pr
 
 ## Current Active Branch
 
-`feature/editor-playable-prototype`
+`feature/map-room-rule-boundary`
 
 ## Current Milestones
 
@@ -14,6 +14,7 @@ Graytail is a minesweeper-style extraction game prototype. The repository now pr
 | UE Foundation | `ue-foundation-validated` | Validated |
 | Gameplay Logic MVP | `gameplay-logic-mvp` | Validated |
 | Editor Debug Entry Points | `editor-debug-entrypoints` | Validated |
+| Map / Room Rule Boundary Preparation | `map-room-rule-boundary` | Validated |
 
 ## Current Validated Scope
 
@@ -21,6 +22,7 @@ Graytail is a minesweeper-style extraction game prototype. The repository now pr
 - Unreal Engine project exists under `UE/Graytail`.
 - Gameplay Logic MVP is implemented.
 - Editor-facing debug manual entrypoints are implemented.
+- Map / Room Rule Boundary Preparation is implemented without expanding formal gameplay.
 - Runtime smoke baseline is `108/108 pass`.
 - Latest repository tracking document: `docs/PROJECT_CONTENT_TRACKING.md`.
 
@@ -54,6 +56,7 @@ Start with `docs/DOCUMENT_INDEX.md`.
 Current status documents:
 
 - `docs/PROJECT_CONTENT_TRACKING.md`
+- `docs/MAP_ROOM_RULE_BOUNDARY_STATUS.md`
 - `docs/EDITOR_PLAYABLE_PROTOTYPE_STATUS.md`
 - `docs/GAMEPLAY_LOGIC_MVP_STATUS.md`
 - `docs/UE_FOUNDATION_STATUS.md`
@@ -79,8 +82,9 @@ Architecture and design references:
 - Effect interpreter
 - ModifierSystem
 - Random map generation
+- Formal Combat / Event room gameplay
 - Meta progression
 
 ## Next Suggested Stage
 
-Editor-facing manual play validation, then decide whether to build a lightweight debug UI or a minimal UMG prototype.
+Prepare the next gameplay expansion by wiring real map modes, room content/rule data, and Event/Combat room type dispatch behind the new boundaries.

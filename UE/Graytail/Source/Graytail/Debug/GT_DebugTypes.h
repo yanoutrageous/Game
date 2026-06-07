@@ -70,6 +70,42 @@ struct GRAYTAIL_API FGT_DebugRunSnapshot
 	FName LastCombatResultId = NAME_None;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	bool bRunSummaryAvailable = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	FName RunSummaryOutcome = NAME_None;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	bool bRunSummaryExtracted = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	int32 RunSummaryFinalPlayerX = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	int32 RunSummaryFinalPlayerY = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	int32 RunSummaryTotalEventCount = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	int32 RunSummarySeed = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	int32 RunSummaryMapWidth = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	int32 RunSummaryMapHeight = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	bool bRunSummaryCombatActive = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	bool bRunSummaryCombatResolved = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	FName RunSummaryLastCombatResultId = NAME_None;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
 	bool bCurrentRoomTriggered = false;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")

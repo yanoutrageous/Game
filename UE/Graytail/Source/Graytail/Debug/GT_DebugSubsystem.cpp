@@ -139,6 +139,28 @@ namespace
 		return FString::Join(Parts, TEXT(", "));
 	}
 
+	FString BuildRunSummaryText(const FGT_RunSummary& Summary)
+	{
+		if (!Summary.bSummaryAvailable)
+		{
+			return TEXT("SummaryAvailable=false Outcome=None NoRunSummary");
+		}
+
+		return FString::Printf(
+			TEXT("SummaryAvailable=true Outcome=%s Extracted=%s FinalPlayer=(%d,%d) TotalEventCount=%d Seed=%d Map=%dx%d CombatActive=%s CombatResolved=%s LastCombatResult=%s"),
+			*Summary.Outcome.ToString(),
+			Summary.bExtracted ? TEXT("true") : TEXT("false"),
+			Summary.FinalPlayerX,
+			Summary.FinalPlayerY,
+			Summary.TotalEventCount,
+			Summary.Seed,
+			Summary.MapWidth,
+			Summary.MapHeight,
+			Summary.bCombatActive ? TEXT("true") : TEXT("false"),
+			Summary.bCombatResolved ? TEXT("true") : TEXT("false"),
+			*Summary.LastCombatResultId.ToString());
+	}
+
 	bool HasDebugEventSummaryType(const TArray<FGT_DebugEventSummary>& EventSummary, FName EventType)
 	{
 		return EventSummary.ContainsByPredicate([EventType](const FGT_DebugEventSummary& Summary)
@@ -383,9 +405,26 @@ bool UGT_DebugSubsystem::GetDebugRunSnapshot(FGT_DebugRunSnapshot& OutSnapshot) 
 		OutSnapshot.LastCombatResultId = CombatState.LastCombatResultId;
 	}
 
+	FGT_RunSummary RunSummary;
+	if (RunContext && RunContext->GetRunSummarySnapshot(RunSummary))
+	{
+		OutSnapshot.bRunSummaryAvailable = RunSummary.bSummaryAvailable;
+		OutSnapshot.RunSummaryOutcome = RunSummary.Outcome;
+		OutSnapshot.bRunSummaryExtracted = RunSummary.bExtracted;
+		OutSnapshot.RunSummaryFinalPlayerX = RunSummary.FinalPlayerX;
+		OutSnapshot.RunSummaryFinalPlayerY = RunSummary.FinalPlayerY;
+		OutSnapshot.RunSummaryTotalEventCount = RunSummary.TotalEventCount;
+		OutSnapshot.RunSummarySeed = RunSummary.Seed;
+		OutSnapshot.RunSummaryMapWidth = RunSummary.MapWidth;
+		OutSnapshot.RunSummaryMapHeight = RunSummary.MapHeight;
+		OutSnapshot.bRunSummaryCombatActive = RunSummary.bCombatActive;
+		OutSnapshot.bRunSummaryCombatResolved = RunSummary.bCombatResolved;
+		OutSnapshot.RunSummaryLastCombatResultId = RunSummary.LastCombatResultId;
+	}
+
 	OutSnapshot.EventCount = EventBus ? EventBus->GetEventCount() : 0;
 	OutSnapshot.Summary = FString::Printf(
-		TEXT("RunState=%d, Player=(%d,%d), Size=%dx%d, EventCount=%d, RoomBaseType=%d, RoomContentId=%s, RoomRuleId=%s, RoomContentName=%s, RoomRuleName=%s, AvailableEventOptions=%s, AvailableCombatResults=%s, CombatActive=%s, DummyEnemyHp=%d, CombatResolved=%s, LastCombatResult=%s, RoomTriggered=%s, RoomResolved=%s"),
+		TEXT("RunState=%d, Player=(%d,%d), Size=%dx%d, EventCount=%d, RoomBaseType=%d, RoomContentId=%s, RoomRuleId=%s, RoomContentName=%s, RoomRuleName=%s, AvailableEventOptions=%s, AvailableCombatResults=%s, CombatActive=%s, DummyEnemyHp=%d, CombatResolved=%s, LastCombatResult=%s, SummaryAvailable=%s, SummaryOutcome=%s, SummaryFinalPlayer=(%d,%d), SummaryTotalEventCount=%d, RoomTriggered=%s, RoomResolved=%s"),
 		static_cast<int32>(OutSnapshot.RunState),
 		OutSnapshot.PlayerX,
 		OutSnapshot.PlayerY,
@@ -403,6 +442,11 @@ bool UGT_DebugSubsystem::GetDebugRunSnapshot(FGT_DebugRunSnapshot& OutSnapshot) 
 		OutSnapshot.DummyEnemyHp,
 		OutSnapshot.bCombatResolved ? TEXT("true") : TEXT("false"),
 		*OutSnapshot.LastCombatResultId.ToString(),
+		OutSnapshot.bRunSummaryAvailable ? TEXT("true") : TEXT("false"),
+		*OutSnapshot.RunSummaryOutcome.ToString(),
+		OutSnapshot.RunSummaryFinalPlayerX,
+		OutSnapshot.RunSummaryFinalPlayerY,
+		OutSnapshot.RunSummaryTotalEventCount,
 		OutSnapshot.bCurrentRoomTriggered ? TEXT("true") : TEXT("false"),
 		OutSnapshot.bCurrentRoomResolved ? TEXT("true") : TEXT("false"));
 	return true;
@@ -515,6 +559,7 @@ void UGT_DebugSubsystem::GetDebugCommandHelpLines(TArray<FString>& OutLines) con
 	OutLines.Add(TEXT("  gt.Move X Y - Move to an adjacent coordinate through the command path."));
 	OutLines.Add(TEXT("  gt.Scan X Y - Scan a cell through the command path."));
 	OutLines.Add(TEXT("  gt.Extract - Attempt extraction at the current cell."));
+	OutLines.Add(TEXT("  gt.Summary - Show the latest successful extract summary if one is available."));
 	OutLines.Add(TEXT("  gt.Snapshot - Log the raw debug run snapshot."));
 	OutLines.Add(TEXT("  gt.Minimap - Log a text minimap."));
 	OutLines.Add(TEXT("  gt.Events - Log event type counts and recent payload fields."));
@@ -525,10 +570,11 @@ void UGT_DebugSubsystem::GetDebugCommandHelpLines(TArray<FString>& OutLines) con
 	OutLines.Add(TEXT("    Example: gt.ResolveCombat Combat_DebugResult_Success"));
 	OutLines.Add(TEXT("    Example: gt.ResolveCombat Combat_DebugResult_Retreat"));
 	OutLines.Add(TEXT("  gt.Attack - Attack active dummy combat once through the command path."));
-	OutLines.Add(TEXT("  gt.RunDemo - Run a fixed Event and Combat placeholder demo path."));
+	OutLines.Add(TEXT("  gt.RunDemo - Run a fixed Event, Combat, Attack, Extract, and Summary demo path."));
 	OutLines.Add(TEXT("Recommended manual flow: gt.StartRun -> gt.Minimap -> gt.Move 1 0 -> gt.Scan 1 1 -> gt.Status -> gt.Room."));
 	OutLines.Add(TEXT("Event demo path: gt.StartRun -> gt.Move 1 0 -> gt.Move 2 0 -> gt.Move 3 0 -> gt.Move 4 0 -> gt.Move 4 1 -> gt.ChooseEventOption Event_DebugOption_Continue -> gt.Events."));
 	OutLines.Add(TEXT("Combat demo path: gt.StartRun -> gt.Move 0 1 -> gt.Move 0 2 -> gt.Move 0 3 -> gt.Move 0 4 -> gt.Move 1 4 -> gt.Attack -> gt.Events."));
+	OutLines.Add(TEXT("Extract summary path: gt.RunDemo or move to Exit (9,9) -> gt.Extract -> gt.Summary."));
 }
 
 bool UGT_DebugSubsystem::GetDebugStatusText(FString& OutStatus) const
@@ -543,7 +589,7 @@ bool UGT_DebugSubsystem::GetDebugStatusText(FString& OutStatus) const
 	TArray<FGT_DebugEventSummary> EventSummary;
 	GetDebugEventSummary(EventSummary);
 	OutStatus = FString::Printf(
-		TEXT("gt.Status: RunState=%s PlayerPosition=(%d,%d) RoomBaseType=%s RoomContentId=%s RoomRuleId=%s ContentName=%s RuleName=%s ContentDescription=%s RuleDescription=%s EventOptions=%s CombatResults=%s CombatActive=%s DummyEnemyHp=%d CombatResolved=%s LastCombatResult=%s Triggered=%s Resolved=%s EventCount=%d Events={%s}"),
+		TEXT("gt.Status: RunState=%s PlayerPosition=(%d,%d) RoomBaseType=%s RoomContentId=%s RoomRuleId=%s ContentName=%s RuleName=%s ContentDescription=%s RuleDescription=%s EventOptions=%s CombatResults=%s CombatActive=%s DummyEnemyHp=%d CombatResolved=%s LastCombatResult=%s SummaryAvailable=%s SummaryOutcome=%s SummaryFinalPlayer=(%d,%d) SummaryTotalEventCount=%d Triggered=%s Resolved=%s EventCount=%d Events={%s}"),
 		*GetRunStateText(Snapshot.RunState),
 		Snapshot.PlayerX,
 		Snapshot.PlayerY,
@@ -560,6 +606,11 @@ bool UGT_DebugSubsystem::GetDebugStatusText(FString& OutStatus) const
 		Snapshot.DummyEnemyHp,
 		Snapshot.bCombatResolved ? TEXT("true") : TEXT("false"),
 		*Snapshot.LastCombatResultId.ToString(),
+		Snapshot.bRunSummaryAvailable ? TEXT("true") : TEXT("false"),
+		*Snapshot.RunSummaryOutcome.ToString(),
+		Snapshot.RunSummaryFinalPlayerX,
+		Snapshot.RunSummaryFinalPlayerY,
+		Snapshot.RunSummaryTotalEventCount,
 		Snapshot.bCurrentRoomTriggered ? TEXT("true") : TEXT("false"),
 		Snapshot.bCurrentRoomResolved ? TEXT("true") : TEXT("false"),
 		Snapshot.EventCount,
@@ -612,6 +663,22 @@ bool UGT_DebugSubsystem::GetDebugRoomText(FString& OutRoomText) const
 		Snapshot.bCurrentRoomResolved ? TEXT("true") : TEXT("false"),
 		*Hint);
 	return true;
+}
+
+bool UGT_DebugSubsystem::GetDebugRunSummaryText(FString& OutSummaryText) const
+{
+	const UGT_RunSubsystem* RunSubsystem = GetRunSubsystem();
+	const UGT_RunContext* RunContext = RunSubsystem ? RunSubsystem->GetCurrentRunContext() : nullptr;
+	if (!RunContext)
+	{
+		OutSummaryText = TEXT("gt.Summary: SummaryAvailable=false Outcome=None NoRunSummary Reason=No active run. Start with gt.StartRun.");
+		return false;
+	}
+
+	FGT_RunSummary RunSummary;
+	const bool bHasSummary = RunContext->GetRunSummarySnapshot(RunSummary);
+	OutSummaryText = FString::Printf(TEXT("gt.Summary: %s"), *BuildRunSummaryText(RunSummary));
+	return bHasSummary;
 }
 
 bool UGT_DebugSubsystem::DebugRunDemo(TArray<FString>& OutLogLines, FGT_DebugRunSnapshot& OutSnapshot)
@@ -677,6 +744,31 @@ bool UGT_DebugSubsystem::DebugRunDemo(TArray<FString>& OutLogLines, FGT_DebugRun
 	AppendStep(TEXT("gt.RunDemo Attack"), bAttack, OutSnapshot);
 	bDemoOk = bDemoOk && bAttack;
 
+	const TArray<FIntPoint> ExitPath = {
+		FIntPoint(2, 4),
+		FIntPoint(3, 4),
+		FIntPoint(4, 4),
+		FIntPoint(5, 4),
+		FIntPoint(6, 4),
+		FIntPoint(7, 4),
+		FIntPoint(8, 4),
+		FIntPoint(9, 4),
+		FIntPoint(9, 5),
+		FIntPoint(9, 6),
+		FIntPoint(9, 7),
+		FIntPoint(9, 8),
+		FIntPoint(9, 9)
+	};
+	bDemoOk = bDemoOk && MovePath(TEXT("gt.RunDemo ExitPath"), ExitPath);
+
+	const bool bExtract = bDemoOk && DebugExtract(OutSnapshot);
+	AppendStep(TEXT("gt.RunDemo Extract"), bExtract, OutSnapshot);
+	bDemoOk = bDemoOk && bExtract;
+
+	FString RunSummaryText;
+	const bool bHasRunSummary = GetDebugRunSummaryText(RunSummaryText);
+	OutLogLines.Add(RunSummaryText);
+
 	TArray<FGT_DebugEventSummary> EventSummary;
 	GetDebugEventSummary(EventSummary);
 	const bool bHasEventResolved = HasDebugEventSummaryType(EventSummary, GTDebugEventType_EventResolved);
@@ -690,7 +782,7 @@ bool UGT_DebugSubsystem::DebugRunDemo(TArray<FString>& OutLogLines, FGT_DebugRun
 	FString StatusText;
 	GetDebugStatusText(StatusText);
 	OutLogLines.Add(StatusText);
-	return bDemoOk && bHasEventResolved && bHasCombatResolved;
+	return bDemoOk && bHasEventResolved && bHasCombatResolved && bHasRunSummary;
 }
 
 void UGT_DebugSubsystem::GetCurrentMiniMapDebugCells(TArray<FGT_MiniMapCellViewData>& OutCells, int32& OutWidth, int32& OutHeight) const

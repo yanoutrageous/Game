@@ -5,6 +5,7 @@
 namespace
 {
 	const FName GTCombatResult_Success(TEXT("Combat_DebugResult_Success"));
+	const FName GTRunSummaryOutcome_Extracted(TEXT("Extracted"));
 }
 
 void UGT_RunContext::InitializeRun(int32 InSeed, int32 InWidth, int32 InHeight)
@@ -27,6 +28,7 @@ void UGT_RunContext::InitializeRun(int32 InSeed, int32 InWidth, int32 InHeight)
 	TruthMap = MapResult.TruthMap;
 	PlayerIntelMap.Initialize(MapWidth, MapHeight, FName(TEXT("Player")));
 	CombatRuntimeState = FGT_CombatRuntimeState();
+	RunSummary = FGT_RunSummary();
 
 	PlayerActorId = FName(TEXT("Player"));
 
@@ -58,6 +60,7 @@ void UGT_RunContext::ResetRun()
 	ActorStates.Reset();
 	PlayerActorId = NAME_None;
 	CombatRuntimeState = FGT_CombatRuntimeState();
+	RunSummary = FGT_RunSummary();
 }
 
 FGuid UGT_RunContext::GetRunId() const
@@ -311,4 +314,40 @@ bool UGT_RunContext::GetCombatStateSnapshot(FGT_CombatRuntimeState& OutState) co
 		|| CombatRuntimeState.bCombatResolved
 		|| CombatRuntimeState.CombatX != INDEX_NONE
 		|| CombatRuntimeState.CombatY != INDEX_NONE;
+}
+
+bool UGT_RunContext::GenerateExtractSummary(int32 TotalEventCount)
+{
+	if (!IsRunSucceeded())
+	{
+		return false;
+	}
+
+	int32 PlayerX = 0;
+	int32 PlayerY = 0;
+	if (!TryGetPlayerPosition(PlayerX, PlayerY))
+	{
+		return false;
+	}
+
+	RunSummary = FGT_RunSummary();
+	RunSummary.bSummaryAvailable = true;
+	RunSummary.Outcome = GTRunSummaryOutcome_Extracted;
+	RunSummary.bExtracted = true;
+	RunSummary.FinalPlayerX = PlayerX;
+	RunSummary.FinalPlayerY = PlayerY;
+	RunSummary.TotalEventCount = TotalEventCount;
+	RunSummary.Seed = Seed;
+	RunSummary.MapWidth = MapWidth;
+	RunSummary.MapHeight = MapHeight;
+	RunSummary.bCombatActive = CombatRuntimeState.bCombatActive;
+	RunSummary.bCombatResolved = CombatRuntimeState.bCombatResolved;
+	RunSummary.LastCombatResultId = CombatRuntimeState.LastCombatResultId;
+	return true;
+}
+
+bool UGT_RunContext::GetRunSummarySnapshot(FGT_RunSummary& OutSummary) const
+{
+	OutSummary = RunSummary;
+	return RunSummary.bSummaryAvailable;
 }

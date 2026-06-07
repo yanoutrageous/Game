@@ -179,6 +179,7 @@ bool UGT_CommandProcessor::ProcessExtractCommand(const FGT_Command& Command)
 	}
 
 	PublishCommandEvent(GTEventType_RunSucceeded, Command.SourceActorId, EventTargetActorId, PlayerX, PlayerY, true);
+	RunContext->GenerateExtractSummary(EventBus ? EventBus->GetEventCount() : 0);
 	return true;
 }
 

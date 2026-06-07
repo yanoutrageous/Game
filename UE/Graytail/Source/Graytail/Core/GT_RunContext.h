@@ -46,6 +46,48 @@ struct GRAYTAIL_API FGT_CombatRuntimeState
 	FName LastCombatResultId = NAME_None;
 };
 
+USTRUCT(BlueprintType)
+struct GRAYTAIL_API FGT_RunSummary
+{
+	GENERATED_BODY()
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run")
+	bool bSummaryAvailable = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run")
+	FName Outcome = NAME_None;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run")
+	bool bExtracted = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run")
+	int32 FinalPlayerX = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run")
+	int32 FinalPlayerY = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run")
+	int32 TotalEventCount = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run")
+	int32 Seed = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run")
+	int32 MapWidth = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run")
+	int32 MapHeight = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run")
+	bool bCombatActive = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run")
+	bool bCombatResolved = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run")
+	FName LastCombatResultId = NAME_None;
+};
+
 UCLASS(BlueprintType)
 class GRAYTAIL_API UGT_RunContext : public UObject
 {
@@ -111,6 +153,8 @@ public:
 	bool AttackDummyCombat(FGT_CombatRuntimeState& OutState);
 	bool ResolveDummyCombat(FName ResultId, FGT_CombatRuntimeState& OutState);
 	bool GetCombatStateSnapshot(FGT_CombatRuntimeState& OutState) const;
+	bool GenerateExtractSummary(int32 TotalEventCount);
+	bool GetRunSummarySnapshot(FGT_RunSummary& OutSummary) const;
 
 private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run", meta = (AllowPrivateAccess = "true"))
@@ -145,4 +189,7 @@ private:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat", meta = (AllowPrivateAccess = "true"))
 	FGT_CombatRuntimeState CombatRuntimeState;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run", meta = (AllowPrivateAccess = "true"))
+	FGT_RunSummary RunSummary;
 };

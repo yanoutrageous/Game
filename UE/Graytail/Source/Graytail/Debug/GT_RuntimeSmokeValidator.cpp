@@ -69,12 +69,19 @@ namespace
 	const FName GTCheck_ExitDoesNotWinRunYet(TEXT("ExitDoesNotWinRunYet"));
 	const FName GTCheck_ExtractRejectedAwayFromExit(TEXT("ExtractRejectedAwayFromExit"));
 	const FName GTCheck_ExtractAwayFromExitCommandFailed(TEXT("ExtractAwayFromExitCommandFailed"));
+	const FName GTCheck_ExtractAwayFromExitNoRunSummary(TEXT("ExtractAwayFromExitNoRunSummary"));
 	const FName GTCheck_MoveToExitAccepted(TEXT("MoveToExitAccepted"));
 	const FName GTCheck_ExitFoundBeforeExtract(TEXT("ExitFoundBeforeExtract"));
 	const FName GTCheck_RunStillActiveAtExitBeforeExtract(TEXT("RunStillActiveAtExitBeforeExtract"));
 	const FName GTCheck_ExtractAcceptedAtExit(TEXT("ExtractAcceptedAtExit"));
 	const FName GTCheck_RunSucceededAfterExtract(TEXT("RunSucceededAfterExtract"));
 	const FName GTCheck_RunSucceededEvent(TEXT("RunSucceededEvent"));
+	const FName GTCheck_RunSummaryAvailableAfterExtract(TEXT("RunSummaryAvailableAfterExtract"));
+	const FName GTCheck_RunSummaryOutcomeAfterExtract(TEXT("RunSummaryOutcomeAfterExtract"));
+	const FName GTCheck_RunSummaryFinalPositionAfterExtract(TEXT("RunSummaryFinalPositionAfterExtract"));
+	const FName GTCheck_RunSummaryEventCountAfterExtract(TEXT("RunSummaryEventCountAfterExtract"));
+	const FName GTCheck_RunSummaryPreservedAfterRejectedExtract(TEXT("RunSummaryPreservedAfterRejectedExtract"));
+	const FName GTCheck_RunSummaryClearedAfterStart(TEXT("RunSummaryClearedAfterStart"));
 	const FName GTCheck_MoveRejectedAfterRunSucceeded(TEXT("MoveRejectedAfterRunSucceeded"));
 	const FName GTCheck_ScanRejectedAfterRunSucceeded(TEXT("ScanRejectedAfterRunSucceeded"));
 	const FName GTCheck_ExtractRejectedAfterRunSucceeded(TEXT("ExtractRejectedAfterRunSucceeded"));
@@ -111,7 +118,9 @@ namespace
 	const FName GTCheck_ScenarioSuccessPostSuccessScanRejected(TEXT("ScenarioSuccessPostSuccessScanRejected"));
 	const FName GTCheck_ScenarioSuccessPostSuccessExtractRejected(TEXT("ScenarioSuccessPostSuccessExtractRejected"));
 	const FName GTCheck_DebugStartNewRunAccepted(TEXT("DebugStartNewRunAccepted"));
+	const FName GTCheck_DebugSummaryNoRunSafe(TEXT("DebugSummaryNoRunSafe"));
 	const FName GTCheck_DebugSnapshotAfterStart(TEXT("DebugSnapshotAfterStart"));
+	const FName GTCheck_DebugSummaryAfterStartUnavailable(TEXT("DebugSummaryAfterStartUnavailable"));
 	const FName GTCheck_DebugMoveAccepted(TEXT("DebugMoveAccepted"));
 	const FName GTCheck_DebugSnapshotAfterMove(TEXT("DebugSnapshotAfterMove"));
 	const FName GTCheck_DebugScanAccepted(TEXT("DebugScanAccepted"));
@@ -120,6 +129,8 @@ namespace
 	const FName GTCheck_DebugMoveToExitPathAccepted(TEXT("DebugMoveToExitPathAccepted"));
 	const FName GTCheck_DebugExtractAcceptedAtExit(TEXT("DebugExtractAcceptedAtExit"));
 	const FName GTCheck_DebugSnapshotAfterExtract(TEXT("DebugSnapshotAfterExtract"));
+	const FName GTCheck_DebugSummaryAfterExtract(TEXT("DebugSummaryAfterExtract"));
+	const FName GTCheck_DebugStatusShowsSummaryAfterExtract(TEXT("DebugStatusShowsSummaryAfterExtract"));
 	const FName GTCheck_DebugMoveRejectedAfterSuccess(TEXT("DebugMoveRejectedAfterSuccess"));
 	const FName GTCheck_DebugEventSummaryAvailable(TEXT("DebugEventSummaryAvailable"));
 	const FName GTCheck_DebugEventPlaceholderMoveAccepted(TEXT("DebugEventPlaceholderMoveAccepted"));
@@ -147,6 +158,7 @@ namespace
 	const FName GTCheck_DebugManualPlayRoomAfterStart(TEXT("DebugManualPlayRoomAfterStart"));
 	const FName GTCheck_DebugManualPlayRunDemoCompleted(TEXT("DebugManualPlayRunDemoCompleted"));
 	const FName GTCheck_DebugManualPlayRunDemoEvents(TEXT("DebugManualPlayRunDemoEvents"));
+	const FName GTCheck_DebugManualPlayRunDemoSummary(TEXT("DebugManualPlayRunDemoSummary"));
 	const FName GTCheck_RoomRegistryEventContent(TEXT("RoomRegistryEventContent"));
 	const FName GTCheck_RoomRegistryEventRule(TEXT("RoomRegistryEventRule"));
 	const FName GTCheck_RoomRegistryCombatContent(TEXT("RoomRegistryCombatContent"));
@@ -202,6 +214,7 @@ namespace
 	const FName GTCombatResult_Success(TEXT("Combat_DebugResult_Success"));
 	const FName GTCombatResult_Retreat(TEXT("Combat_DebugResult_Retreat"));
 	const FName GTCombatResult_Invalid(TEXT("Combat_DebugResult_Invalid"));
+	const FName GTRunSummaryOutcome_Extracted(TEXT("Extracted"));
 	const FName GTActorId_Player(TEXT("Player"));
 }
 
@@ -365,6 +378,7 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		&& HasHelpLineContaining(TEXT("gt.Commands"))
 		&& HasHelpLineContaining(TEXT("gt.Status"))
 		&& HasHelpLineContaining(TEXT("gt.Room"))
+		&& HasHelpLineContaining(TEXT("gt.Summary"))
 		&& HasHelpLineContaining(TEXT("gt.Attack"))
 		&& HasHelpLineContaining(TEXT("gt.RunDemo"));
 	AddCheck(
@@ -384,6 +398,19 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		GTCheck_DebugManualPlayStatusNoRunSafe,
 		bManualPlayStatusNoRunSafe,
 		ManualPlayStatusTextBeforeRun);
+
+	FString ManualPlaySummaryTextBeforeRun;
+	const bool bManualPlaySummaryBeforeRunAvailable = IsValid(DebugSubsystem)
+		&& DebugSubsystem->GetDebugRunSummaryText(ManualPlaySummaryTextBeforeRun);
+	const bool bManualPlaySummaryNoRunSafe = IsValid(DebugSubsystem)
+		&& !bManualPlaySummaryBeforeRunAvailable
+		&& ManualPlaySummaryTextBeforeRun.Contains(TEXT("SummaryAvailable=false"))
+		&& ManualPlaySummaryTextBeforeRun.Contains(TEXT("NoRunSummary"));
+	AddCheck(
+		OutResults,
+		GTCheck_DebugSummaryNoRunSafe,
+		bManualPlaySummaryNoRunSafe,
+		ManualPlaySummaryTextBeforeRun);
 
 	RunSubsystem->StartNewRun(12345, 10, 10);
 
@@ -936,6 +963,16 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 			CommandFailedCountBeforeAwayExtract,
 			CommandFailedCountAfterAwayExtract));
 
+	FGT_RunSummary AwayExtractRunSummary;
+	const bool bAwayExtractSummaryAvailable = RunContext && RunContext->GetRunSummarySnapshot(AwayExtractRunSummary);
+	AddCheck(
+		OutResults,
+		GTCheck_ExtractAwayFromExitNoRunSummary,
+		!bAwayExtractSummaryAvailable,
+		FString::Printf(TEXT("Away extract summary available=%s outcome=%s."),
+			bAwayExtractSummaryAvailable ? TEXT("true") : TEXT("false"),
+			*AwayExtractRunSummary.Outcome.ToString()));
+
 	UGT_RunSubsystem* ActiveRunSubsystem = RunSubsystem;
 	auto SubmitPlayerMoveTo = [ActiveRunSubsystem](int32 TargetX, int32 TargetY) -> bool
 	{
@@ -1118,6 +1155,50 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		bRunSucceededEventOk,
 		FString::Printf(TEXT("RunSucceeded events %d->%d."), RunSucceededCountBeforeExtract, RunSucceededCountAfterExtract));
 
+	FGT_RunSummary ExtractRunSummary;
+	const bool bExtractRunSummaryAvailable = RunContext && RunContext->GetRunSummarySnapshot(ExtractRunSummary);
+	AddCheck(
+		OutResults,
+		GTCheck_RunSummaryAvailableAfterExtract,
+		bExtractRunSummaryAvailable,
+		FString::Printf(TEXT("Extract summary available=%s outcome=%s."),
+			bExtractRunSummaryAvailable ? TEXT("true") : TEXT("false"),
+			*ExtractRunSummary.Outcome.ToString()));
+
+	const bool bExtractRunSummaryOutcomeOk = bExtractRunSummaryAvailable
+		&& ExtractRunSummary.bExtracted
+		&& ExtractRunSummary.Outcome == GTRunSummaryOutcome_Extracted;
+	AddCheck(
+		OutResults,
+		GTCheck_RunSummaryOutcomeAfterExtract,
+		bExtractRunSummaryOutcomeOk,
+		FString::Printf(TEXT("Extract summary outcome=%s extracted=%s."),
+			*ExtractRunSummary.Outcome.ToString(),
+			ExtractRunSummary.bExtracted ? TEXT("true") : TEXT("false")));
+
+	const bool bExtractRunSummaryFinalPositionOk = bExtractRunSummaryAvailable
+		&& ExtractRunSummary.FinalPlayerX == 9
+		&& ExtractRunSummary.FinalPlayerY == 9;
+	AddCheck(
+		OutResults,
+		GTCheck_RunSummaryFinalPositionAfterExtract,
+		bExtractRunSummaryFinalPositionOk,
+		FString::Printf(TEXT("Extract summary final player=(%d,%d)."),
+			ExtractRunSummary.FinalPlayerX,
+			ExtractRunSummary.FinalPlayerY));
+
+	const bool bExtractRunSummaryEventCountOk = bExtractRunSummaryAvailable
+		&& EventBus
+		&& ExtractRunSummary.TotalEventCount == EventBus->GetEventCount()
+		&& ExtractRunSummary.TotalEventCount > 0;
+	AddCheck(
+		OutResults,
+		GTCheck_RunSummaryEventCountAfterExtract,
+		bExtractRunSummaryEventCountOk,
+		FString::Printf(TEXT("Extract summary event count=%d current event count=%d."),
+			ExtractRunSummary.TotalEventCount,
+			EventBus ? EventBus->GetEventCount() : 0));
+
 	FGT_Command MoveAfterSucceededCommand;
 	MoveAfterSucceededCommand.CommandType = GTCommandType_Move;
 	MoveAfterSucceededCommand.SourceActorId = GTActorId_Player;
@@ -1155,11 +1236,38 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		!bExtractAfterSucceededAccepted,
 		!bExtractAfterSucceededAccepted ? TEXT("Extract after RunSucceeded was rejected.") : TEXT("Extract after RunSucceeded was accepted."));
 
+	FGT_RunSummary SummaryAfterRejectedExtract;
+	const bool bSummaryAfterRejectedExtractAvailable = RunContext && RunContext->GetRunSummarySnapshot(SummaryAfterRejectedExtract);
+	const bool bSummaryPreservedAfterRejectedExtract = bSummaryAfterRejectedExtractAvailable
+		&& SummaryAfterRejectedExtract.Outcome == ExtractRunSummary.Outcome
+		&& SummaryAfterRejectedExtract.FinalPlayerX == ExtractRunSummary.FinalPlayerX
+		&& SummaryAfterRejectedExtract.FinalPlayerY == ExtractRunSummary.FinalPlayerY
+		&& SummaryAfterRejectedExtract.TotalEventCount == ExtractRunSummary.TotalEventCount;
+	AddCheck(
+		OutResults,
+		GTCheck_RunSummaryPreservedAfterRejectedExtract,
+		bSummaryPreservedAfterRejectedExtract,
+		FString::Printf(TEXT("Summary after rejected extract available=%s outcome=%s final=(%d,%d) events=%d."),
+			bSummaryAfterRejectedExtractAvailable ? TEXT("true") : TEXT("false"),
+			*SummaryAfterRejectedExtract.Outcome.ToString(),
+			SummaryAfterRejectedExtract.FinalPlayerX,
+			SummaryAfterRejectedExtract.FinalPlayerY,
+			SummaryAfterRejectedExtract.TotalEventCount));
+
 	RunSubsystem->StartNewRun(12345, 10, 10);
 	QueryFacade = RunSubsystem->GetQueryFacade();
 	RunContext = RunSubsystem->GetCurrentRunContext();
 	TruthMap = RunContext ? &RunContext->GetTruthMapForDebugOnly() : nullptr;
 	EventBus = RunSubsystem->GetEventBus();
+	FGT_RunSummary ClearedRunSummary;
+	const bool bRunSummaryAvailableAfterNewStart = RunContext && RunContext->GetRunSummarySnapshot(ClearedRunSummary);
+	AddCheck(
+		OutResults,
+		GTCheck_RunSummaryClearedAfterStart,
+		!bRunSummaryAvailableAfterNewStart,
+		FString::Printf(TEXT("New StartRun summary available=%s outcome=%s."),
+			bRunSummaryAvailableAfterNewStart ? TEXT("true") : TEXT("false"),
+			*ClearedRunSummary.Outcome.ToString()));
 	if (EventBus)
 	{
 		EventBus->ClearEventHistory();
@@ -1625,13 +1733,29 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 			DebugSnapshot.MapHeight,
 			DebugSnapshot.EventCount));
 
+	FString DebugSummaryTextAfterStart;
+	const bool bDebugSummaryAfterStartAvailable = IsValid(DebugSubsystem)
+		&& DebugSubsystem->GetDebugRunSummaryText(DebugSummaryTextAfterStart);
+	const bool bDebugSummaryAfterStartUnavailable = IsValid(DebugSubsystem)
+		&& !bDebugSummaryAfterStartAvailable
+		&& !DebugSnapshot.bRunSummaryAvailable
+		&& DebugSnapshot.Summary.Contains(TEXT("SummaryAvailable=false"))
+		&& DebugSummaryTextAfterStart.Contains(TEXT("SummaryAvailable=false"))
+		&& DebugSummaryTextAfterStart.Contains(TEXT("NoRunSummary"));
+	AddCheck(
+		OutResults,
+		GTCheck_DebugSummaryAfterStartUnavailable,
+		bDebugSummaryAfterStartUnavailable,
+		FString::Printf(TEXT("Snapshot=%s SummaryText=%s."), *DebugSnapshot.Summary, *DebugSummaryTextAfterStart));
+
 	FString ManualPlayStatusTextAfterStart;
 	const bool bManualPlayStatusAfterStartActive = IsValid(DebugSubsystem)
 		&& DebugSubsystem->GetDebugStatusText(ManualPlayStatusTextAfterStart);
 	const bool bManualPlayStatusAfterStartOk = bManualPlayStatusAfterStartActive
 		&& ManualPlayStatusTextAfterStart.Contains(TEXT("RunState=Running"))
 		&& ManualPlayStatusTextAfterStart.Contains(TEXT("PlayerPosition=(0,0)"))
-		&& ManualPlayStatusTextAfterStart.Contains(TEXT("RoomBaseType=Normal"));
+		&& ManualPlayStatusTextAfterStart.Contains(TEXT("RoomBaseType=Normal"))
+		&& ManualPlayStatusTextAfterStart.Contains(TEXT("SummaryAvailable=false"));
 	AddCheck(
 		OutResults,
 		GTCheck_DebugManualPlayStatusAfterStart,
@@ -1774,6 +1898,42 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 			static_cast<int32>(DebugSnapshot.RunState),
 			DebugSnapshot.PlayerX,
 			DebugSnapshot.PlayerY));
+
+	FString DebugSummaryTextAfterExtract;
+	const bool bDebugSummaryAfterExtractAvailable = IsValid(DebugSubsystem)
+		&& DebugSubsystem->GetDebugRunSummaryText(DebugSummaryTextAfterExtract);
+	const bool bDebugSummaryAfterExtractOk = bDebugSummaryAfterExtractAvailable
+		&& DebugSnapshot.bRunSummaryAvailable
+		&& DebugSnapshot.RunSummaryOutcome == GTRunSummaryOutcome_Extracted
+		&& DebugSnapshot.RunSummaryFinalPlayerX == 9
+		&& DebugSnapshot.RunSummaryFinalPlayerY == 9
+		&& DebugSnapshot.RunSummaryTotalEventCount > 0
+		&& DebugSummaryTextAfterExtract.Contains(TEXT("SummaryAvailable=true"))
+		&& DebugSummaryTextAfterExtract.Contains(TEXT("Outcome=Extracted"));
+	AddCheck(
+		OutResults,
+		GTCheck_DebugSummaryAfterExtract,
+		bDebugSummaryAfterExtractOk,
+		FString::Printf(TEXT("Snapshot summary available=%s outcome=%s final=(%d,%d) events=%d text=%s."),
+			DebugSnapshot.bRunSummaryAvailable ? TEXT("true") : TEXT("false"),
+			*DebugSnapshot.RunSummaryOutcome.ToString(),
+			DebugSnapshot.RunSummaryFinalPlayerX,
+			DebugSnapshot.RunSummaryFinalPlayerY,
+			DebugSnapshot.RunSummaryTotalEventCount,
+			*DebugSummaryTextAfterExtract));
+
+	FString ManualPlayStatusTextAfterExtract;
+	const bool bManualPlayStatusAfterExtractReadable = IsValid(DebugSubsystem)
+		&& DebugSubsystem->GetDebugStatusText(ManualPlayStatusTextAfterExtract);
+	const bool bManualPlayStatusAfterExtractOk = bManualPlayStatusAfterExtractReadable
+		&& ManualPlayStatusTextAfterExtract.Contains(TEXT("RunState=Succeeded"))
+		&& ManualPlayStatusTextAfterExtract.Contains(TEXT("SummaryAvailable=true"))
+		&& ManualPlayStatusTextAfterExtract.Contains(TEXT("SummaryOutcome=Extracted"));
+	AddCheck(
+		OutResults,
+		GTCheck_DebugStatusShowsSummaryAfterExtract,
+		bManualPlayStatusAfterExtractOk,
+		ManualPlayStatusTextAfterExtract);
 
 	const bool bDebugMoveAfterSuccessAccepted = IsValid(DebugSubsystem)
 		&& DebugSubsystem->DebugMoveTo(9, 8, DebugSnapshot);
@@ -2291,6 +2451,24 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 			ManualPlayDemoLogLines.Num(),
 			*ManualPlayDemoSnapshot.Summary));
 
+	const bool bManualPlayRunDemoSummaryOk = bManualPlayRunDemoCompleted
+		&& ManualPlayDemoSnapshot.RunState == EGT_RunState::Succeeded
+		&& ManualPlayDemoSnapshot.bRunSummaryAvailable
+		&& ManualPlayDemoSnapshot.RunSummaryOutcome == GTRunSummaryOutcome_Extracted
+		&& ManualPlayDemoLogLines.ContainsByPredicate([](const FString& Line)
+		{
+			return Line.Contains(TEXT("gt.Summary: SummaryAvailable=true"))
+				&& Line.Contains(TEXT("Outcome=Extracted"));
+		});
+	AddCheck(
+		OutResults,
+		GTCheck_DebugManualPlayRunDemoSummary,
+		bManualPlayRunDemoSummaryOk,
+		FString::Printf(TEXT("RunDemo summary available=%s outcome=%s logLines=%d."),
+			ManualPlayDemoSnapshot.bRunSummaryAvailable ? TEXT("true") : TEXT("false"),
+			*ManualPlayDemoSnapshot.RunSummaryOutcome.ToString(),
+			ManualPlayDemoLogLines.Num()));
+
 	TArray<FGT_DebugEventSummary> ManualPlayDemoEventSummary;
 	if (IsValid(DebugSubsystem))
 	{
@@ -2308,6 +2486,10 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		&& ManualPlayDemoEventSummary.ContainsByPredicate([](const FGT_DebugEventSummary& Summary)
 		{
 			return Summary.EventType == GTEventType_CombatAttack && Summary.Count > 0;
+		})
+		&& ManualPlayDemoEventSummary.ContainsByPredicate([](const FGT_DebugEventSummary& Summary)
+		{
+			return Summary.EventType == GTEventType_RunSucceeded && Summary.Count > 0;
 		});
 	AddCheck(
 		OutResults,

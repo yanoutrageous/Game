@@ -115,7 +115,7 @@ namespace
 		UE_LOG(
 			LogGraytailManualPlay,
 			Display,
-			TEXT("%s: RunState=%d PlayerPosition=(%d,%d) Map=%dx%d EventCount=%d RoomBaseType=%d RoomContentId=%s RoomRuleId=%s ContentName=%s RuleName=%s EventOptions=%s CombatResults=%s CombatActive=%s DummyEnemyHp=%d CombatResolved=%s LastCombatResult=%s RoomTriggered=%s RoomResolved=%s Events={%s}"),
+			TEXT("%s: RunState=%d PlayerPosition=(%d,%d) Map=%dx%d EventCount=%d RoomBaseType=%d RoomContentId=%s RoomRuleId=%s ContentName=%s RuleName=%s EventOptions=%s CombatResults=%s CombatActive=%s DummyEnemyHp=%d CombatResolved=%s LastCombatResult=%s SummaryAvailable=%s SummaryOutcome=%s SummaryFinalPlayer=(%d,%d) SummaryTotalEventCount=%d RoomTriggered=%s RoomResolved=%s Events={%s}"),
 			Prefix,
 			static_cast<int32>(Snapshot.RunState),
 			Snapshot.PlayerX,
@@ -134,6 +134,11 @@ namespace
 			Snapshot.DummyEnemyHp,
 			Snapshot.bCombatResolved ? TEXT("true") : TEXT("false"),
 			*Snapshot.LastCombatResultId.ToString(),
+			Snapshot.bRunSummaryAvailable ? TEXT("true") : TEXT("false"),
+			*Snapshot.RunSummaryOutcome.ToString(),
+			Snapshot.RunSummaryFinalPlayerX,
+			Snapshot.RunSummaryFinalPlayerY,
+			Snapshot.RunSummaryTotalEventCount,
 			Snapshot.bCurrentRoomTriggered ? TEXT("true") : TEXT("false"),
 			Snapshot.bCurrentRoomResolved ? TEXT("true") : TEXT("false"),
 			*BuildEventSummaryText(EventSummary));
@@ -413,6 +418,27 @@ namespace
 		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.Attack %s: %s"), bAccepted ? TEXT("accepted") : TEXT("rejected"), *Snapshot.Summary);
 	}
 
+	void HandleSummary(const TArray<FString>& Args, UWorld* World)
+	{
+		if (!Args.IsEmpty())
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("Usage: gt.Summary"));
+			return;
+		}
+
+		FString FailureReason;
+		UGT_DebugSubsystem* DebugSubsystem = FindDebugSubsystem(World, FailureReason);
+		if (!DebugSubsystem)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("gt.Summary failed: %s"), *FailureReason);
+			return;
+		}
+
+		FString SummaryText;
+		DebugSubsystem->GetDebugRunSummaryText(SummaryText);
+		UE_LOG(LogGraytailManualPlay, Display, TEXT("%s"), *SummaryText);
+	}
+
 	void HandleStatus(const TArray<FString>& Args, UWorld* World)
 	{
 		if (!Args.IsEmpty())
@@ -581,7 +607,7 @@ namespace
 			return;
 		}
 
-		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.RunDemo: running a single deterministic path through Event (4,1) and Combat (1,4)."));
+		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.RunDemo: running a deterministic path through Event (4,1), Combat (1,4), Attack, Exit (9,9), Extract, and Summary."));
 		TArray<FString> DemoLogLines;
 		FGT_DebugRunSnapshot Snapshot;
 		const bool bCompleted = DebugSubsystem->DebugRunDemo(DemoLogLines, Snapshot);
@@ -643,6 +669,11 @@ namespace
 		TEXT("gt.Attack"),
 		TEXT("Attacks active dummy combat through the existing command path. Usage: gt.Attack"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleAttack));
+
+	FAutoConsoleCommandWithWorldAndArgs GTSummaryCommand(
+		TEXT("gt.Summary"),
+		TEXT("Logs the latest successful extract summary. Usage: gt.Summary"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleSummary));
 
 	FAutoConsoleCommandWithWorldAndArgs GTSnapshotCommand(
 		TEXT("gt.Snapshot"),

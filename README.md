@@ -4,7 +4,7 @@ Graytail is a minesweeper-style extraction game prototype. The repository now pr
 
 ## Current Active Branch
 
-`feature/event-option-combat-result-data-minimal`
+`feature/editor-playable-prototype`
 
 ## Current Milestones
 
@@ -16,6 +16,14 @@ Graytail is a minesweeper-style extraction game prototype. The repository now pr
 | Editor Debug Entry Points | `editor-debug-entrypoints` | Validated |
 | Map / Room Rule Boundary Preparation | `map-room-rule-boundary` | Validated |
 | Editor Manual Play Validation | `editor-manual-play-validation` | Validated |
+| Room Content / Rule Dispatch | `room-content-rule-dispatch` | Validated |
+| Event / Combat Placeholder Interactions | `event-combat-placeholder-interactions` | Validated |
+| Editor Playable Prototype V1 | `editor-playable-prototype-v1` | Validated |
+| Prototype V1 Playability Polish | `prototype-v1-playability-polish` | Validated |
+| Room Content / Rule Registry Minimal | `room-content-rule-registry-minimal` | Validated |
+| Event Option / Combat Result Data Minimal | `event-option-combat-result-data-minimal` | Validated |
+| Minimal Combat Dummy State | `minimal-combat-dummy-state` | Validated |
+| Run Summary / Extract Summary Minimal | `run-extract-summary-minimal` | Validated |
 
 ## Current Validated Scope
 
@@ -31,7 +39,9 @@ Graytail is a minesweeper-style extraction game prototype. The repository now pr
 - Room Content / Rule Registry Minimal adds lightweight C++ definitions for placeholder room content and rules.
 - Event Option / Combat Result Data Minimal adds lightweight C++ Event option and Combat result definitions.
 - `gt.ChooseEventOption` and `gt.ResolveCombat` validate through the registry before resolving placeholder rooms.
-- Runtime smoke is `144/144 pass`; the previous `134/134` behavior remains covered.
+- Minimal Combat Dummy State adds `gt.Attack`, starts dummy combat with HP 1, and resolves combat when dummy HP reaches 0.
+- Run Summary / Extract Summary Minimal adds `gt.Summary` and successful Extract summary output.
+- Runtime smoke is `163/163 pass`; the previous `151/151` behavior remains covered.
 - Latest repository tracking document: `docs/PROJECT_CONTENT_TRACKING.md`.
 
 ## Validation Commands
@@ -52,9 +62,9 @@ Expected smoke result:
 
 ```text
 Overall=Pass
-Pass=144
+Pass=163
 Fail=0
-Count=144
+Count=163
 ```
 
 ## Important Documents
@@ -63,6 +73,7 @@ Start with `docs/DOCUMENT_INDEX.md`.
 
 Current status documents:
 
+- `docs/editor-playable-prototype-v2.md`
 - `docs/PROJECT_CONTENT_TRACKING.md`
 - `docs/EVENT_OPTION_COMBAT_RESULT_DATA_STATUS.md`
 - `docs/ROOM_CONTENT_RULE_REGISTRY_STATUS.md`
@@ -117,6 +128,8 @@ Architecture and design references:
 - `gt.Events`
 - `gt.ChooseEventOption [OptionId]`
 - `gt.ResolveCombat [Result]`
+- `gt.Attack`
+- `gt.Summary`
 - `gt.RunDemo`
 
 Current placeholder data ids:
@@ -128,4 +141,4 @@ Current placeholder data ids:
 
 ## Next Suggested Stage
 
-Review and tag the Event Option / Combat Result Data milestone, then prepare the next data boundary without adding full combat, rewards, inventory, or UI systems.
+Review and tag the Editor Playable Prototype V2 documentation milestone, then fast-forward `feature/editor-playable-prototype` to the documentation commit without adding gameplay, UI, asset, reward, inventory, or save/load systems.

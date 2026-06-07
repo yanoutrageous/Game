@@ -115,7 +115,7 @@ namespace
 		UE_LOG(
 			LogGraytailManualPlay,
 			Display,
-			TEXT("%s: RunState=%d PlayerPosition=(%d,%d) Map=%dx%d EventCount=%d RoomBaseType=%d RoomContentId=%s RoomRuleId=%s ContentName=%s RuleName=%s EventOptions=%s CombatResults=%s RoomTriggered=%s RoomResolved=%s Events={%s}"),
+			TEXT("%s: RunState=%d PlayerPosition=(%d,%d) Map=%dx%d EventCount=%d RoomBaseType=%d RoomContentId=%s RoomRuleId=%s ContentName=%s RuleName=%s EventOptions=%s CombatResults=%s CombatActive=%s DummyEnemyHp=%d CombatResolved=%s LastCombatResult=%s RoomTriggered=%s RoomResolved=%s Events={%s}"),
 			Prefix,
 			static_cast<int32>(Snapshot.RunState),
 			Snapshot.PlayerX,
@@ -130,6 +130,10 @@ namespace
 			*Snapshot.CurrentRoomRuleDisplayName,
 			Snapshot.CurrentRoomAvailableEventOptions.IsEmpty() ? TEXT("none") : *Snapshot.CurrentRoomAvailableEventOptions,
 			Snapshot.CurrentRoomAvailableCombatResults.IsEmpty() ? TEXT("none") : *Snapshot.CurrentRoomAvailableCombatResults,
+			Snapshot.bCombatActive ? TEXT("true") : TEXT("false"),
+			Snapshot.DummyEnemyHp,
+			Snapshot.bCombatResolved ? TEXT("true") : TEXT("false"),
+			*Snapshot.LastCombatResultId.ToString(),
 			Snapshot.bCurrentRoomTriggered ? TEXT("true") : TEXT("false"),
 			Snapshot.bCurrentRoomResolved ? TEXT("true") : TEXT("false"),
 			*BuildEventSummaryText(EventSummary));
@@ -388,6 +392,27 @@ namespace
 		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.ResolveCombat %s: %s"), bAccepted ? TEXT("accepted") : TEXT("rejected"), *Snapshot.Summary);
 	}
 
+	void HandleAttack(const TArray<FString>& Args, UWorld* World)
+	{
+		FString FailureReason;
+		UGT_DebugSubsystem* DebugSubsystem = FindDebugSubsystem(World, FailureReason);
+		if (!DebugSubsystem)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("gt.Attack failed: %s"), *FailureReason);
+			return;
+		}
+
+		if (!Args.IsEmpty())
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("Usage: gt.Attack"));
+			return;
+		}
+
+		FGT_DebugRunSnapshot Snapshot;
+		const bool bAccepted = DebugSubsystem->DebugAttack(Snapshot);
+		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.Attack %s: %s"), bAccepted ? TEXT("accepted") : TEXT("rejected"), *Snapshot.Summary);
+	}
+
 	void HandleStatus(const TArray<FString>& Args, UWorld* World)
 	{
 		if (!Args.IsEmpty())
@@ -613,6 +638,11 @@ namespace
 		TEXT("gt.ResolveCombat"),
 		TEXT("Resolves placeholder combat through the existing command path. Usage: gt.ResolveCombat [Combat_DebugResult_Success|Combat_DebugResult_Retreat]"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleResolveCombat));
+
+	FAutoConsoleCommandWithWorldAndArgs GTAttackCommand(
+		TEXT("gt.Attack"),
+		TEXT("Attacks active dummy combat through the existing command path. Usage: gt.Attack"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleAttack));
 
 	FAutoConsoleCommandWithWorldAndArgs GTSnapshotCommand(
 		TEXT("gt.Snapshot"),

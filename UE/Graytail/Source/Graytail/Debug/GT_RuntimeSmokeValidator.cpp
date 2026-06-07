@@ -126,6 +126,11 @@ namespace
 	const FName GTCheck_DebugEventPlaceholderEvents(TEXT("DebugEventPlaceholderEvents"));
 	const FName GTCheck_DebugCombatPlaceholderMoveAccepted(TEXT("DebugCombatPlaceholderMoveAccepted"));
 	const FName GTCheck_DebugCombatPlaceholderEvents(TEXT("DebugCombatPlaceholderEvents"));
+	const FName GTCheck_DebugCombatStateStarted(TEXT("DebugCombatStateStarted"));
+	const FName GTCheck_DebugCombatStateInitialHp(TEXT("DebugCombatStateInitialHp"));
+	const FName GTCheck_DebugAttackAccepted(TEXT("DebugAttackAccepted"));
+	const FName GTCheck_DebugAttackReducesDummyHp(TEXT("DebugAttackReducesDummyHp"));
+	const FName GTCheck_DebugAttackCombatResolvedEvent(TEXT("DebugAttackCombatResolvedEvent"));
 	const FName GTCheck_DebugChooseEventOptionAccepted(TEXT("DebugChooseEventOptionAccepted"));
 	const FName GTCheck_DebugChooseEventOptionEvents(TEXT("DebugChooseEventOptionEvents"));
 	const FName GTCheck_DebugResolveCombatAccepted(TEXT("DebugResolveCombatAccepted"));
@@ -134,6 +139,8 @@ namespace
 	const FName GTCheck_DebugChooseEventOptionFailureEvent(TEXT("DebugChooseEventOptionFailureEvent"));
 	const FName GTCheck_DebugResolveCombatRejectedOutsideCombat(TEXT("DebugResolveCombatRejectedOutsideCombat"));
 	const FName GTCheck_DebugResolveCombatFailureEvent(TEXT("DebugResolveCombatFailureEvent"));
+	const FName GTCheck_DebugAttackRejectedOutsideCombat(TEXT("DebugAttackRejectedOutsideCombat"));
+	const FName GTCheck_DebugAttackFailureEvent(TEXT("DebugAttackFailureEvent"));
 	const FName GTCheck_DebugManualPlayHelpAvailable(TEXT("DebugManualPlayHelpAvailable"));
 	const FName GTCheck_DebugManualPlayStatusNoRunSafe(TEXT("DebugManualPlayStatusNoRunSafe"));
 	const FName GTCheck_DebugManualPlayStatusAfterStart(TEXT("DebugManualPlayStatusAfterStart"));
@@ -173,6 +180,8 @@ namespace
 	const FName GTEventType_EventPresented(TEXT("EventPresented"));
 	const FName GTEventType_CombatRoomEntered(TEXT("CombatRoomEntered"));
 	const FName GTEventType_CombatStarted(TEXT("CombatStarted"));
+	const FName GTEventType_CombatAttack(TEXT("CombatAttack"));
+	const FName GTEventType_CombatAttackFailed(TEXT("CombatAttackFailed"));
 	const FName GTEventType_EventOptionChosen(TEXT("EventOptionChosen"));
 	const FName GTEventType_EventResolved(TEXT("EventResolved"));
 	const FName GTEventType_EventOptionChooseFailed(TEXT("EventOptionChooseFailed"));
@@ -356,6 +365,7 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		&& HasHelpLineContaining(TEXT("gt.Commands"))
 		&& HasHelpLineContaining(TEXT("gt.Status"))
 		&& HasHelpLineContaining(TEXT("gt.Room"))
+		&& HasHelpLineContaining(TEXT("gt.Attack"))
 		&& HasHelpLineContaining(TEXT("gt.RunDemo"));
 	AddCheck(
 		OutResults,
@@ -2035,6 +2045,28 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 			*PlaceholderSnapshot.CurrentRoomContentDisplayName,
 			*PlaceholderSnapshot.CurrentRoomRuleDisplayName));
 
+	const bool bDebugCombatStateStarted = bDebugCombatPlaceholderMoveOk
+		&& PlaceholderSnapshot.bCombatActive
+		&& !PlaceholderSnapshot.bCombatResolved;
+	AddCheck(
+		OutResults,
+		GTCheck_DebugCombatStateStarted,
+		bDebugCombatStateStarted,
+		FString::Printf(TEXT("Combat state active=%s resolved=%s hp=%d lastResult=%s."),
+			PlaceholderSnapshot.bCombatActive ? TEXT("true") : TEXT("false"),
+			PlaceholderSnapshot.bCombatResolved ? TEXT("true") : TEXT("false"),
+			PlaceholderSnapshot.DummyEnemyHp,
+			*PlaceholderSnapshot.LastCombatResultId.ToString()));
+
+	const bool bDebugCombatStateInitialHp = bDebugCombatPlaceholderMoveOk
+		&& PlaceholderSnapshot.bCombatActive
+		&& PlaceholderSnapshot.DummyEnemyHp == 1;
+	AddCheck(
+		OutResults,
+		GTCheck_DebugCombatStateInitialHp,
+		bDebugCombatStateInitialHp,
+		FString::Printf(TEXT("Combat state initial dummy HP is %d."), PlaceholderSnapshot.DummyEnemyHp));
+
 	const bool bDebugCombatPlaceholderEventsOk = CombatRoomEnteredCountAfterPlaceholderMove == CombatRoomEnteredCountBeforePlaceholderMove + 1
 		&& CombatStartedCountAfterPlaceholderMove == CombatStartedCountBeforePlaceholderMove + 1;
 	AddCheck(
@@ -2046,6 +2078,51 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 			CombatRoomEnteredCountAfterPlaceholderMove,
 			CombatStartedCountBeforePlaceholderMove,
 			CombatStartedCountAfterPlaceholderMove));
+
+	const int32 CombatAttackCountBeforeAttack = EventBus ? EventBus->CountEventsOfType(GTEventType_CombatAttack) : 0;
+	const int32 CombatResolvedCountBeforeAttack = EventBus ? EventBus->CountEventsOfType(GTEventType_CombatResolved) : 0;
+	const bool bDebugAttackAccepted = IsValid(DebugSubsystem)
+		&& DebugSubsystem->DebugAttack(PlaceholderSnapshot);
+	const int32 CombatAttackCountAfterAttack = EventBus ? EventBus->CountEventsOfType(GTEventType_CombatAttack) : 0;
+	const int32 CombatResolvedCountAfterAttack = EventBus ? EventBus->CountEventsOfType(GTEventType_CombatResolved) : 0;
+	const bool bDebugAttackAcceptedOk = bDebugAttackAccepted
+		&& PlaceholderSnapshot.RunState == EGT_RunState::Running
+		&& PlaceholderSnapshot.CurrentRoomBaseType == EGT_RoomBaseType::Combat;
+	AddCheck(
+		OutResults,
+		GTCheck_DebugAttackAccepted,
+		bDebugAttackAcceptedOk,
+		FString::Printf(TEXT("DebugAttack accepted=%s player=(%d,%d) type=%d."),
+			bDebugAttackAccepted ? TEXT("true") : TEXT("false"),
+			PlaceholderSnapshot.PlayerX,
+			PlaceholderSnapshot.PlayerY,
+			static_cast<int32>(PlaceholderSnapshot.CurrentRoomBaseType)));
+
+	const bool bDebugAttackReducesDummyHp = bDebugAttackAccepted
+		&& !PlaceholderSnapshot.bCombatActive
+		&& PlaceholderSnapshot.bCombatResolved
+		&& PlaceholderSnapshot.DummyEnemyHp == 0;
+	AddCheck(
+		OutResults,
+		GTCheck_DebugAttackReducesDummyHp,
+		bDebugAttackReducesDummyHp,
+		FString::Printf(TEXT("After DebugAttack active=%s resolved=%s hp=%d lastResult=%s."),
+			PlaceholderSnapshot.bCombatActive ? TEXT("true") : TEXT("false"),
+			PlaceholderSnapshot.bCombatResolved ? TEXT("true") : TEXT("false"),
+			PlaceholderSnapshot.DummyEnemyHp,
+			*PlaceholderSnapshot.LastCombatResultId.ToString()));
+
+	const bool bDebugAttackCombatResolvedEvent = CombatAttackCountAfterAttack == CombatAttackCountBeforeAttack + 1
+		&& CombatResolvedCountAfterAttack == CombatResolvedCountBeforeAttack + 1;
+	AddCheck(
+		OutResults,
+		GTCheck_DebugAttackCombatResolvedEvent,
+		bDebugAttackCombatResolvedEvent,
+		FString::Printf(TEXT("CombatAttack %d->%d CombatResolved %d->%d."),
+			CombatAttackCountBeforeAttack,
+			CombatAttackCountAfterAttack,
+			CombatResolvedCountBeforeAttack,
+			CombatResolvedCountAfterAttack));
 
 	const int32 CombatResolvedCountBeforeResolve = EventBus ? EventBus->CountEventsOfType(GTEventType_CombatResolved) : 0;
 	const bool bDebugResolveCombatAccepted = IsValid(DebugSubsystem)
@@ -2178,6 +2255,29 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		bDebugResolveCombatFailureEventOk,
 		FString::Printf(TEXT("CombatResolveFailed events %d->%d."), CombatResolveFailedCountBeforeNegative, CombatResolveFailedCountAfterNegative));
 
+	const int32 CombatAttackFailedCountBeforeNegative = EventBus ? EventBus->CountEventsOfType(GTEventType_CombatAttackFailed) : 0;
+	const bool bDebugAttackOutsideAccepted = IsValid(DebugSubsystem)
+		&& DebugSubsystem->DebugAttack(PlaceholderSnapshot);
+	const int32 CombatAttackFailedCountAfterNegative = EventBus ? EventBus->CountEventsOfType(GTEventType_CombatAttackFailed) : 0;
+	const bool bDebugAttackOutsideRejectedOk = !bDebugAttackOutsideAccepted
+		&& PlaceholderSnapshot.RunState == EGT_RunState::Running
+		&& PlaceholderSnapshot.CurrentRoomBaseType != EGT_RoomBaseType::Combat;
+	AddCheck(
+		OutResults,
+		GTCheck_DebugAttackRejectedOutsideCombat,
+		bDebugAttackOutsideRejectedOk,
+		FString::Printf(TEXT("Attack outside Combat accepted=%s current type=%d summary=%s."),
+			bDebugAttackOutsideAccepted ? TEXT("true") : TEXT("false"),
+			static_cast<int32>(PlaceholderSnapshot.CurrentRoomBaseType),
+			*PlaceholderSnapshot.Summary));
+
+	const bool bDebugAttackFailureEventOk = CombatAttackFailedCountAfterNegative == CombatAttackFailedCountBeforeNegative + 1;
+	AddCheck(
+		OutResults,
+		GTCheck_DebugAttackFailureEvent,
+		bDebugAttackFailureEventOk,
+		FString::Printf(TEXT("CombatAttackFailed events %d->%d."), CombatAttackFailedCountBeforeNegative, CombatAttackFailedCountAfterNegative));
+
 	TArray<FString> ManualPlayDemoLogLines;
 	FGT_DebugRunSnapshot ManualPlayDemoSnapshot;
 	const bool bManualPlayRunDemoCompleted = IsValid(DebugSubsystem)
@@ -2204,6 +2304,10 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		&& ManualPlayDemoEventSummary.ContainsByPredicate([](const FGT_DebugEventSummary& Summary)
 		{
 			return Summary.EventType == GTEventType_CombatResolved && Summary.Count > 0;
+		})
+		&& ManualPlayDemoEventSummary.ContainsByPredicate([](const FGT_DebugEventSummary& Summary)
+		{
+			return Summary.EventType == GTEventType_CombatAttack && Summary.Count > 0;
 		});
 	AddCheck(
 		OutResults,

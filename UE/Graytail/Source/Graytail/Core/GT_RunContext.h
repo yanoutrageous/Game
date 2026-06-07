@@ -16,6 +16,36 @@ enum class EGT_RunState : uint8
 	Ended UMETA(DisplayName = "Ended")
 };
 
+USTRUCT(BlueprintType)
+struct GRAYTAIL_API FGT_CombatRuntimeState
+{
+	GENERATED_BODY()
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat")
+	bool bCombatActive = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat")
+	bool bCombatResolved = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat")
+	int32 DummyEnemyHp = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat")
+	int32 CombatX = INDEX_NONE;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat")
+	int32 CombatY = INDEX_NONE;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat")
+	FName RoomContentId = NAME_None;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat")
+	FName RoomRuleId = NAME_None;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat")
+	FName LastCombatResultId = NAME_None;
+};
+
 UCLASS(BlueprintType)
 class GRAYTAIL_API UGT_RunContext : public UObject
 {
@@ -77,6 +107,10 @@ public:
 	bool GetTruthCellSnapshot(int32 X, int32 Y, FGT_TruthCell& OutCell) const;
 	bool MarkTruthCellEntered(int32 X, int32 Y);
 	bool MarkTruthCellResolved(int32 X, int32 Y);
+	bool StartDummyCombat(int32 X, int32 Y, FName RoomContentId, FName RoomRuleId, int32 InitialDummyHp = 1);
+	bool AttackDummyCombat(FGT_CombatRuntimeState& OutState);
+	bool ResolveDummyCombat(FName ResultId, FGT_CombatRuntimeState& OutState);
+	bool GetCombatStateSnapshot(FGT_CombatRuntimeState& OutState) const;
 
 private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run", meta = (AllowPrivateAccess = "true"))
@@ -108,4 +142,7 @@ private:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run", meta = (AllowPrivateAccess = "true"))
 	FName PlayerActorId = NAME_None;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat", meta = (AllowPrivateAccess = "true"))
+	FGT_CombatRuntimeState CombatRuntimeState;
 };

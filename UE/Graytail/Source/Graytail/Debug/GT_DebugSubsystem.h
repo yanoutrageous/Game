@@ -40,6 +40,9 @@ public:
 	bool DebugResolveCombat(FName ResultId, FGT_DebugRunSnapshot& OutSnapshot);
 
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
+	bool DebugAttack(FGT_DebugRunSnapshot& OutSnapshot);
+
+	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
 	bool GetDebugRunSnapshot(FGT_DebugRunSnapshot& OutSnapshot) const;
 
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")

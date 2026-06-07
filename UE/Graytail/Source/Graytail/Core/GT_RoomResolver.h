@@ -9,6 +9,7 @@ class UGT_EventBus;
 class UGT_ContentRegistry;
 class UGT_RunContext;
 struct FGT_CombatResultDef;
+struct FGT_CombatRuntimeState;
 struct FGT_EventOptionDef;
 
 UENUM(BlueprintType)
@@ -72,6 +73,7 @@ public:
 	bool ResolveRoomAt(int32 X, int32 Y, FGT_RoomResolveResult& OutResult);
 	bool ChooseEventOptionAt(int32 X, int32 Y, FName OptionId, FGT_RoomResolveResult& OutResult);
 	bool ResolveCombatAt(int32 X, int32 Y, FName ResultId, FGT_RoomResolveResult& OutResult);
+	bool AttackCombatAt(int32 X, int32 Y, FGT_RoomResolveResult& OutResult);
 
 private:
 	bool BuildResultFromTruthCell(int32 X, int32 Y, FGT_RoomResolveResult& OutResult) const;
@@ -91,6 +93,7 @@ private:
 	FString BuildRoomDefinitionPayloadText(const FGT_RoomResolveResult& Result, const FString& Prefix) const;
 	FString BuildEventOptionPayloadText(const FGT_RoomResolveResult& Result, const FGT_EventOptionDef& OptionDefinition, const FString& Prefix) const;
 	FString BuildCombatResultPayloadText(const FGT_RoomResolveResult& Result, const FGT_CombatResultDef& ResultDefinition, const FString& Prefix) const;
+	FString BuildCombatStatePayloadText(const FGT_RoomResolveResult& Result, const FGT_CombatRuntimeState& CombatState, const FString& Prefix) const;
 	void PublishResolverEvent(FName EventType, const FGT_RoomResolveResult& Result, bool bSuccess) const;
 	void PublishDefinitionFailureEvent(const FGT_RoomResolveResult& Result, const FString& FailureReason) const;
 	void PublishInteractionEvent(FName EventType, const FGT_RoomResolveResult& Result, FName PayloadId, bool bSuccess, const FString& PayloadText) const;

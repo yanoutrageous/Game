@@ -2,6 +2,11 @@
 
 #include "Domains/Map/GT_MapGenerator.h"
 
+namespace
+{
+	const FName GTCombatResult_Success(TEXT("Combat_DebugResult_Success"));
+}
+
 void UGT_RunContext::InitializeRun(int32 InSeed, int32 InWidth, int32 InHeight)
 {
 	FGT_MapGenerationSpec MapSpec;
@@ -21,6 +26,7 @@ void UGT_RunContext::InitializeRun(int32 InSeed, int32 InWidth, int32 InHeight)
 	MapHeight = MapResult.Height;
 	TruthMap = MapResult.TruthMap;
 	PlayerIntelMap.Initialize(MapWidth, MapHeight, FName(TEXT("Player")));
+	CombatRuntimeState = FGT_CombatRuntimeState();
 
 	PlayerActorId = FName(TEXT("Player"));
 
@@ -51,6 +57,7 @@ void UGT_RunContext::ResetRun()
 	PlayerIntelMap.Reset();
 	ActorStates.Reset();
 	PlayerActorId = NAME_None;
+	CombatRuntimeState = FGT_CombatRuntimeState();
 }
 
 FGuid UGT_RunContext::GetRunId() const
@@ -225,4 +232,83 @@ bool UGT_RunContext::MarkTruthCellEntered(int32 X, int32 Y)
 bool UGT_RunContext::MarkTruthCellResolved(int32 X, int32 Y)
 {
 	return TruthMap.MarkCellResolved(X, Y);
+}
+
+bool UGT_RunContext::StartDummyCombat(int32 X, int32 Y, FName RoomContentId, FName RoomRuleId, int32 InitialDummyHp)
+{
+	if (!IsRunActive() || !IsValidMapCoord(X, Y))
+	{
+		return false;
+	}
+
+	if (CombatRuntimeState.CombatX == X
+		&& CombatRuntimeState.CombatY == Y
+		&& CombatRuntimeState.bCombatResolved)
+	{
+		return true;
+	}
+
+	CombatRuntimeState.bCombatActive = true;
+	CombatRuntimeState.bCombatResolved = false;
+	CombatRuntimeState.DummyEnemyHp = FMath::Max(1, InitialDummyHp);
+	CombatRuntimeState.CombatX = X;
+	CombatRuntimeState.CombatY = Y;
+	CombatRuntimeState.RoomContentId = RoomContentId;
+	CombatRuntimeState.RoomRuleId = RoomRuleId;
+	CombatRuntimeState.LastCombatResultId = NAME_None;
+	return true;
+}
+
+bool UGT_RunContext::AttackDummyCombat(FGT_CombatRuntimeState& OutState)
+{
+	OutState = CombatRuntimeState;
+	if (!IsRunActive() || !CombatRuntimeState.bCombatActive || CombatRuntimeState.DummyEnemyHp <= 0)
+	{
+		return false;
+	}
+
+	CombatRuntimeState.DummyEnemyHp = FMath::Max(0, CombatRuntimeState.DummyEnemyHp - 1);
+	if (CombatRuntimeState.DummyEnemyHp == 0)
+	{
+		CombatRuntimeState.bCombatActive = false;
+		CombatRuntimeState.bCombatResolved = true;
+		CombatRuntimeState.LastCombatResultId = GTCombatResult_Success;
+	}
+
+	OutState = CombatRuntimeState;
+	return true;
+}
+
+bool UGT_RunContext::ResolveDummyCombat(FName ResultId, FGT_CombatRuntimeState& OutState)
+{
+	OutState = CombatRuntimeState;
+	if (!IsRunActive())
+	{
+		return false;
+	}
+
+	if (!CombatRuntimeState.bCombatActive && !CombatRuntimeState.bCombatResolved)
+	{
+		return false;
+	}
+
+	CombatRuntimeState.bCombatActive = false;
+	CombatRuntimeState.bCombatResolved = true;
+	CombatRuntimeState.LastCombatResultId = ResultId;
+	if (ResultId == GTCombatResult_Success)
+	{
+		CombatRuntimeState.DummyEnemyHp = 0;
+	}
+
+	OutState = CombatRuntimeState;
+	return true;
+}
+
+bool UGT_RunContext::GetCombatStateSnapshot(FGT_CombatRuntimeState& OutState) const
+{
+	OutState = CombatRuntimeState;
+	return CombatRuntimeState.bCombatActive
+		|| CombatRuntimeState.bCombatResolved
+		|| CombatRuntimeState.CombatX != INDEX_NONE
+		|| CombatRuntimeState.CombatY != INDEX_NONE;
 }

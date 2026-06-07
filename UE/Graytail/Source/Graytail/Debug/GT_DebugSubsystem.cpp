@@ -15,9 +15,9 @@ namespace
 	const FName GTDebugCommandType_Extract(TEXT("Extract"));
 	const FName GTDebugCommandType_ChooseEventOption(TEXT("ChooseEventOption"));
 	const FName GTDebugCommandType_ResolveCombat(TEXT("ResolveCombat"));
+	const FName GTDebugCommandType_Attack(TEXT("Attack"));
 	const FName GTDebugActorId_Player(TEXT("Player"));
 	const FName GTEventOption_DefaultContinue(TEXT("Event_DebugOption_Continue"));
-	const FName GTCombatResult_Success(TEXT("Combat_DebugResult_Success"));
 	const FName GTDebugEventType_EventResolved(TEXT("EventResolved"));
 	const FName GTDebugEventType_CombatResolved(TEXT("CombatResolved"));
 	const FName GTRoomIcon_Exit(TEXT("Exit"));
@@ -279,6 +279,27 @@ bool UGT_DebugSubsystem::DebugResolveCombat(FName ResultId, FGT_DebugRunSnapshot
 	return bAccepted;
 }
 
+bool UGT_DebugSubsystem::DebugAttack(FGT_DebugRunSnapshot& OutSnapshot)
+{
+	int32 PlayerX = 0;
+	int32 PlayerY = 0;
+
+	const UGT_RunSubsystem* RunSubsystem = GetRunSubsystem();
+	const UGT_QueryFacade* QueryFacade = RunSubsystem ? RunSubsystem->GetQueryFacade() : nullptr;
+	if (QueryFacade)
+	{
+		QueryFacade->TryGetPlayerPosition(PlayerX, PlayerY);
+	}
+
+	const bool bAccepted = SubmitDebugCommand(GTDebugCommandType_Attack, PlayerX, PlayerY, OutSnapshot);
+	if (!bAccepted && !OutSnapshot.Summary.Equals(TEXT("No active run")))
+	{
+		OutSnapshot.Summary = FString::Printf(TEXT("Attack rejected: expected active dummy combat in current Combat room. %s"), *OutSnapshot.Summary);
+	}
+
+	return bAccepted;
+}
+
 bool UGT_DebugSubsystem::GetDebugRunSnapshot(FGT_DebugRunSnapshot& OutSnapshot) const
 {
 	OutSnapshot = FGT_DebugRunSnapshot();
@@ -352,9 +373,19 @@ bool UGT_DebugSubsystem::GetDebugRunSnapshot(FGT_DebugRunSnapshot& OutSnapshot) 
 	}
 
 	const UGT_EventBus* EventBus = RunSubsystem ? RunSubsystem->GetEventBus() : nullptr;
+	const UGT_RunContext* RunContext = RunSubsystem ? RunSubsystem->GetCurrentRunContext() : nullptr;
+	FGT_CombatRuntimeState CombatState;
+	if (RunContext && RunContext->GetCombatStateSnapshot(CombatState))
+	{
+		OutSnapshot.bCombatActive = CombatState.bCombatActive;
+		OutSnapshot.bCombatResolved = CombatState.bCombatResolved;
+		OutSnapshot.DummyEnemyHp = CombatState.DummyEnemyHp;
+		OutSnapshot.LastCombatResultId = CombatState.LastCombatResultId;
+	}
+
 	OutSnapshot.EventCount = EventBus ? EventBus->GetEventCount() : 0;
 	OutSnapshot.Summary = FString::Printf(
-		TEXT("RunState=%d, Player=(%d,%d), Size=%dx%d, EventCount=%d, RoomBaseType=%d, RoomContentId=%s, RoomRuleId=%s, RoomContentName=%s, RoomRuleName=%s, AvailableEventOptions=%s, AvailableCombatResults=%s, RoomTriggered=%s, RoomResolved=%s"),
+		TEXT("RunState=%d, Player=(%d,%d), Size=%dx%d, EventCount=%d, RoomBaseType=%d, RoomContentId=%s, RoomRuleId=%s, RoomContentName=%s, RoomRuleName=%s, AvailableEventOptions=%s, AvailableCombatResults=%s, CombatActive=%s, DummyEnemyHp=%d, CombatResolved=%s, LastCombatResult=%s, RoomTriggered=%s, RoomResolved=%s"),
 		static_cast<int32>(OutSnapshot.RunState),
 		OutSnapshot.PlayerX,
 		OutSnapshot.PlayerY,
@@ -368,6 +399,10 @@ bool UGT_DebugSubsystem::GetDebugRunSnapshot(FGT_DebugRunSnapshot& OutSnapshot) 
 		*OutSnapshot.CurrentRoomRuleDisplayName,
 		OutSnapshot.CurrentRoomAvailableEventOptions.IsEmpty() ? TEXT("none") : *OutSnapshot.CurrentRoomAvailableEventOptions,
 		OutSnapshot.CurrentRoomAvailableCombatResults.IsEmpty() ? TEXT("none") : *OutSnapshot.CurrentRoomAvailableCombatResults,
+		OutSnapshot.bCombatActive ? TEXT("true") : TEXT("false"),
+		OutSnapshot.DummyEnemyHp,
+		OutSnapshot.bCombatResolved ? TEXT("true") : TEXT("false"),
+		*OutSnapshot.LastCombatResultId.ToString(),
 		OutSnapshot.bCurrentRoomTriggered ? TEXT("true") : TEXT("false"),
 		OutSnapshot.bCurrentRoomResolved ? TEXT("true") : TEXT("false"));
 	return true;
@@ -489,10 +524,11 @@ void UGT_DebugSubsystem::GetDebugCommandHelpLines(TArray<FString>& OutLines) con
 	OutLines.Add(TEXT("  gt.ResolveCombat [Result] - Resolve the Combat placeholder room through registry result data."));
 	OutLines.Add(TEXT("    Example: gt.ResolveCombat Combat_DebugResult_Success"));
 	OutLines.Add(TEXT("    Example: gt.ResolveCombat Combat_DebugResult_Retreat"));
+	OutLines.Add(TEXT("  gt.Attack - Attack active dummy combat once through the command path."));
 	OutLines.Add(TEXT("  gt.RunDemo - Run a fixed Event and Combat placeholder demo path."));
 	OutLines.Add(TEXT("Recommended manual flow: gt.StartRun -> gt.Minimap -> gt.Move 1 0 -> gt.Scan 1 1 -> gt.Status -> gt.Room."));
 	OutLines.Add(TEXT("Event demo path: gt.StartRun -> gt.Move 1 0 -> gt.Move 2 0 -> gt.Move 3 0 -> gt.Move 4 0 -> gt.Move 4 1 -> gt.ChooseEventOption Event_DebugOption_Continue -> gt.Events."));
-	OutLines.Add(TEXT("Combat demo path: gt.StartRun -> gt.Move 0 1 -> gt.Move 0 2 -> gt.Move 0 3 -> gt.Move 0 4 -> gt.Move 1 4 -> gt.ResolveCombat Combat_DebugResult_Success -> gt.Events."));
+	OutLines.Add(TEXT("Combat demo path: gt.StartRun -> gt.Move 0 1 -> gt.Move 0 2 -> gt.Move 0 3 -> gt.Move 0 4 -> gt.Move 1 4 -> gt.Attack -> gt.Events."));
 }
 
 bool UGT_DebugSubsystem::GetDebugStatusText(FString& OutStatus) const
@@ -507,7 +543,7 @@ bool UGT_DebugSubsystem::GetDebugStatusText(FString& OutStatus) const
 	TArray<FGT_DebugEventSummary> EventSummary;
 	GetDebugEventSummary(EventSummary);
 	OutStatus = FString::Printf(
-		TEXT("gt.Status: RunState=%s PlayerPosition=(%d,%d) RoomBaseType=%s RoomContentId=%s RoomRuleId=%s ContentName=%s RuleName=%s ContentDescription=%s RuleDescription=%s EventOptions=%s CombatResults=%s Triggered=%s Resolved=%s EventCount=%d Events={%s}"),
+		TEXT("gt.Status: RunState=%s PlayerPosition=(%d,%d) RoomBaseType=%s RoomContentId=%s RoomRuleId=%s ContentName=%s RuleName=%s ContentDescription=%s RuleDescription=%s EventOptions=%s CombatResults=%s CombatActive=%s DummyEnemyHp=%d CombatResolved=%s LastCombatResult=%s Triggered=%s Resolved=%s EventCount=%d Events={%s}"),
 		*GetRunStateText(Snapshot.RunState),
 		Snapshot.PlayerX,
 		Snapshot.PlayerY,
@@ -520,6 +556,10 @@ bool UGT_DebugSubsystem::GetDebugStatusText(FString& OutStatus) const
 		*Snapshot.CurrentRoomRuleDebugDescription,
 		Snapshot.CurrentRoomAvailableEventOptions.IsEmpty() ? TEXT("none") : *Snapshot.CurrentRoomAvailableEventOptions,
 		Snapshot.CurrentRoomAvailableCombatResults.IsEmpty() ? TEXT("none") : *Snapshot.CurrentRoomAvailableCombatResults,
+		Snapshot.bCombatActive ? TEXT("true") : TEXT("false"),
+		Snapshot.DummyEnemyHp,
+		Snapshot.bCombatResolved ? TEXT("true") : TEXT("false"),
+		*Snapshot.LastCombatResultId.ToString(),
 		Snapshot.bCurrentRoomTriggered ? TEXT("true") : TEXT("false"),
 		Snapshot.bCurrentRoomResolved ? TEXT("true") : TEXT("false"),
 		Snapshot.EventCount,
@@ -546,12 +586,12 @@ bool UGT_DebugSubsystem::GetDebugRoomText(FString& OutRoomText) const
 	else if (Snapshot.CurrentRoomBaseType == EGT_RoomBaseType::Combat)
 	{
 		Hint = FString::Printf(
-			TEXT("Combat placeholder action: gt.ResolveCombat [Result]. Available=%s."),
+			TEXT("Combat placeholder actions: gt.Attack or gt.ResolveCombat [Result]. Available=%s."),
 			Snapshot.CurrentRoomAvailableCombatResults.IsEmpty() ? TEXT("none") : *Snapshot.CurrentRoomAvailableCombatResults);
 	}
 
 	OutRoomText = FString::Printf(
-		TEXT("gt.Room: Position=(%d,%d) RoomBaseType=%s RoomContentId=%s RoomRuleId=%s RoomInstanceId=%s ContentName=%s RuleName=%s ContentDescription=%s RuleDescription=%s EventOptions=%s CombatResults=%s Triggered=%s Resolved=%s Hint=%s"),
+		TEXT("gt.Room: Position=(%d,%d) RoomBaseType=%s RoomContentId=%s RoomRuleId=%s RoomInstanceId=%s ContentName=%s RuleName=%s ContentDescription=%s RuleDescription=%s EventOptions=%s CombatResults=%s CombatActive=%s DummyEnemyHp=%d CombatResolved=%s LastCombatResult=%s Triggered=%s Resolved=%s Hint=%s"),
 		Snapshot.PlayerX,
 		Snapshot.PlayerY,
 		*GetRoomBaseTypeText(Snapshot.CurrentRoomBaseType),
@@ -564,6 +604,10 @@ bool UGT_DebugSubsystem::GetDebugRoomText(FString& OutRoomText) const
 		*Snapshot.CurrentRoomRuleDebugDescription,
 		Snapshot.CurrentRoomAvailableEventOptions.IsEmpty() ? TEXT("none") : *Snapshot.CurrentRoomAvailableEventOptions,
 		Snapshot.CurrentRoomAvailableCombatResults.IsEmpty() ? TEXT("none") : *Snapshot.CurrentRoomAvailableCombatResults,
+		Snapshot.bCombatActive ? TEXT("true") : TEXT("false"),
+		Snapshot.DummyEnemyHp,
+		Snapshot.bCombatResolved ? TEXT("true") : TEXT("false"),
+		*Snapshot.LastCombatResultId.ToString(),
 		Snapshot.bCurrentRoomTriggered ? TEXT("true") : TEXT("false"),
 		Snapshot.bCurrentRoomResolved ? TEXT("true") : TEXT("false"),
 		*Hint);
@@ -629,9 +673,9 @@ bool UGT_DebugSubsystem::DebugRunDemo(TArray<FString>& OutLogLines, FGT_DebugRun
 	};
 	bDemoOk = bDemoOk && MovePath(TEXT("gt.RunDemo CombatPath"), CombatPath);
 
-	const bool bResolveCombat = bDemoOk && DebugResolveCombat(GTCombatResult_Success, OutSnapshot);
-	AppendStep(TEXT("gt.RunDemo ResolveCombat Combat_DebugResult_Success"), bResolveCombat, OutSnapshot);
-	bDemoOk = bDemoOk && bResolveCombat;
+	const bool bAttack = bDemoOk && DebugAttack(OutSnapshot);
+	AppendStep(TEXT("gt.RunDemo Attack"), bAttack, OutSnapshot);
+	bDemoOk = bDemoOk && bAttack;
 
 	TArray<FGT_DebugEventSummary> EventSummary;
 	GetDebugEventSummary(EventSummary);

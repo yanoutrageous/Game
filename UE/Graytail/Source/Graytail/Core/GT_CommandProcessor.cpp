@@ -11,6 +11,7 @@ namespace
 	const FName GTCommandType_Extract(TEXT("Extract"));
 	const FName GTCommandType_ChooseEventOption(TEXT("ChooseEventOption"));
 	const FName GTCommandType_ResolveCombat(TEXT("ResolveCombat"));
+	const FName GTCommandType_Attack(TEXT("Attack"));
 	const FName GTEventType_ActorMoved(TEXT("ActorMoved"));
 	const FName GTEventType_CellScanned(TEXT("CellScanned"));
 	const FName GTEventType_CommandFailed(TEXT("CommandFailed"));
@@ -69,6 +70,11 @@ bool UGT_CommandProcessor::ProcessCommand(const FGT_Command& Command)
 	if (Command.CommandType == GTCommandType_ResolveCombat)
 	{
 		return ProcessResolveCombatCommand(Command);
+	}
+
+	if (Command.CommandType == GTCommandType_Attack)
+	{
+		return ProcessAttackCommand(Command);
 	}
 
 	PublishCommandEvent(GTEventType_CommandFailed, Command.SourceActorId, Command.TargetActorId, Command.TargetX, Command.TargetY, false);
@@ -214,6 +220,29 @@ bool UGT_CommandProcessor::ProcessResolveCombatCommand(const FGT_Command& Comman
 
 	FGT_RoomResolveResult InteractionResult;
 	if (!RoomResolver->ResolveCombatAt(PlayerX, PlayerY, Command.PayloadId, InteractionResult))
+	{
+		PublishCommandEvent(GTEventType_CommandFailed, Command.SourceActorId, EventTargetActorId, PlayerX, PlayerY, false);
+		return false;
+	}
+
+	return true;
+}
+
+bool UGT_CommandProcessor::ProcessAttackCommand(const FGT_Command& Command)
+{
+	int32 PlayerX = 0;
+	int32 PlayerY = 0;
+	const FName EventTargetActorId = Command.TargetActorId.IsNone() && IsValid(RunContext)
+		? RunContext->GetPlayerActorId()
+		: Command.TargetActorId;
+	if (!IsValid(RunContext) || !IsValid(RoomResolver) || !RunContext->TryGetPlayerPosition(PlayerX, PlayerY))
+	{
+		PublishCommandEvent(GTEventType_CommandFailed, Command.SourceActorId, EventTargetActorId, PlayerX, PlayerY, false);
+		return false;
+	}
+
+	FGT_RoomResolveResult AttackResult;
+	if (!RoomResolver->AttackCombatAt(PlayerX, PlayerY, AttackResult))
 	{
 		PublishCommandEvent(GTEventType_CommandFailed, Command.SourceActorId, EventTargetActorId, PlayerX, PlayerY, false);
 		return false;

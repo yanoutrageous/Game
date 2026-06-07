@@ -14,6 +14,8 @@ namespace
 	const FName GTEventType_EventPresented(TEXT("EventPresented"));
 	const FName GTEventType_CombatRoomEntered(TEXT("CombatRoomEntered"));
 	const FName GTEventType_CombatStarted(TEXT("CombatStarted"));
+	const FName GTEventType_CombatAttack(TEXT("CombatAttack"));
+	const FName GTEventType_CombatAttackFailed(TEXT("CombatAttackFailed"));
 	const FName GTEventType_EventOptionChosen(TEXT("EventOptionChosen"));
 	const FName GTEventType_EventResolved(TEXT("EventResolved"));
 	const FName GTEventType_EventOptionChooseFailed(TEXT("EventOptionChooseFailed"));
@@ -222,8 +224,11 @@ bool UGT_RoomResolver::ResolveCombatAt(int32 X, int32 Y, FName ResultId, FGT_Roo
 		return false;
 	}
 
+	FGT_CombatRuntimeState CombatState;
 	if (ResultDefinition.bResolvesRoom
-		&& (!RunContext->MarkTruthCellResolved(X, Y) || !BuildResultFromTruthCell(X, Y, OutResult)))
+		&& (!RunContext->ResolveDummyCombat(ResolvedResultId, CombatState)
+			|| !RunContext->MarkTruthCellResolved(X, Y)
+			|| !BuildResultFromTruthCell(X, Y, OutResult)))
 	{
 		PublishInteractionEvent(
 			GTEventType_CombatResolveFailed,
@@ -241,7 +246,89 @@ bool UGT_RoomResolver::ResolveCombatAt(int32 X, int32 Y, FName ResultId, FGT_Roo
 		OutResult,
 		ResolvedResultId,
 		true,
-		BuildCombatResultPayloadText(OutResult, ResultDefinition, FString::Printf(TEXT("Result=%s"), *ResolvedResultId.ToString())));
+		BuildCombatResultPayloadText(OutResult, ResultDefinition, BuildCombatStatePayloadText(OutResult, CombatState, FString::Printf(TEXT("Result=%s"), *ResolvedResultId.ToString()))));
+	return true;
+}
+
+bool UGT_RoomResolver::AttackCombatAt(int32 X, int32 Y, FGT_RoomResolveResult& OutResult)
+{
+	if (!BuildResultFromTruthCell(X, Y, OutResult))
+	{
+		return false;
+	}
+
+	if (OutResult.RoomBaseType != EGT_RoomBaseType::Combat)
+	{
+		PublishInteractionEvent(
+			GTEventType_CombatAttackFailed,
+			OutResult,
+			FName(TEXT("Attack")),
+			false,
+			FString::Printf(TEXT("Attack rejected: expected Combat room, current RoomBaseType=%d."), static_cast<int32>(OutResult.RoomBaseType)));
+		return false;
+	}
+
+	FString DefinitionFailureReason;
+	if (!TryGetRoomDefinitions(OutResult, EGT_RoomBaseType::Combat, DefinitionFailureReason))
+	{
+		PublishInteractionEvent(
+			GTEventType_CombatAttackFailed,
+			OutResult,
+			FName(TEXT("Attack")),
+			false,
+			FString::Printf(TEXT("Attack rejected: %s"), *DefinitionFailureReason));
+		return false;
+	}
+
+	FGT_CombatRuntimeState CombatState;
+	if (!RunContext->AttackDummyCombat(CombatState))
+	{
+		RunContext->GetCombatStateSnapshot(CombatState);
+		PublishInteractionEvent(
+			GTEventType_CombatAttackFailed,
+			OutResult,
+			FName(TEXT("Attack")),
+			false,
+			BuildCombatStatePayloadText(OutResult, CombatState, TEXT("Attack rejected: no active dummy combat.")));
+		return false;
+	}
+
+	OutResult.Outcome = EGT_RoomResolveOutcome::CombatStarted;
+	PublishInteractionEvent(
+		GTEventType_CombatAttack,
+		OutResult,
+		FName(TEXT("Attack")),
+		true,
+		BuildCombatStatePayloadText(OutResult, CombatState, TEXT("Attack accepted")));
+
+	if (CombatState.bCombatResolved)
+	{
+		RunContext->MarkTruthCellResolved(X, Y);
+		BuildResultFromTruthCell(X, Y, OutResult);
+		OutResult.Outcome = EGT_RoomResolveOutcome::CombatStarted;
+
+		FGT_CombatResultDef ResultDefinition;
+		FString ResultFailureReason;
+		if (ContentRegistry->FindCombatResultDefForRoom(OutResult.RoomContentId, OutResult.RoomRuleId, GTCombatResult_Success, ResultDefinition, ResultFailureReason))
+		{
+			PublishInteractionEvent(
+				GTEventType_CombatResolved,
+				OutResult,
+				GTCombatResult_Success,
+				true,
+				BuildCombatResultPayloadText(OutResult, ResultDefinition, BuildCombatStatePayloadText(OutResult, CombatState, TEXT("Attack resolved dummy combat"))));
+		}
+		else
+		{
+			PublishInteractionEvent(
+				GTEventType_CombatResolved,
+				OutResult,
+				GTCombatResult_Success,
+				true,
+				BuildCombatStatePayloadText(OutResult, CombatState, FString::Printf(TEXT("Attack resolved dummy combat ResultLookup=false Reason=%s"), *ResultFailureReason)));
+		}
+	}
+
 	return true;
 }
 
@@ -346,6 +433,18 @@ bool UGT_RoomResolver::ResolveCombatRoomPlaceholder(const FGT_TruthCell& TruthCe
 	{
 		OutResult.Outcome = EGT_RoomResolveOutcome::Unsupported;
 		PublishDefinitionFailureEvent(OutResult, DefinitionFailureReason);
+		return false;
+	}
+
+	if (!RunContext->StartDummyCombat(TruthCell.X, TruthCell.Y, TruthCell.RoomContentId, TruthCell.RoomRuleId, 1))
+	{
+		OutResult.Outcome = EGT_RoomResolveOutcome::Unsupported;
+		PublishInteractionEvent(
+			GTEventType_CombatAttackFailed,
+			OutResult,
+			FName(TEXT("StartDummyCombat")),
+			false,
+			TEXT("CombatStarted rejected: failed to create dummy combat state."));
 		return false;
 	}
 
@@ -485,6 +584,20 @@ FString UGT_RoomResolver::BuildCombatResultPayloadText(const FGT_RoomResolveResu
 		*ResultDefinition.DisplayName,
 		*ResultDefinition.DebugDescription,
 		*ResultDefinition.PayloadText);
+}
+
+FString UGT_RoomResolver::BuildCombatStatePayloadText(const FGT_RoomResolveResult& Result, const FGT_CombatRuntimeState& CombatState, const FString& Prefix) const
+{
+	return FString::Printf(
+		TEXT("%s %s CombatActive=%s CombatResolved=%s DummyEnemyHp=%d CombatCoord=(%d,%d) LastCombatResult=%s"),
+		*BuildRoomDefinitionPayloadText(Result, Prefix),
+		CombatState.RoomContentId.IsNone() ? TEXT("CombatStateRoom=None") : *FString::Printf(TEXT("CombatStateRoom=%s/%s"), *CombatState.RoomContentId.ToString(), *CombatState.RoomRuleId.ToString()),
+		CombatState.bCombatActive ? TEXT("true") : TEXT("false"),
+		CombatState.bCombatResolved ? TEXT("true") : TEXT("false"),
+		CombatState.DummyEnemyHp,
+		CombatState.CombatX,
+		CombatState.CombatY,
+		*CombatState.LastCombatResultId.ToString());
 }
 
 void UGT_RoomResolver::PublishResolverEvent(FName EventType, const FGT_RoomResolveResult& Result, bool bSuccess) const

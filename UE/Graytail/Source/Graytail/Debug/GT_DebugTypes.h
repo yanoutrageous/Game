@@ -58,6 +58,18 @@ struct GRAYTAIL_API FGT_DebugRunSnapshot
 	FString CurrentRoomAvailableCombatResults;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	bool bCombatActive = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	bool bCombatResolved = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	int32 DummyEnemyHp = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	FName LastCombatResultId = NAME_None;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
 	bool bCurrentRoomTriggered = false;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")

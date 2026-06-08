@@ -51,6 +51,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
 	void GetDebugEventSummary(TArray<FGT_DebugEventSummary>& OutEvents) const;
 
+	// 生成一张 Standard 随机地图并返回 ASCII 预览行 (不影响当前 run, 仅用于调试验证)。
+	void BuildStandardMapPreviewLines(int32 Seed, int32 Width, int32 Height, TArray<FString>& OutLines) const;
+
 	void GetDebugCommandHelpLines(TArray<FString>& OutLines) const;
 	bool GetDebugStatusText(FString& OutStatus) const;
 	bool GetDebugRoomText(FString& OutRoomText) const;

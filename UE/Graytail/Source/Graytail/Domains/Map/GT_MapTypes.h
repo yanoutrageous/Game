@@ -18,7 +18,8 @@ UENUM(BlueprintType)
 enum class EGT_MapMode : uint8
 {
 	Unknown UMETA(DisplayName = "Unknown"),
-	BasicDebug UMETA(DisplayName = "Basic Debug")
+	BasicDebug UMETA(DisplayName = "Basic Debug"),
+	Standard UMETA(DisplayName = "Standard")
 };
 
 UENUM(BlueprintType)

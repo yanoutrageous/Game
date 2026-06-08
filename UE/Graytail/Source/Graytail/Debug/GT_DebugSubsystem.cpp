@@ -6,6 +6,7 @@
 #include "Core/GT_QueryFacade.h"
 #include "Core/GT_RunSubsystem.h"
 #include "Debug/GT_RuntimeSmokeValidator.h"
+#include "Domains/Map/GT_MapGenerator.h"
 #include "Engine/GameInstance.h"
 
 namespace
@@ -554,6 +555,7 @@ void UGT_DebugSubsystem::GetDebugCommandHelpLines(TArray<FString>& OutLines) con
 	OutLines.Add(TEXT("  gt.Help - Show commands and recommended demo flow."));
 	OutLines.Add(TEXT("  gt.Commands - Alias for gt.Help."));
 	OutLines.Add(TEXT("  gt.StartRun [Seed] [Width Height] - Start a debug/basic run."));
+	OutLines.Add(TEXT("  gt.GenMap [Seed] [Width Height] - Preview a Standard random map without affecting the active run."));
 	OutLines.Add(TEXT("  gt.Status - Show run state, player position, current room, and event counts."));
 	OutLines.Add(TEXT("  gt.Room - Show current room details and placeholder action hints."));
 	OutLines.Add(TEXT("  gt.Move X Y - Move to an adjacent coordinate through the command path."));
@@ -831,4 +833,73 @@ bool UGT_DebugSubsystem::SubmitDebugCommand(FName CommandType, int32 X, int32 Y,
 	const bool bAccepted = RunSubsystem->SubmitCommand(Command);
 	GetDebugRunSnapshot(OutSnapshot);
 	return bAccepted;
+}
+
+void UGT_DebugSubsystem::BuildStandardMapPreviewLines(int32 Seed, int32 Width, int32 Height, TArray<FString>& OutLines) const
+{
+	OutLines.Reset();
+
+	FGT_MapGenerationSpec Spec;
+	Spec.MapMode = EGT_MapMode::Standard;
+	Spec.Seed = Seed;
+	Spec.Width = Width;
+	Spec.Height = Height;
+
+	FGT_MapGenerationResult Result;
+	if (!UGT_MapGenerator::GenerateMap(Spec, Result))
+	{
+		OutLines.Add(FString::Printf(
+			TEXT("gt.GenMap failed: generator returned false for mode=Standard seed=%d size=%dx%d"),
+			Seed, Width, Height));
+		return;
+	}
+
+	const FGT_TruthMap& Map = Result.TruthMap;
+	OutLines.Add(FString::Printf(
+		TEXT("gt.GenMap: mode=Standard seed=%d size=%dx%d legend S=spawn E=exit *=mine C=combat V=event 0-8=adjacent mines"),
+		Result.Seed, Map.Width, Map.Height));
+
+	int32 TotalMines = 0;
+	for (int32 Y = 0; Y < Map.Height; ++Y)
+	{
+		FString Row;
+		Row.Reserve(Map.Width);
+		for (int32 X = 0; X < Map.Width; ++X)
+		{
+			const FGT_TruthCell* Cell = Map.GetCellConst(X, Y);
+			TCHAR Symbol = TEXT('?');
+			if (X == 0 && Y == 0)
+			{
+				// 出生点固定在 (0,0), 与 ApplyStandardLayout 保持一致。
+				Symbol = TEXT('S');
+			}
+			else if (Cell && Cell->bIsExit)
+			{
+				Symbol = TEXT('E');
+			}
+			else if (Cell && Cell->bHasMine)
+			{
+				Symbol = TEXT('*');
+				++TotalMines;
+			}
+			else if (Cell && Cell->RoomBaseType == EGT_RoomBaseType::Combat)
+			{
+				Symbol = TEXT('C');
+			}
+			else if (Cell && Cell->RoomBaseType == EGT_RoomBaseType::Event)
+			{
+				Symbol = TEXT('V');
+			}
+			else
+			{
+				int32 AdjacentMines = 0;
+				Map.CountAdjacentMines8(X, Y, AdjacentMines);
+				Symbol = static_cast<TCHAR>('0' + FMath::Clamp(AdjacentMines, 0, 8));
+			}
+			Row.AppendChar(Symbol);
+		}
+		OutLines.Add(FString::Printf(TEXT("gt.GenMap row %02d: %s"), Y, *Row));
+	}
+
+	OutLines.Add(FString::Printf(TEXT("gt.GenMap: total mines=%d"), TotalMines));
 }

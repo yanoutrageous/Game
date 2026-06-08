@@ -615,6 +615,42 @@ namespace
 		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.RunDemo %s: %s"), bCompleted ? TEXT("completed") : TEXT("failed"), *Snapshot.Summary);
 	}
 
+	void HandleGenMap(const TArray<FString>& Args, UWorld* World)
+	{
+		FString FailureReason;
+		UGT_DebugSubsystem* DebugSubsystem = FindDebugSubsystem(World, FailureReason);
+		if (!DebugSubsystem)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("gt.GenMap failed: %s"), *FailureReason);
+			return;
+		}
+
+		if (Args.Num() != 0 && Args.Num() != 1 && Args.Num() != 3)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("Usage: gt.GenMap [Seed] [Width Height]"));
+			return;
+		}
+
+		int32 Seed = GTDefaultManualSeed;
+		int32 Width = GTDefaultManualMapWidth;
+		int32 Height = GTDefaultManualMapHeight;
+
+		if (Args.Num() >= 1 && !TryParseIntArg(Args, 0, TEXT("Seed"), Seed))
+		{
+			return;
+		}
+
+		if (Args.Num() == 3
+			&& (!TryParseIntArg(Args, 1, TEXT("Width"), Width) || !TryParseIntArg(Args, 2, TEXT("Height"), Height)))
+		{
+			return;
+		}
+
+		TArray<FString> Lines;
+		DebugSubsystem->BuildStandardMapPreviewLines(Seed, Width, Height, Lines);
+		LogManualPlayLines(Lines);
+	}
+
 	FAutoConsoleCommandWithWorldAndArgs GTHelpCommand(
 		TEXT("gt.Help"),
 		TEXT("Shows Graytail manual play command help. Usage: gt.Help"),
@@ -694,4 +730,9 @@ namespace
 		TEXT("gt.RunDemo"),
 		TEXT("Runs a deterministic Event and Combat placeholder demo path. Usage: gt.RunDemo"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleRunDemo));
+
+	FAutoConsoleCommandWithWorldAndArgs GTGenMapCommand(
+		TEXT("gt.GenMap"),
+		TEXT("Previews a Standard random map without affecting the active run. Usage: gt.GenMap [Seed] [Width Height]"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleGenMap));
 }

@@ -24,21 +24,21 @@ struct GRAYTAIL_API FGT_MapGenerationSpec
 
 	// 雷密度: 雷数 = 四舍五入(Width * Height * MineDensity)。仅 Standard 模式使用。
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|MapGeneration", meta = (ClampMin = "0.0", ClampMax = "1.0"))
-	float MineDensity = 0.16f;
+	float MineDensity = 0.20f;
 
 	// 出生点安全半径: 出生点周围该半径内不布雷。仅 Standard 模式使用。
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|MapGeneration", meta = (ClampMin = "0"))
 	int32 SpawnSafeRadius = 1;
 
-	// 怪物房(Combat)占非雷安全格的比例, 至少 2 个。仅 Standard 模式使用。
+	// 怪物房(Combat)数量占总格数(Width*Height)的比例, 至少 2 个。仅 Standard 模式使用。
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|MapGeneration", meta = (ClampMin = "0.0", ClampMax = "1.0"))
-	float MonsterRoomRatio = 0.04f;
+	float MonsterRoomRatio = 0.10f;
 
-	// 事件房(Event)占非雷安全格的比例, 至少 1 个。仅 Standard 模式使用。
+	// 事件房(Event)数量占总格数(Width*Height)的比例, 至少 1 个。仅 Standard 模式使用。
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|MapGeneration", meta = (ClampMin = "0.0", ClampMax = "1.0"))
-	float EventRoomRatio = 0.02f;
+	float EventRoomRatio = 0.10f;
 
-	// 除固定撤离点外, 额外随机撤离房的数量。仅 Standard 模式使用。
+	// 随机(不可见)撤离房数量, 需探索发现。仅 Standard 模式使用。
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|MapGeneration", meta = (ClampMin = "0"))
 	int32 RandomExitCount = 2;
 };
@@ -74,6 +74,9 @@ class GRAYTAIL_API UGT_MapGenerator : public UObject
 
 public:
 	static bool GenerateMap(const FGT_MapGenerationSpec& Spec, FGT_MapGenerationResult& OutResult);
+
+	// 按难度档位生成对应的地图参数(尺寸/雷率/特殊房比例/撤离点数)。对齐 docs/难度判断.md。
+	static FGT_MapGenerationSpec MakeSpecForDifficulty(EGT_Difficulty Difficulty, int32 Seed);
 
 private:
 	// 固定的调试布局: 写死的雷/出口/事件/战斗房, 供既有冒烟测试与 gt.RunDemo 使用。

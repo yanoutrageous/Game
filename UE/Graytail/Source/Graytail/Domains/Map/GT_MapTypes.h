@@ -22,6 +22,19 @@ enum class EGT_MapMode : uint8
 	Standard UMETA(DisplayName = "Standard")
 };
 
+// 难度档位: 由 地图尺寸 × 撤离点数量 决定(撤离点越少越难)。对齐 docs/难度判断.md。
+UENUM(BlueprintType)
+enum class EGT_Difficulty : uint8
+{
+	Tutorial UMETA(DisplayName = "Tutorial (7x7, 2 exits)"),
+	Easy UMETA(DisplayName = "Easy (10x10, 3 exits)"),
+	Standard UMETA(DisplayName = "Standard (10x10, 2 exits)"),
+	Hard UMETA(DisplayName = "Hard (10x10, 1 exit)"),
+	Veteran UMETA(DisplayName = "Veteran (13x13, 4 exits)"),
+	Elite UMETA(DisplayName = "Elite (13x13, 2 exits)"),
+	Nightmare UMETA(DisplayName = "Nightmare (13x13, 1 exit)")
+};
+
 UENUM(BlueprintType)
 enum class EGT_IntelReliabilityState : uint8
 {

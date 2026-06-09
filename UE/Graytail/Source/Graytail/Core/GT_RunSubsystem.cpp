@@ -42,7 +42,20 @@ UGT_RunContext* UGT_RunSubsystem::StartNewRun(int32 Seed, int32 Width, int32 Hei
 {
 	CurrentRunContext = NewObject<UGT_RunContext>(this);
 	CurrentRunContext->InitializeRun(Seed, Width, Height);
+	FinishStartRun();
+	return CurrentRunContext;
+}
 
+UGT_RunContext* UGT_RunSubsystem::StartNewRunStandard(int32 Seed, EGT_Difficulty Difficulty)
+{
+	CurrentRunContext = NewObject<UGT_RunContext>(this);
+	CurrentRunContext->InitializeRunStandard(Seed, Difficulty);
+	FinishStartRun();
+	return CurrentRunContext;
+}
+
+void UGT_RunSubsystem::FinishStartRun()
+{
 	if (QueryFacade)
 	{
 		QueryFacade->Initialize(CurrentRunContext);
@@ -70,8 +83,6 @@ UGT_RunContext* UGT_RunSubsystem::StartNewRun(int32 Seed, int32 Width, int32 Hei
 		Event.bSuccess = true;
 		EventBus->PublishEvent(Event);
 	}
-
-	return CurrentRunContext;
 }
 
 bool UGT_RunSubsystem::SubmitCommand(const FGT_Command& Command)

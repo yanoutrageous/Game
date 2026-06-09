@@ -225,6 +225,22 @@ bool UGT_DebugSubsystem::DebugStartNewRun(int32 Seed, int32 Width, int32 Height,
 	return bStarted;
 }
 
+bool UGT_DebugSubsystem::DebugStartStandardRun(int32 Seed, EGT_Difficulty Difficulty, FGT_DebugRunSnapshot& OutSnapshot)
+{
+	OutSnapshot = FGT_DebugRunSnapshot();
+
+	UGT_RunSubsystem* RunSubsystem = GetRunSubsystem();
+	if (!RunSubsystem)
+	{
+		OutSnapshot.Summary = TEXT("RunSubsystem is not valid");
+		return false;
+	}
+
+	const bool bStarted = RunSubsystem->StartNewRunStandard(Seed, Difficulty) != nullptr;
+	GetDebugRunSnapshot(OutSnapshot);
+	return bStarted;
+}
+
 bool UGT_DebugSubsystem::DebugMoveTo(int32 X, int32 Y, FGT_DebugRunSnapshot& OutSnapshot)
 {
 	return SubmitDebugCommand(GTDebugCommandType_Move, X, Y, OutSnapshot);
@@ -556,6 +572,7 @@ void UGT_DebugSubsystem::GetDebugCommandHelpLines(TArray<FString>& OutLines) con
 	OutLines.Add(TEXT("  gt.Commands - Alias for gt.Help."));
 	OutLines.Add(TEXT("  gt.StartRun [Seed] [Width Height] - Start a debug/basic run."));
 	OutLines.Add(TEXT("  gt.GenMap [Seed] [Width Height] - Preview a Standard random map without affecting the active run."));
+	OutLines.Add(TEXT("  gt.StartStd [Difficulty] [Seed] - Start a Standard random run at a difficulty (Tutorial/Easy/Standard/Hard/Veteran/Elite/Nightmare)."));
 	OutLines.Add(TEXT("  gt.Status - Show run state, player position, current room, and event counts."));
 	OutLines.Add(TEXT("  gt.Room - Show current room details and placeholder action hints."));
 	OutLines.Add(TEXT("  gt.Move X Y - Move to an adjacent coordinate through the command path."));

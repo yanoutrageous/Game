@@ -6,6 +6,8 @@
 #include "Domains/Map/GT_MapTypes.h"
 #include "GT_RunContext.generated.h"
 
+struct FGT_MapGenerationSpec;
+
 UENUM(BlueprintType)
 enum class EGT_RunState : uint8
 {
@@ -97,6 +99,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Run")
 	void InitializeRun(int32 InSeed, int32 InWidth = 10, int32 InHeight = 10);
 
+	// 按难度档位开局(Standard 随机地图)。与 InitializeRun 共享后半初始化逻辑。
+	UFUNCTION(BlueprintCallable, Category = "Graytail|Run")
+	void InitializeRunStandard(int32 InSeed, EGT_Difficulty Difficulty);
+
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Run")
 	void ResetRun();
 
@@ -157,6 +163,9 @@ public:
 	bool GetRunSummarySnapshot(FGT_RunSummary& OutSummary) const;
 
 private:
+	// 新老开局路径共享的初始化逻辑: 生成地图、放置玩家、重置运行态。
+	void InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec);
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run", meta = (AllowPrivateAccess = "true"))
 	FGuid RunId;
 

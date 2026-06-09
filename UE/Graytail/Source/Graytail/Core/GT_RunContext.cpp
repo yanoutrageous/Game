@@ -10,12 +10,23 @@ namespace
 
 void UGT_RunContext::InitializeRun(int32 InSeed, int32 InWidth, int32 InHeight)
 {
+	// 老路径: 固定调试布局(供既有冒烟测试使用), 行为保持不变。
 	FGT_MapGenerationSpec MapSpec;
 	MapSpec.MapMode = EGT_MapMode::BasicDebug;
 	MapSpec.Seed = InSeed;
 	MapSpec.Width = InWidth;
 	MapSpec.Height = InHeight;
+	InitializeFromSpec(MapSpec);
+}
 
+void UGT_RunContext::InitializeRunStandard(int32 InSeed, EGT_Difficulty Difficulty)
+{
+	// 新路径: 按难度档位生成 Standard 随机地图。
+	InitializeFromSpec(UGT_MapGenerator::MakeSpecForDifficulty(Difficulty, InSeed));
+}
+
+void UGT_RunContext::InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec)
+{
 	FGT_MapGenerationResult MapResult;
 	UGT_MapGenerator::GenerateMap(MapSpec, MapResult);
 

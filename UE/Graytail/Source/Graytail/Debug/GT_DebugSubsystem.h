@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Debug/GT_DebugTypes.h"
+#include "Domains/Map/GT_MapTypes.h"
 #include "Debug/GT_RuntimeSmokeValidator.h"
 #include "UI/ViewModels/GT_MiniMapViewModel.h"
 #include "GT_DebugSubsystem.generated.h"
@@ -23,6 +24,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
 	bool DebugStartNewRun(int32 Seed, int32 Width, int32 Height, FGT_DebugRunSnapshot& OutSnapshot);
+
+	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
+	bool DebugStartStandardRun(int32 Seed, EGT_Difficulty Difficulty, FGT_DebugRunSnapshot& OutSnapshot);
 
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
 	bool DebugMoveTo(int32 X, int32 Y, FGT_DebugRunSnapshot& OutSnapshot);

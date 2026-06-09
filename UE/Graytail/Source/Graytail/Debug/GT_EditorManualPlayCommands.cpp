@@ -276,6 +276,47 @@ namespace
 		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.StartRun %s: %s"), bStarted ? TEXT("accepted") : TEXT("failed"), *Snapshot.Summary);
 	}
 
+	EGT_Difficulty ParseDifficultyArg(const FString& Arg)
+	{
+		if (Arg.Equals(TEXT("Tutorial"), ESearchCase::IgnoreCase)) return EGT_Difficulty::Tutorial;
+		if (Arg.Equals(TEXT("Easy"), ESearchCase::IgnoreCase)) return EGT_Difficulty::Easy;
+		if (Arg.Equals(TEXT("Standard"), ESearchCase::IgnoreCase)) return EGT_Difficulty::Standard;
+		if (Arg.Equals(TEXT("Hard"), ESearchCase::IgnoreCase)) return EGT_Difficulty::Hard;
+		if (Arg.Equals(TEXT("Veteran"), ESearchCase::IgnoreCase)) return EGT_Difficulty::Veteran;
+		if (Arg.Equals(TEXT("Elite"), ESearchCase::IgnoreCase)) return EGT_Difficulty::Elite;
+		if (Arg.Equals(TEXT("Nightmare"), ESearchCase::IgnoreCase)) return EGT_Difficulty::Nightmare;
+		return EGT_Difficulty::Standard;
+	}
+
+	void HandleStartStd(const TArray<FString>& Args, UWorld* World)
+	{
+		FString FailureReason;
+		UGT_DebugSubsystem* DebugSubsystem = FindDebugSubsystem(World, FailureReason);
+		if (!DebugSubsystem)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("gt.StartStd failed: %s"), *FailureReason);
+			return;
+		}
+
+		if (Args.Num() > 2)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("Usage: gt.StartStd [Tutorial|Easy|Standard|Hard|Veteran|Elite|Nightmare] [Seed]"));
+			return;
+		}
+
+		const EGT_Difficulty Difficulty = Args.IsValidIndex(0) ? ParseDifficultyArg(Args[0]) : EGT_Difficulty::Standard;
+
+		int32 Seed = GTDefaultManualSeed;
+		if (Args.IsValidIndex(1) && !TryParseIntArg(Args, 1, TEXT("Seed"), Seed))
+		{
+			return;
+		}
+
+		FGT_DebugRunSnapshot Snapshot;
+		const bool bStarted = DebugSubsystem->DebugStartStandardRun(Seed, Difficulty, Snapshot);
+		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.StartStd %s: %s"), bStarted ? TEXT("accepted") : TEXT("failed"), *Snapshot.Summary);
+	}
+
 	void HandleMove(const TArray<FString>& Args, UWorld* World)
 	{
 		FString FailureReason;
@@ -735,4 +776,9 @@ namespace
 		TEXT("gt.GenMap"),
 		TEXT("Previews a Standard random map without affecting the active run. Usage: gt.GenMap [Seed] [Width Height]"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleGenMap));
+
+	FAutoConsoleCommandWithWorldAndArgs GTStartStdCommand(
+		TEXT("gt.StartStd"),
+		TEXT("Starts a Standard random run at a difficulty. Usage: gt.StartStd [Tutorial|Easy|Standard|Hard|Veteran|Elite|Nightmare] [Seed]"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleStartStd));
 }

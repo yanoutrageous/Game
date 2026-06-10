@@ -37,6 +37,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
 	bool DebugSearch(FGT_DebugRunSnapshot& OutSnapshot);
 
+	// 上帝模式瞬移: 直接改写玩家坐标, 不走命令管线, 不触发踩雷/房间结算。仅调试用。
+	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
+	bool DebugTeleport(int32 X, int32 Y, FGT_DebugRunSnapshot& OutSnapshot);
+
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
 	bool DebugExtract(FGT_DebugRunSnapshot& OutSnapshot);
 

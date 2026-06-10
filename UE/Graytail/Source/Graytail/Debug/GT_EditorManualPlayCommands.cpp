@@ -345,6 +345,34 @@ namespace
 		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.Move %d %d %s: %s"), X, Y, bAccepted ? TEXT("accepted") : TEXT("rejected"), *Snapshot.Summary);
 	}
 
+	void HandleTeleport(const TArray<FString>& Args, UWorld* World)
+	{
+		FString FailureReason;
+		UGT_DebugSubsystem* DebugSubsystem = FindDebugSubsystem(World, FailureReason);
+		if (!DebugSubsystem)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("gt.Teleport failed: %s"), *FailureReason);
+			return;
+		}
+
+		if (Args.Num() != 2)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("Usage: gt.Teleport X Y"));
+			return;
+		}
+
+		int32 X = 0;
+		int32 Y = 0;
+		if (!TryParseIntArg(Args, 0, TEXT("X"), X) || !TryParseIntArg(Args, 1, TEXT("Y"), Y))
+		{
+			return;
+		}
+
+		FGT_DebugRunSnapshot Snapshot;
+		const bool bAccepted = DebugSubsystem->DebugTeleport(X, Y, Snapshot);
+		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.Teleport %d %d %s: %s"), X, Y, bAccepted ? TEXT("accepted") : TEXT("rejected"), *Snapshot.Summary);
+	}
+
 	void HandleScan(const TArray<FString>& Args, UWorld* World)
 	{
 		FString FailureReason;
@@ -776,6 +804,11 @@ namespace
 		TEXT("gt.Scan"),
 		TEXT("Scans a cell through the existing command path. Usage: gt.Scan X Y"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleScan));
+
+	FAutoConsoleCommandWithWorldAndArgs GTTeleportCommand(
+		TEXT("gt.Teleport"),
+		TEXT("DEBUG godmode teleport, no mine/room triggers. Usage: gt.Teleport X Y"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleTeleport));
 
 	FAutoConsoleCommandWithWorldAndArgs GTSearchCommand(
 		TEXT("gt.Search"),

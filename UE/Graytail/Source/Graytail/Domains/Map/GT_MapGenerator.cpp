@@ -142,6 +142,14 @@ void UGT_MapGenerator::ApplyStandardLayout(FGT_TruthMap& TruthMap, const FGT_Map
 		ConfigureRoomIdentity(TruthMap, Candidates[NextIndex], EGT_RoomBaseType::Combat, GTRoomContent_CombatDebugDummy01, GTRoomRule_CombatStartOnly, GTRoomInstance_CombatDebugDummy01);
 	}
 
+	// 宝箱房(Chest): 2-5 个, 放置顺序对齐 Minefield.lua(怪物 -> 宝箱 -> 事件 -> 撤离)。
+	// 无即时结算内容, 不挂 Content/Rule ID, 开箱走 Search 命令。
+	const int32 ChestCount = FMath::Clamp(FMath::RoundToInt(TotalCellCount * Spec.ChestRoomRatio), 2, 5);
+	for (int32 Placed = 0; Placed < ChestCount && NextIndex < Candidates.Num(); ++Placed, ++NextIndex)
+	{
+		TruthMap.SetRoomBaseType(Candidates[NextIndex].X, Candidates[NextIndex].Y, EGT_RoomBaseType::Chest);
+	}
+
 	// 事件房(Event): 按总格数比例, 至少 1 个。
 	const int32 EventCount = FMath::Clamp(FMath::RoundToInt(TotalCellCount * Spec.EventRoomRatio), 1, FMath::Max(0, Candidates.Num() - NextIndex));
 	for (int32 Placed = 0; Placed < EventCount && NextIndex < Candidates.Num(); ++Placed, ++NextIndex)
@@ -163,10 +171,11 @@ FGT_MapGenerationSpec UGT_MapGenerator::MakeSpecForDifficulty(EGT_Difficulty Dif
 	Spec.Seed = Seed;
 	Spec.SpawnSafeRadius = 1;
 
-	// 三档雷率/特殊房比例统一(对齐 docs/难度判断.md): 雷 ~20%, 怪物/事件各 ~10%。
+	// 三档雷率/特殊房比例统一(对齐 docs/难度判断.md): 雷 ~20%, 怪物/事件各 ~10%, 宝箱 2-5 个。
 	Spec.MineDensity = 0.20f;
 	Spec.MonsterRoomRatio = 0.10f;
 	Spec.EventRoomRatio = 0.10f;
+	Spec.ChestRoomRatio = 0.025f;
 
 	// 难度 = 尺寸 × 撤离点数(撤离点越少越难)。
 	switch (Difficulty)

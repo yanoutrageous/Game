@@ -38,6 +38,10 @@ struct GRAYTAIL_API FGT_MapGenerationSpec
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|MapGeneration", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float EventRoomRatio = 0.10f;
 
+	// 宝箱房(Chest)数量占总格数的比例, 2-5 个(对齐 Minefield.lua 正式局: ratio 0.025, min 2, max 5)。仅 Standard 模式使用。
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|MapGeneration", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float ChestRoomRatio = 0.025f;
+
 	// 随机(不可见)撤离房数量, 需探索发现。仅 Standard 模式使用。
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|MapGeneration", meta = (ClampMin = "0"))
 	int32 RandomExitCount = 2;

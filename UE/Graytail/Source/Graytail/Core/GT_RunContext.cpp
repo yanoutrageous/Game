@@ -429,8 +429,8 @@ bool UGT_RunContext::EvaluateSearchAtPlayer(FName& OutReason, bool& bOutIsChest)
 		return false;
 	}
 
-	// TODO(宝箱回合): EGT_RoomBaseType 补上 Chest 后, 这里按真实房型置位。
-	bOutIsChest = false;
+	// 宝箱房可搜(走宝箱数值表), 普通房可搜(走搜索数值表), 各一次。
+	bOutIsChest = Cell->RoomBaseType == EGT_RoomBaseType::Chest;
 	return true;
 }
 

@@ -28,6 +28,7 @@ namespace
 	const FName GTRoomIcon_Mine(TEXT("Mine"));
 	const FName GTRoomIcon_Event(TEXT("Event"));
 	const FName GTRoomIcon_Combat(TEXT("Combat"));
+	const FName GTRoomIcon_Chest(TEXT("Chest"));
 
 	FName GetDebugRoomIcon(EGT_RoomBaseType RoomBaseType)
 	{
@@ -41,6 +42,8 @@ namespace
 			return GTRoomIcon_Event;
 		case EGT_RoomBaseType::Combat:
 			return GTRoomIcon_Combat;
+		case EGT_RoomBaseType::Chest:
+			return GTRoomIcon_Chest;
 		default:
 			return NAME_None;
 		}
@@ -81,6 +84,8 @@ namespace
 			return TEXT("Event");
 		case EGT_RoomBaseType::Combat:
 			return TEXT("Combat");
+		case EGT_RoomBaseType::Chest:
+			return TEXT("Chest");
 		default:
 			return TEXT("Unknown");
 		}
@@ -252,6 +257,40 @@ bool UGT_DebugSubsystem::DebugMoveTo(int32 X, int32 Y, FGT_DebugRunSnapshot& Out
 bool UGT_DebugSubsystem::DebugScanCell(int32 X, int32 Y, FGT_DebugRunSnapshot& OutSnapshot)
 {
 	return SubmitDebugCommand(GTDebugCommandType_Scan, X, Y, OutSnapshot);
+}
+
+bool UGT_DebugSubsystem::DebugTeleport(int32 X, int32 Y, FGT_DebugRunSnapshot& OutSnapshot)
+{
+	OutSnapshot = FGT_DebugRunSnapshot();
+
+	UGT_RunSubsystem* RunSubsystem = GetRunSubsystem();
+	UGT_RunContext* RunContext = RunSubsystem ? RunSubsystem->GetCurrentRunContext() : nullptr;
+	if (!RunContext || !RunContext->IsRunActive())
+	{
+		OutSnapshot.Summary = TEXT("No active run");
+		return false;
+	}
+
+	if (!RunContext->IsValidMapCoord(X, Y))
+	{
+		GetDebugRunSnapshot(OutSnapshot);
+		OutSnapshot.Summary = FString::Printf(TEXT("Teleport rejected: (%d,%d) out of map. %s"), X, Y, *OutSnapshot.Summary);
+		return false;
+	}
+
+	FGT_ActorRuntimeState* PlayerState = RunContext->FindActorStateMutable(RunContext->GetPlayerActorId());
+	if (!PlayerState)
+	{
+		OutSnapshot.Summary = TEXT("Teleport rejected: player actor not found");
+		return false;
+	}
+
+	PlayerState->X = X;
+	PlayerState->Y = Y;
+	RunContext->MarkPlayerIntelCellExplored(X, Y);
+
+	GetDebugRunSnapshot(OutSnapshot);
+	return true;
 }
 
 bool UGT_DebugSubsystem::DebugSearch(FGT_DebugRunSnapshot& OutSnapshot)
@@ -610,6 +649,7 @@ void UGT_DebugSubsystem::GetDebugCommandHelpLines(TArray<FString>& OutLines) con
 	OutLines.Add(TEXT("  gt.Move X Y - Move to an adjacent coordinate through the command path."));
 	OutLines.Add(TEXT("  gt.Scan X Y - Scan a cell through the command path."));
 	OutLines.Add(TEXT("  gt.Search - Search the current room for gold and loot (once per room)."));
+	OutLines.Add(TEXT("  gt.Teleport X Y - DEBUG godmode: move player directly, no mine/room triggers."));
 	OutLines.Add(TEXT("  gt.Bag - Show run inventory: gold, parts, carried items, searched rooms."));
 	OutLines.Add(TEXT("  gt.Extract - Attempt extraction at the current cell."));
 	OutLines.Add(TEXT("  gt.Summary - Show the latest successful extract summary if one is available."));
@@ -731,6 +771,10 @@ bool UGT_DebugSubsystem::GetDebugRoomText(FString& OutRoomText) const
 		Hint = FString::Printf(
 			TEXT("Combat placeholder actions: gt.Attack or gt.ResolveCombat [Result]. Available=%s."),
 			Snapshot.CurrentRoomAvailableCombatResults.IsEmpty() ? TEXT("none") : *Snapshot.CurrentRoomAvailableCombatResults);
+	}
+	else if (Snapshot.CurrentRoomBaseType == EGT_RoomBaseType::Chest)
+	{
+		Hint = TEXT("Chest room action: gt.Search to open the chest (better loot, once only).");
 	}
 
 	OutRoomText = FString::Printf(
@@ -946,7 +990,7 @@ void UGT_DebugSubsystem::BuildStandardMapPreviewLines(int32 Seed, int32 Width, i
 
 	const FGT_TruthMap& Map = Result.TruthMap;
 	OutLines.Add(FString::Printf(
-		TEXT("gt.GenMap: mode=Standard seed=%d size=%dx%d legend S=spawn E=exit *=mine C=combat V=event 0-8=adjacent mines"),
+		TEXT("gt.GenMap: mode=Standard seed=%d size=%dx%d legend S=spawn E=exit *=mine C=combat V=event B=chest 0-8=adjacent mines"),
 		Result.Seed, Map.Width, Map.Height));
 
 	int32 TotalMines = 0;
@@ -979,6 +1023,10 @@ void UGT_DebugSubsystem::BuildStandardMapPreviewLines(int32 Seed, int32 Width, i
 			else if (Cell && Cell->RoomBaseType == EGT_RoomBaseType::Event)
 			{
 				Symbol = TEXT('V');
+			}
+			else if (Cell && Cell->RoomBaseType == EGT_RoomBaseType::Chest)
+			{
+				Symbol = TEXT('B');
 			}
 			else
 			{

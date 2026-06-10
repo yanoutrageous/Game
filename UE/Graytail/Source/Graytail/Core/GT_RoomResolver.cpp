@@ -386,6 +386,12 @@ bool UGT_RoomResolver::ResolveRoomByHandler(const FGT_TruthCell& TruthCell, FGT_
 		return ResolveCombatRoomPlaceholder(TruthCell, OutResult);
 	}
 
+	if (TruthCell.RoomBaseType == EGT_RoomBaseType::Chest)
+	{
+		// 宝箱房进入时无即时结算(开箱走 Search 命令), 进入行为同普通房。
+		return ResolveNormalRoom(TruthCell, OutResult);
+	}
+
 	return ResolveUnsupportedRoom(TruthCell, OutResult);
 }
 

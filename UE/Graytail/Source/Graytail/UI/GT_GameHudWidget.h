@@ -38,7 +38,7 @@ private:
 	void RefreshMiniMapGrid();
 	void RefreshItemsList();
 	UTexture2D* GetItemIcon(FName ItemId);
-	UTexture2D* LoadUiTexture(const FString& RelativePathUnderAssets);
+	UTexture2D* LoadUiTexture(const FString& AssetPath);
 	UButton* MakeButton(UHorizontalBox* Row, const FString& Label);
 	UTextBlock* MakePanelText(UVerticalBox* Panel, int32 FontSize, const FLinearColor& Color);
 
@@ -58,9 +58,6 @@ private:
 	UPROPERTY(Transient) UTextBlock* ProtocolText = nullptr;
 	UPROPERTY(Transient) UButton* SearchButton = nullptr;
 
-	// 运行时加载的物品图标缓存(防 GC)。
-	UPROPERTY(Transient) TMap<FName, UTexture2D*> IconCache;
-
-	// 运行时加载的 UI 贴图缓存(key = assets 下相对路径, 防 GC)。
+	// UI 贴图资产缓存(key = /Game 包路径, 防 GC)。
 	UPROPERTY(Transient) TMap<FString, UTexture2D*> UiTextureCache;
 };

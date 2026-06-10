@@ -28,4 +28,4 @@
 ## Git
 
 - 仅在明确要求时提交;提交信息用 feat:/fix:/chore: 前缀 + 英文正文
-- 美术素材在 `assets/`(运行时按文件名前缀模糊加载,文件名带导出时间戳);二进制资产走 LFS(.gitattributes 已配)
+- 美术源文件在 `assets/`(文件名带导出时间戳);运行时用 `UE/Graytail/Content/Graytail/` 下的 `.uasset`,代码按 `/Game/Graytail/...` 包路径 LoadObject(对象与包同名)。新增/更新素材跑 `Content/Python/import_png_assets.py` 重导(用法见脚本头注释;必须完整编辑器跑,勿加 `-unattended`,会崩在主框架初始化)。二进制资产走 LFS(.gitattributes 已配)

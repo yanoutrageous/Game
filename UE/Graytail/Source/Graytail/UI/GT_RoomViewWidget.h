@@ -41,8 +41,10 @@ public:
 private:
 	void BuildWidgetTree();
 	UGT_DebugSubsystem* GetDebugSubsystem() const;
-	UTexture2D* LoadAssetTexture(const FString& Folder, const FString& FilePrefix);
+	const UGT_RunContext* GetRunContext() const;
+	UTexture2D* LoadTextureAsset(const FString& AssetPath);
 	UTexture2D* GetWalkFrame(int32 DirX, int32 DirY, int32 FrameIndex);
+	UTexture2D* GetIdleFrame(int32 DirX, int32 DirY);
 	void TryCrossDoor(int32 DirX, int32 DirY);
 	void UpdatePlayerImagePosition();
 	void RefreshRoomDecor();
@@ -51,10 +53,14 @@ private:
 	UPROPERTY(Transient) UBorder* FloorBorder = nullptr;
 	UPROPERTY(Transient) UTextBlock* RoomLabel = nullptr;
 	UPROPERTY(Transient) UImage* DoorImages[4] = {};
+	UPROPERTY(Transient) UImage* ChestImage = nullptr;
+	UPROPERTY(Transient) UImage* GoldPileImage = nullptr;
+	UPROPERTY(Transient) UImage* PartsPileImage = nullptr;
+	UPROPERTY(Transient) UTextBlock* ChestCaption = nullptr;
 	UPROPERTY(Transient) UImage* EnemyImage = nullptr;
 	UPROPERTY(Transient) UImage* PlayerImage = nullptr;
 
-	// 运行时贴图缓存(防 GC): key = 文件前缀。
+	// 贴图资产缓存(防 GC): key = /Game 包路径。
 	UPROPERTY(Transient) TMap<FString, UTexture2D*> TextureCache;
 
 	// 房间内归一化坐标(0-1), 对齐 Lua playerPos。

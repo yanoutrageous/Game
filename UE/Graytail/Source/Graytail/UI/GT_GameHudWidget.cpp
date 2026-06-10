@@ -23,9 +23,8 @@
 #include "Engine/GameInstance.h"
 #include "Engine/Texture2D.h"
 #include "Fonts/SlateFontInfo.h"
-#include "ImageUtils.h"
 #include "Input/Events.h"
-#include "Misc/Paths.h"
+#include "Misc/PackageName.h"
 #include "Styling/CoreStyle.h"
 #include "UI/GT_RoomViewWidget.h"
 
@@ -387,17 +386,17 @@ void UGT_GameHudWidget::RefreshMiniMapGrid()
 			if (!bKnown)
 			{
 				// 未知格: ? 砖块贴图。
-				AddCellIcon(LoadUiTexture(TEXT("Textures/generated/icons/64/01_weizhi_ge.png")), 0.95f);
+				AddCellIcon(LoadUiTexture(TEXT("/Game/Graytail/UI/Icons64/01_weizhi_ge")), 0.95f);
 			}
 			else
 			{
 				// 房型图标(对齐 drawRoomIcon: 宝箱07/怪物06/事件03/撤离08/地刺05)。
 				const TCHAR* IconPath = nullptr;
-				if (Icon == TEXT("Chest")) { IconPath = TEXT("Textures/generated/icons/64/07_baoxiang_icon.png"); }
-				else if (Icon == TEXT("Combat")) { IconPath = TEXT("Textures/generated/icons/64/06_guaiwu_icon.png"); }
-				else if (Icon == TEXT("Event")) { IconPath = TEXT("Textures/generated/icons/64/03_saomiao_ge.png"); }
-				else if (Icon == TEXT("Exit")) { IconPath = TEXT("Textures/generated/icons/64/08_cheli_icon.png"); }
-				else if (Icon == TEXT("Mine")) { IconPath = TEXT("Textures/generated/icons/64/05_dici_xianjing_icon.png"); }
+				if (Icon == TEXT("Chest")) { IconPath = TEXT("/Game/Graytail/UI/Icons64/07_baoxiang_icon"); }
+				else if (Icon == TEXT("Combat")) { IconPath = TEXT("/Game/Graytail/UI/Icons64/06_guaiwu_icon"); }
+				else if (Icon == TEXT("Event")) { IconPath = TEXT("/Game/Graytail/UI/Icons64/03_saomiao_ge"); }
+				else if (Icon == TEXT("Exit")) { IconPath = TEXT("/Game/Graytail/UI/Icons64/08_cheli_icon"); }
+				else if (Icon == TEXT("Mine")) { IconPath = TEXT("/Game/Graytail/UI/Icons64/05_dici_xianjing_icon"); }
 				const bool bSpecialIcon = IconPath != nullptr;
 				if (bSpecialIcon)
 				{
@@ -426,7 +425,7 @@ void UGT_GameHudWidget::RefreshMiniMapGrid()
 					else if (!bSpecialIcon && Cell.DisplayedNumber >= 1 && Cell.DisplayedNumber <= 3)
 					{
 						// 普通格 1-3: 专用数字贴图(11/12/13_shuzi_N)。
-						AddCellIcon(LoadUiTexture(FString::Printf(TEXT("Textures/generated/icons/64/1%d_shuzi_%d.png"), Cell.DisplayedNumber, Cell.DisplayedNumber)), 0.8f);
+						AddCellIcon(LoadUiTexture(FString::Printf(TEXT("/Game/Graytail/UI/Icons64/1%d_shuzi_%d"), Cell.DisplayedNumber, Cell.DisplayedNumber)), 0.8f);
 					}
 					else if (!bSpecialIcon)
 					{
@@ -463,7 +462,7 @@ void UGT_GameHudWidget::RefreshMiniMapGrid()
 			// 玩家头像盖最上层。
 			if (bPlayerHere)
 			{
-				AddCellIcon(LoadUiTexture(TEXT("Textures/generated/icons/64/00_wanjia_dingwei.png")), 0.9f);
+				AddCellIcon(LoadUiTexture(TEXT("/Game/Graytail/UI/Icons64/00_wanjia_dingwei")), 0.9f);
 			}
 
 			MiniMapGrid->AddChildToUniformGrid(CellSize, Y, X);
@@ -511,35 +510,28 @@ void UGT_GameHudWidget::RefreshItemsList()
 
 UTexture2D* UGT_GameHudWidget::GetItemIcon(FName ItemId)
 {
-	if (UTexture2D** Cached = IconCache.Find(ItemId))
-	{
-		return *Cached;
-	}
-
-	// 复用 Lua 版美术: 按物品大类映射到 Game/assets 下的通用图标(运行时加载, 不走资产导入)。
+	// 复用 Lua 版美术: 按物品大类映射到通用图标资产(缓存在 LoadUiTexture 里)。
 	const FGT_ItemCatalogEntry* Def = GT_ItemCatalog::FindItemDef(ItemId);
-	const TCHAR* RelativePath = Def && Def->Kind == EGT_ItemKind::Consumable
-		? TEXT("assets/item_consumable/item_consumable_medkit.png")
-		: TEXT("assets/item_recovered/item_recovered_ore.png");
-	const FString FullPath = FPaths::ConvertRelativePathToFull(
-		FPaths::Combine(FPaths::ProjectDir(), TEXT(".."), TEXT(".."), RelativePath));
-
-	UTexture2D* Icon = FImageUtils::ImportFileAsTexture2D(FullPath);
-	IconCache.Add(ItemId, Icon);
-	return Icon;
+	return LoadUiTexture(Def && Def->Kind == EGT_ItemKind::Consumable
+		? TEXT("/Game/Graytail/Items/Consumable/item_consumable_medkit")
+		: TEXT("/Game/Graytail/Items/Recovered/item_recovered_ore"));
 }
 
-UTexture2D* UGT_GameHudWidget::LoadUiTexture(const FString& RelativePathUnderAssets)
+UTexture2D* UGT_GameHudWidget::LoadUiTexture(const FString& AssetPath)
 {
-	if (UTexture2D** Cached = UiTextureCache.Find(RelativePathUnderAssets))
+	if (UTexture2D** Cached = UiTextureCache.Find(AssetPath))
 	{
 		return *Cached;
 	}
 
-	const FString FullPath = FPaths::ConvertRelativePathToFull(
-		FPaths::Combine(FPaths::ProjectDir(), TEXT(".."), TEXT(".."), TEXT("assets"), RelativePathUnderAssets));
-	UTexture2D* Texture = FImageUtils::ImportFileAsTexture2D(FullPath);
-	UiTextureCache.Add(RelativePathUnderAssets, Texture);
+	// 包路径只到包名, 对象与包同名(import_png_assets.py 的导入约定)。
+	const FString ObjectPath = AssetPath + TEXT(".") + FPackageName::GetShortName(AssetPath);
+	UTexture2D* Texture = LoadObject<UTexture2D>(nullptr, *ObjectPath);
+	if (!Texture)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("GT_GameHudWidget: missing texture asset %s"), *AssetPath);
+	}
+	UiTextureCache.Add(AssetPath, Texture);
 	return Texture;
 }
 
@@ -616,7 +608,8 @@ void UGT_GameHudWidget::OnNewRun()
 	FGT_DebugRunSnapshot Snapshot;
 	if (Debug)
 	{
-		Debug->DebugStartStandardRun(12345, EGT_Difficulty::Standard, Snapshot);
+		// 每局随机种子(对齐原版); 局内随机仍由该种子完全确定, 复现指定地图用 gt.StartStd。
+		Debug->DebugStartStandardRun(FMath::RandRange(1, MAX_int32 - 1), EGT_Difficulty::Standard, Snapshot);
 	}
 	RefreshAll();
 

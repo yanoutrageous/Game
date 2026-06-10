@@ -4,8 +4,11 @@
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
+#include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
+#include "UI/GT_GameHudWidget.h"
 #include "UI/ViewModels/GT_MiniMapViewModel.h"
+#include "Blueprint/UserWidget.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogGraytailManualPlay, Log, All);
 
@@ -399,6 +402,36 @@ namespace
 		FGT_DebugRunSnapshot Snapshot;
 		const bool bAccepted = DebugSubsystem->DebugScanCell(X, Y, Snapshot);
 		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.Scan %d %d %s: %s"), X, Y, bAccepted ? TEXT("accepted") : TEXT("rejected"), *Snapshot.Summary);
+	}
+
+	void HandleHud(const TArray<FString>& Args, UWorld* World)
+	{
+		FString FailureReason;
+		UGT_DebugSubsystem* DebugSubsystem = FindDebugSubsystem(World, FailureReason);
+		if (!DebugSubsystem)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("gt.HUD failed: %s"), *FailureReason);
+			return;
+		}
+
+		APlayerController* PlayerController = World->GetFirstPlayerController();
+		if (!PlayerController)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("gt.HUD failed: no player controller (needs PIE/game world)."));
+			return;
+		}
+
+		UGT_GameHudWidget* HudWidget = CreateWidget<UGT_GameHudWidget>(PlayerController, UGT_GameHudWidget::StaticClass());
+		if (!HudWidget)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("gt.HUD failed: widget creation failed."));
+			return;
+		}
+
+		HudWidget->AddToViewport();
+		PlayerController->bShowMouseCursor = true;
+		PlayerController->SetInputMode(FInputModeGameAndUI());
+		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.HUD: minimal playable HUD added to viewport."));
 	}
 
 	void HandleSearch(const TArray<FString>& Args, UWorld* World)
@@ -805,6 +838,11 @@ namespace
 		TEXT("Scans a cell through the existing command path. Usage: gt.Scan X Y"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleScan));
 
+	FAutoConsoleCommandWithWorldAndArgs GTHudCommand(
+		TEXT("gt.HUD"),
+		TEXT("Adds the minimal playable HUD to the viewport. Usage: gt.HUD"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleHud));
+
 	FAutoConsoleCommandWithWorldAndArgs GTTeleportCommand(
 		TEXT("gt.Teleport"),
 		TEXT("DEBUG godmode teleport, no mine/room triggers. Usage: gt.Teleport X Y"),
@@ -874,4 +912,5 @@ namespace
 		TEXT("gt.StartStd"),
 		TEXT("Starts a Standard random run at a difficulty. Usage: gt.StartStd [Tutorial|Easy|Standard|Hard|Veteran|Elite|Nightmare] [Seed]"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleStartStd));
+
 }

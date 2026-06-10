@@ -1,4 +1,4 @@
-using UnrealBuildTool;
+﻿using UnrealBuildTool;
 
 public class Graytail : ModuleRules
 {
@@ -10,9 +10,14 @@ public class Graytail : ModuleRules
 		{
 			"Core",
 			"CoreUObject",
-			"Engine"
+			"Engine",
+			"InputCore",
+			"UMG",
+			"Slate",
+			"SlateCore"
 		});
 
 		PublicIncludePaths.Add(ModuleDirectory);
 	}
 }
+

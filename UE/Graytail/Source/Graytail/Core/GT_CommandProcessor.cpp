@@ -123,17 +123,37 @@ bool UGT_CommandProcessor::ProcessMoveCommand(const FGT_Command& Command)
 	if (Command.TargetActorId == RunContext->GetPlayerActorId())
 	{
 		RunContext->MarkPlayerIntelCellExplored(Command.TargetX, Command.TargetY);
+
+		// Standard 模式对齐 Lua 扫雷规则: 走到哪格自动亮出哪格的雷数(无需手动 Scan)。
+		if (RunContext->GetMapMode() == EGT_MapMode::Standard)
+		{
+			int32 AutoScanMines = 0;
+			if (RunContext->CountAdjacentMines8(Command.TargetX, Command.TargetY, AutoScanMines))
+			{
+				RunContext->SetPlayerIntelCellScannedNumber(Command.TargetX, Command.TargetY, AutoScanMines);
+			}
+		}
 	}
 
 	PublishCommandEvent(GTEventType_ActorMoved, Command.SourceActorId, Command.TargetActorId, Command.TargetX, Command.TargetY, true);
 	if (Command.TargetActorId == RunContext->GetPlayerActorId() && IsValid(RoomResolver))
 	{
+		// 雷只炸一次(对齐 Lua): 进房前先记下是否已触发过, ResolveRoomAt 内部会无条件置 bTriggered。
+		FGT_TruthCell PreMoveCell;
+		const bool bMineAlreadyTriggered = RunContext->GetTruthCellSnapshot(Command.TargetX, Command.TargetY, PreMoveCell)
+			&& PreMoveCell.bHasMine && PreMoveCell.bTriggered;
+
 		FGT_RoomResolveResult RoomResolveResult;
 		if (RoomResolver->ResolveRoomAt(Command.TargetX, Command.TargetY, RoomResolveResult)
 			&& RoomResolveResult.Outcome == EGT_RoomResolveOutcome::MineEncountered)
 		{
 			if (RunContext->GetMapMode() == EGT_MapMode::Standard)
 			{
+				if (bMineAlreadyTriggered)
+				{
+					// 已炸过的雷格视为废墟, 通行无伤。
+					return true;
+				}
 				// Standard 真规则(对齐 Combat.TakeMineHit): 雷只扣血, 血尽才败北。
 				int32 MineDamage = 0;
 				bool bPlayerDead = false;

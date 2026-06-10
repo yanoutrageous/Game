@@ -61,6 +61,16 @@ void UGT_RunContext::InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec)
 	ActorStates.Add(PlayerState);
 
 	MarkPlayerIntelCellExplored(PlayerState.X, PlayerState.Y);
+
+	// Standard 模式对齐 Lua 扫雷规则: 所在格自动亮出 8 邻域雷数。
+	if (MapMode == EGT_MapMode::Standard)
+	{
+		int32 SpawnAdjacentMines = 0;
+		if (TruthMap.CountAdjacentMines8(PlayerState.X, PlayerState.Y, SpawnAdjacentMines))
+		{
+			PlayerIntelMap.SetScannedNumber(PlayerState.X, PlayerState.Y, SpawnAdjacentMines);
+		}
+	}
 }
 
 void UGT_RunContext::ResetRun()

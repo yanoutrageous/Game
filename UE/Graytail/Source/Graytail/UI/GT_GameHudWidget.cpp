@@ -2,18 +2,20 @@
 
 #include "Blueprint/UserWidget.h"
 #include "Blueprint/WidgetTree.h"
-#include "UI/GT_RoomViewWidget.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
 #include "Components/HorizontalBox.h"
 #include "Components/Image.h"
 #include "Components/Overlay.h"
 #include "Components/OverlaySlot.h"
+#include "Components/ProgressBar.h"
+#include "Components/ScaleBox.h"
 #include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
 #include "Components/UniformGridPanel.h"
 #include "Components/UniformGridSlot.h"
 #include "Components/VerticalBox.h"
+#include "Components/VerticalBoxSlot.h"
 #include "Core/GT_RunContext.h"
 #include "Core/GT_RunSubsystem.h"
 #include "Debug/GT_DebugSubsystem.h"
@@ -22,29 +24,23 @@
 #include "Engine/Texture2D.h"
 #include "Fonts/SlateFontInfo.h"
 #include "ImageUtils.h"
+#include "Input/Events.h"
 #include "Misc/Paths.h"
 #include "Styling/CoreStyle.h"
+#include "UI/GT_RoomViewWidget.h"
 
 namespace
 {
-	// 小地图配色: 对齐 Lua 版小地图的语义色(雷红/撤离绿/战斗橙/事件紫/宝箱黄)。
-	const FLinearColor GTCellColor_Unknown(0.10f, 0.10f, 0.12f, 1.f);
-	const FLinearColor GTCellColor_Explored(0.30f, 0.32f, 0.36f, 1.f);
-	const FLinearColor GTCellColor_Player(0.15f, 0.55f, 0.90f, 1.f);
-	const FLinearColor GTCellColor_Mine(0.75f, 0.15f, 0.12f, 1.f);
-	const FLinearColor GTCellColor_Exit(0.15f, 0.65f, 0.25f, 1.f);
-	const FLinearColor GTCellColor_Combat(0.85f, 0.45f, 0.10f, 1.f);
-	const FLinearColor GTCellColor_Event(0.55f, 0.30f, 0.75f, 1.f);
-	const FLinearColor GTCellColor_Chest(0.85f, 0.70f, 0.15f, 1.f);
+	constexpr float GTMiniMapCellSize = 28.f;
 
 	FString GetRunStateLabel(EGT_RunState RunState)
 	{
 		switch (RunState)
 		{
 		case EGT_RunState::Running:
-			return TEXT("探索中");
+			return TEXT("正常作业");
 		case EGT_RunState::Failed:
-			return TEXT("死亡 - 点 NewRun 重开");
+			return TEXT("信号中断 - NewRun 重开");
 		case EGT_RunState::Succeeded:
 			return TEXT("撤离成功!");
 		default:
@@ -70,71 +66,142 @@ void UGT_GameHudWidget::NativeConstruct()
 
 void UGT_GameHudWidget::BuildWidgetTree()
 {
-	// 半透明深色底板铺满屏幕, 保证亮场景下可读。
-	UBorder* Background = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-	Background->SetBrushColor(FLinearColor(0.02f, 0.02f, 0.04f, 0.9f));
-	Background->SetPadding(FMargin(24.f));
-	Background->SetHorizontalAlignment(HAlign_Left);
-	Background->SetVerticalAlignment(VAlign_Top);
-	WidgetTree->RootWidget = Background;
+	// 全屏 Overlay: 房间铺底, 各面板悬浮其上(对齐 Lua 原版构图)。3D 世界被完全盖住。
+	UOverlay* Screen = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
+	WidgetTree->RootWidget = Screen;
 
-	// 左房间视图 + 右信息面板。
-	UHorizontalBox* Main = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	Background->SetContent(Main);
+	// 第 0 层: 不透明深色底。
+	UBorder* Backdrop = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+	Backdrop->SetBrushColor(FLinearColor(0.015f, 0.015f, 0.025f, 1.f));
+	if (UOverlaySlot* BackdropSlot = Screen->AddChildToOverlay(Backdrop))
+	{
+		BackdropSlot->SetHorizontalAlignment(HAlign_Fill);
+		BackdropSlot->SetVerticalAlignment(VAlign_Fill);
+	}
 
+	// 第 1 层: 房间视图居中自适应放大(内部逻辑坐标固定 560, ScaleBox 只缩放显示)。
 	RoomView = CreateWidget<UGT_RoomViewWidget>(this, UGT_RoomViewWidget::StaticClass());
 	if (RoomView)
 	{
 		RoomView->OnRoomChanged.BindUObject(this, &UGT_GameHudWidget::RefreshPanels);
 		RoomView->OnSearchRequested.BindUObject(this, &UGT_GameHudWidget::OnSearch);
+
+		UScaleBox* RoomScale = WidgetTree->ConstructWidget<UScaleBox>(UScaleBox::StaticClass());
+		RoomScale->SetStretch(EStretch::ScaleToFit);
 		USizeBox* RoomSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
 		RoomSize->SetWidthOverride(560.f);
 		RoomSize->SetHeightOverride(560.f);
 		RoomSize->AddChild(RoomView);
-		Main->AddChild(RoomSize);
+		RoomScale->AddChild(RoomSize);
+		if (UOverlaySlot* RoomSlot = Screen->AddChildToOverlay(RoomScale))
+		{
+			RoomSlot->SetHorizontalAlignment(HAlign_Fill);
+			RoomSlot->SetVerticalAlignment(VAlign_Fill);
+			RoomSlot->SetPadding(FMargin(360.f, 16.f, 16.f, 40.f));
+		}
 	}
 
-	UVerticalBox* Root = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
-	Main->AddChild(Root);
+	// 第 2 层: 左侧信息面板(对齐原版: 区域扫描图/生命/属性/作业包摘要)。
+	UBorder* LeftPanel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+	LeftPanel->SetBrushColor(FLinearColor(0.03f, 0.03f, 0.05f, 0.92f));
+	LeftPanel->SetPadding(FMargin(14.f));
+	if (UOverlaySlot* LeftSlot = Screen->AddChildToOverlay(LeftPanel))
+	{
+		LeftSlot->SetHorizontalAlignment(HAlign_Left);
+		LeftSlot->SetVerticalAlignment(VAlign_Fill);
+	}
 
-	StatusText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	StatusText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 18));
-	Root->AddChildToVerticalBox(StatusText);
+	UVerticalBox* Panel = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+	LeftPanel->SetContent(Panel);
+
+	UTextBlock* MapTitle = MakePanelText(Panel, 15, FLinearColor(0.85f, 0.88f, 0.95f, 1.f));
+	MapTitle->SetText(FText::FromString(TEXT("区域扫描图")));
 
 	MiniMapGrid = WidgetTree->ConstructWidget<UUniformGridPanel>(UUniformGridPanel::StaticClass());
 	MiniMapGrid->SetSlotPadding(FMargin(1.f));
-	Root->AddChildToVerticalBox(MiniMapGrid);
+	Panel->AddChildToVerticalBox(MiniMapGrid);
 
-	// 图例(对齐原版左面板说明文字)。
-	UTextBlock* LegendText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	LegendText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 11));
-	LegendText->SetColorAndOpacity(FSlateColor(FLinearColor(0.6f, 0.65f, 0.75f, 1.f)));
-	LegendText->SetText(FText::FromString(TEXT("数字 = 周围8格雷险 · 蓝点 = 可点击回传")));
-	Root->AddChildToVerticalBox(LegendText);
+	UTextBlock* Legend = MakePanelText(Panel, 10, FLinearColor(0.55f, 0.60f, 0.70f, 1.f));
+	Legend->SetText(FText::FromString(TEXT("数字 = 周围8格雷险 · 蓝点 = 可点击回传")));
 
-	ItemsRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	Root->AddChildToVerticalBox(ItemsRow);
+	// 生命条(原版红条)。
+	UTextBlock* HpTitle = MakePanelText(Panel, 13, FLinearColor(0.9f, 0.45f, 0.40f, 1.f));
+	HpTitle->SetText(FText::FromString(TEXT("生命")));
+	HpBar = WidgetTree->ConstructWidget<UProgressBar>(UProgressBar::StaticClass());
+	HpBar->SetFillColorAndOpacity(FLinearColor(0.78f, 0.16f, 0.14f, 1.f));
+	if (UVerticalBoxSlot* HpSlot = Panel->AddChildToVerticalBox(HpBar))
+	{
+		HpSlot->SetPadding(FMargin(0.f, 2.f, 0.f, 2.f));
+	}
+	HpText = MakePanelText(Panel, 12, FLinearColor(0.9f, 0.9f, 0.9f, 1.f));
 
-	// 移动靠 WASD 在房间里走, 不再提供方向按钮。
+	StatsText = MakePanelText(Panel, 13, FLinearColor(0.85f, 0.85f, 0.9f, 1.f));
+	StateText = MakePanelText(Panel, 13, FLinearColor(0.95f, 0.85f, 0.5f, 1.f));
+
+	UTextBlock* BagTitle = MakePanelText(Panel, 13, FLinearColor(0.65f, 0.75f, 0.95f, 1.f));
+	BagTitle->SetText(FText::FromString(TEXT("作业包摘要")));
+
+	ItemsList = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+	Panel->AddChildToVerticalBox(ItemsList);
+
+	// 动作按钮(Search 由可搜索性启用)。
 	UHorizontalBox* ActionRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	Root->AddChildToVerticalBox(ActionRow);
+	if (UVerticalBoxSlot* ActionSlot = Panel->AddChildToVerticalBox(ActionRow))
+	{
+		ActionSlot->SetPadding(FMargin(0.f, 8.f, 0.f, 2.f));
+	}
 	SearchButton = MakeButton(ActionRow, TEXT("Search"));
 	SearchButton->OnClicked.AddDynamic(this, &UGT_GameHudWidget::OnSearch);
 	MakeButton(ActionRow, TEXT("Attack"))->OnClicked.AddDynamic(this, &UGT_GameHudWidget::OnAttack);
 	MakeButton(ActionRow, TEXT("Extract"))->OnClicked.AddDynamic(this, &UGT_GameHudWidget::OnExtract);
 	MakeButton(ActionRow, TEXT("NewRun"))->OnClicked.AddDynamic(this, &UGT_GameHudWidget::OnNewRun);
 
-	// 快捷键栏(对齐原版底部 hotbar)。
-	UTextBlock* HotbarText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	HotbarText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 12));
-	HotbarText->SetColorAndOpacity(FSlateColor(FLinearColor(0.7f, 0.72f, 0.8f, 1.f)));
-	HotbarText->SetText(FText::FromString(TEXT("WASD 移动  |  F 搜索/开箱  |  小地图点已探索格回传")));
-	Root->AddChildToVerticalBox(HotbarText);
-
-	LogText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	LogText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 13));
+	LogText = MakePanelText(Panel, 11, FLinearColor(0.6f, 0.65f, 0.72f, 1.f));
 	LogText->SetAutoWrapText(true);
-	Root->AddChildToVerticalBox(LogText);
+
+	// 第 3 层: 右上协议面板(占位, 数值待协议系统迁入)。
+	UBorder* ProtocolPanel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+	ProtocolPanel->SetBrushColor(FLinearColor(0.05f, 0.03f, 0.03f, 0.9f));
+	ProtocolPanel->SetPadding(FMargin(12.f, 8.f));
+	ProtocolText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+	ProtocolText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 16));
+	ProtocolText->SetColorAndOpacity(FSlateColor(FLinearColor(0.95f, 0.55f, 0.45f, 1.f)));
+	ProtocolText->SetText(FText::FromString(TEXT("协议 5")));
+	ProtocolPanel->SetContent(ProtocolText);
+	if (UOverlaySlot* ProtocolSlot = Screen->AddChildToOverlay(ProtocolPanel))
+	{
+		ProtocolSlot->SetHorizontalAlignment(HAlign_Right);
+		ProtocolSlot->SetVerticalAlignment(VAlign_Top);
+		ProtocolSlot->SetPadding(FMargin(0.f, 10.f, 10.f, 0.f));
+	}
+
+	// 第 4 层: 底部快捷键栏。
+	UBorder* Hotbar = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+	Hotbar->SetBrushColor(FLinearColor(0.03f, 0.03f, 0.05f, 0.85f));
+	Hotbar->SetPadding(FMargin(16.f, 4.f));
+	UTextBlock* HotbarText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+	HotbarText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 13));
+	HotbarText->SetColorAndOpacity(FSlateColor(FLinearColor(0.75f, 0.78f, 0.85f, 1.f)));
+	HotbarText->SetText(FText::FromString(TEXT("WASD 移动  |  F 搜索/开箱  |  小地图点已探索格回传")));
+	Hotbar->SetContent(HotbarText);
+	if (UOverlaySlot* HotbarSlot = Screen->AddChildToOverlay(Hotbar))
+	{
+		HotbarSlot->SetHorizontalAlignment(HAlign_Center);
+		HotbarSlot->SetVerticalAlignment(VAlign_Bottom);
+		HotbarSlot->SetPadding(FMargin(0.f, 0.f, 0.f, 6.f));
+	}
+}
+
+UTextBlock* UGT_GameHudWidget::MakePanelText(UVerticalBox* Panel, int32 FontSize, const FLinearColor& Color)
+{
+	UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+	Text->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", FontSize));
+	Text->SetColorAndOpacity(FSlateColor(Color));
+	if (UVerticalBoxSlot* TextSlot = Panel->AddChildToVerticalBox(Text))
+	{
+		TextSlot->SetPadding(FMargin(0.f, 2.f, 0.f, 0.f));
+	}
+	return Text;
 }
 
 UButton* UGT_GameHudWidget::MakeButton(UHorizontalBox* Row, const FString& Label)
@@ -142,7 +209,7 @@ UButton* UGT_GameHudWidget::MakeButton(UHorizontalBox* Row, const FString& Label
 	UButton* Button = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
 	UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	Text->SetText(FText::FromString(Label));
-	Text->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 15));
+	Text->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 12));
 	Text->SetColorAndOpacity(FSlateColor(FLinearColor(0.05f, 0.05f, 0.08f, 1.f)));
 	Button->AddChild(Text);
 	Row->AddChild(Button);
@@ -163,8 +230,7 @@ const UGT_RunContext* UGT_GameHudWidget::GetRunContext() const
 void UGT_GameHudWidget::RefreshAll()
 {
 	RefreshPanels();
-	// 房间视图重读状态(格子没变就不动人物位置, 避免点按钮把人吸回房中央)。
-	// 顺手把键盘焦点还给房间视图(点按钮会抢走焦点, 不还回去 WASD 就失灵)。
+	// 房间视图重读状态(格子没变就不动人物位置), 并把键盘焦点还给它。
 	if (RoomView)
 	{
 		RoomView->SyncToCurrentCell(false);
@@ -174,9 +240,9 @@ void UGT_GameHudWidget::RefreshAll()
 
 void UGT_GameHudWidget::RefreshPanels()
 {
-	RefreshStatusLine();
+	RefreshStatusPanel();
 	RefreshMiniMapGrid();
-	RefreshItemsRow();
+	RefreshItemsList();
 
 	FString RoomText;
 	FString Hint;
@@ -190,6 +256,25 @@ void UGT_GameHudWidget::RefreshPanels()
 		LogText->SetText(FText::GetEmpty());
 	}
 
+	// 右上协议面板(对齐原版: 协议等级 + 描述 + 压力值)。
+	if (ProtocolText)
+	{
+		if (const UGT_RunContext* RunContext = GetRunContext())
+		{
+			const FGT_ProtocolState& Protocol = RunContext->GetProtocolState();
+			ProtocolText->SetText(FText::FromString(FString::Printf(
+				TEXT("协议 %d  %s\n协议压力 %d / %d"),
+				Protocol.Level,
+				*GT_ProtocolRules::GetLevelDescription(Protocol.Level),
+				Protocol.Pressure,
+				Protocol.MaxPressure)));
+		}
+		else
+		{
+			ProtocolText->SetText(FText::FromString(TEXT("协议 5")));
+		}
+	}
+
 	// 当前格可搜索(普通房出金币/宝箱房出藏品, 各一次)才启用按钮, 判定问内核。
 	if (SearchButton)
 	{
@@ -200,60 +285,31 @@ void UGT_GameHudWidget::RefreshPanels()
 	}
 }
 
-FReply UGT_GameHudWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
-{
-	// 点小地图已探索的安全格 -> 瞬移(对齐 Lua MapOverlay.onTeleport + main.lua TeleportTo)。
-	UGT_DebugSubsystem* Debug = GetDebugSubsystem();
-	if (MiniMapGrid && Debug)
-	{
-		const FGeometry GridGeometry = MiniMapGrid->GetCachedGeometry();
-		const FVector2D LocalPos = GridGeometry.AbsoluteToLocal(InMouseEvent.GetScreenSpacePosition());
-		const FVector2D GridSize = GridGeometry.GetLocalSize();
-		if (LocalPos.X >= 0.f && LocalPos.Y >= 0.f && LocalPos.X < GridSize.X && LocalPos.Y < GridSize.Y)
-		{
-			TArray<FGT_MiniMapCellViewData> Cells;
-			int32 Width = 0;
-			int32 Height = 0;
-			if (Debug->GetDebugMiniMapViewData(Cells, Width, Height) && Width > 0 && Height > 0)
-			{
-				const int32 CellX = FMath::Clamp(static_cast<int32>(LocalPos.X / (GridSize.X / Width)), 0, Width - 1);
-				const int32 CellY = FMath::Clamp(static_cast<int32>(LocalPos.Y / (GridSize.Y / Height)), 0, Height - 1);
-				const FGT_MiniMapCellViewData& Cell = Cells[CellY * Width + CellX];
-
-				// 仅已探索的安全格可传送("只能传送到已探索的安全房间")。
-				if (Cell.bExplored && Cell.VisibleRoomIcon != FName(TEXT("Mine")))
-				{
-					FGT_DebugRunSnapshot Snapshot;
-					Debug->DebugTeleport(CellX, CellY, Snapshot);
-					RefreshAll();
-				}
-				return FReply::Handled();
-			}
-		}
-	}
-	return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
-}
-
-void UGT_GameHudWidget::RefreshStatusLine()
+void UGT_GameHudWidget::RefreshStatusPanel()
 {
 	const UGT_RunContext* RunContext = GetRunContext();
 	if (!RunContext)
 	{
-		StatusText->SetText(FText::FromString(GetRunStateLabel(EGT_RunState::NotStarted)));
+		HpBar->SetPercent(0.f);
+		HpText->SetText(FText::GetEmpty());
+		StatsText->SetText(FText::GetEmpty());
+		StateText->SetText(FText::FromString(GetRunStateLabel(EGT_RunState::NotStarted)));
 		return;
 	}
 
 	const FGT_PlayerCombatState& Combat = RunContext->GetPlayerCombatState();
 	const FGT_RunInventoryState& Inventory = RunContext->GetRunInventory();
-	StatusText->SetText(FText::FromString(FString::Printf(
-		TEXT("HP %d/%d  战力 %d  待结算金币 %d  已锁定 %d  回收物 %d  [%s]"),
-		Combat.Hp,
-		Combat.MaxHp,
+
+	HpBar->SetPercent(Combat.MaxHp > 0 ? static_cast<float>(Combat.Hp) / Combat.MaxHp : 0.f);
+	HpText->SetText(FText::FromString(FString::Printf(TEXT("%d / %d"), Combat.Hp, Combat.MaxHp)));
+	StatsText->SetText(FText::FromString(FString::Printf(
+		TEXT("战斗力: %d\n待结算: %d\n已锁定: %d\n回收物: %d 件\n已搜索: %d 格"),
 		Combat.Power,
 		Inventory.PendingGold,
 		Inventory.SafeGold,
 		Inventory.GetCarriedItemCount(),
-		*GetRunStateLabel(RunContext->GetRunState()))));
+		Inventory.SearchedRooms.Num())));
+	StateText->SetText(FText::FromString(FString::Printf(TEXT("[%s]"), *GetRunStateLabel(RunContext->GetRunState()))));
 }
 
 void UGT_GameHudWidget::RefreshMiniMapGrid()
@@ -291,8 +347,8 @@ void UGT_GameHudWidget::RefreshMiniMapGrid()
 			const bool bMineCell = bKnown && Icon == TEXT("Mine");
 
 			USizeBox* CellSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-			CellSize->SetWidthOverride(36.f);
-			CellSize->SetHeightOverride(36.f);
+			CellSize->SetWidthOverride(GTMiniMapCellSize);
+			CellSize->SetHeightOverride(GTMiniMapCellSize);
 
 			// 底色对齐 MapOverlay: 隐藏(70,75,95) / 雷(220,40,40) / 已知(40,45,60)。
 			UBorder* CellBorder = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
@@ -320,7 +376,7 @@ void UGT_GameHudWidget::RefreshMiniMapGrid()
 				}
 				UImage* IconImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
 				IconImage->SetBrushFromTexture(Texture);
-				IconImage->SetDesiredSizeOverride(FVector2D(34.f * Scale, 34.f * Scale));
+				IconImage->SetDesiredSizeOverride(FVector2D((GTMiniMapCellSize - 2.f) * Scale, (GTMiniMapCellSize - 2.f) * Scale));
 				if (UOverlaySlot* IconSlot = CellOverlay->AddChildToOverlay(IconImage))
 				{
 					IconSlot->SetHorizontalAlignment(HAlign_Center);
@@ -355,9 +411,9 @@ void UGT_GameHudWidget::RefreshMiniMapGrid()
 						// 特殊格: 右下角数字角标(对齐 drawNumberBadge)。
 						UBorder* Badge = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 						Badge->SetBrushColor(FLinearColor(0.02f, 0.03f, 0.06f, 0.88f));
-						Badge->SetPadding(FMargin(3.f, 0.f));
+						Badge->SetPadding(FMargin(2.f, 0.f));
 						UTextBlock* BadgeText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-						BadgeText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 9));
+						BadgeText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 8));
 						BadgeText->SetText(FText::FromString(FString::FromInt(Cell.DisplayedNumber)));
 						BadgeText->SetColorAndOpacity(FSlateColor(NumberColors[FMath::Clamp(Cell.DisplayedNumber, 0, 3)]));
 						Badge->SetContent(BadgeText);
@@ -376,7 +432,7 @@ void UGT_GameHudWidget::RefreshMiniMapGrid()
 					{
 						// 0 与 4+: 文本数字(0 也显示, 用户要求)。
 						UTextBlock* NumberText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-						NumberText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 15));
+						NumberText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 13));
 						NumberText->SetText(FText::FromString(FString::FromInt(Cell.DisplayedNumber)));
 						NumberText->SetColorAndOpacity(FSlateColor(NumberColors[FMath::Clamp(Cell.DisplayedNumber, 0, 3)]));
 						if (UOverlaySlot* NumberSlot = CellOverlay->AddChildToOverlay(NumberText))
@@ -392,8 +448,8 @@ void UGT_GameHudWidget::RefreshMiniMapGrid()
 			if (Cell.bExplored && !bMineCell && !bPlayerHere)
 			{
 				USizeBox* DotSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-				DotSize->SetWidthOverride(5.f);
-				DotSize->SetHeightOverride(5.f);
+				DotSize->SetWidthOverride(4.f);
+				DotSize->SetHeightOverride(4.f);
 				UBorder* Dot = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 				Dot->SetBrushColor(FLinearColor(0.39f, 0.78f, 1.f, 0.8f));
 				DotSize->SetContent(Dot);
@@ -415,23 +471,9 @@ void UGT_GameHudWidget::RefreshMiniMapGrid()
 	}
 }
 
-UTexture2D* UGT_GameHudWidget::LoadUiTexture(const FString& RelativePathUnderAssets)
+void UGT_GameHudWidget::RefreshItemsList()
 {
-	if (UTexture2D** Cached = UiTextureCache.Find(RelativePathUnderAssets))
-	{
-		return *Cached;
-	}
-
-	const FString FullPath = FPaths::ConvertRelativePathToFull(
-		FPaths::Combine(FPaths::ProjectDir(), TEXT(".."), TEXT(".."), TEXT("assets"), RelativePathUnderAssets));
-	UTexture2D* Texture = FImageUtils::ImportFileAsTexture2D(FullPath);
-	UiTextureCache.Add(RelativePathUnderAssets, Texture);
-	return Texture;
-}
-
-void UGT_GameHudWidget::RefreshItemsRow()
-{
-	ItemsRow->ClearChildren();
+	ItemsList->ClearChildren();
 
 	const UGT_RunContext* RunContext = GetRunContext();
 	if (!RunContext)
@@ -443,23 +485,27 @@ void UGT_GameHudWidget::RefreshItemsRow()
 	{
 		const FGT_ItemCatalogEntry* Def = GT_ItemCatalog::FindItemDef(Stack.ItemId);
 
+		UHorizontalBox* ItemRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+		ItemsList->AddChildToVerticalBox(ItemRow);
+
 		if (UTexture2D* Icon = GetItemIcon(Stack.ItemId))
 		{
 			USizeBox* IconSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-			IconSize->SetWidthOverride(40.f);
-			IconSize->SetHeightOverride(40.f);
+			IconSize->SetWidthOverride(20.f);
+			IconSize->SetHeightOverride(20.f);
 			UImage* IconImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
 			IconImage->SetBrushFromTexture(Icon);
 			IconSize->SetContent(IconImage);
-			ItemsRow->AddChild(IconSize);
+			ItemRow->AddChild(IconSize);
 		}
 
 		UTextBlock* ItemText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		ItemText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 14));
-		ItemText->SetText(FText::FromString(FString::Printf(TEXT("%s x%d  "),
+		ItemText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 12));
+		ItemText->SetColorAndOpacity(FSlateColor(FLinearColor(0.85f, 0.85f, 0.9f, 1.f)));
+		ItemText->SetText(FText::FromString(FString::Printf(TEXT(" %s x%d"),
 			Def ? *Def->DisplayName : *Stack.ItemId.ToString(),
 			Stack.Count)));
-		ItemsRow->AddChild(ItemText);
+		ItemRow->AddChild(ItemText);
 	}
 }
 
@@ -481,6 +527,54 @@ UTexture2D* UGT_GameHudWidget::GetItemIcon(FName ItemId)
 	UTexture2D* Icon = FImageUtils::ImportFileAsTexture2D(FullPath);
 	IconCache.Add(ItemId, Icon);
 	return Icon;
+}
+
+UTexture2D* UGT_GameHudWidget::LoadUiTexture(const FString& RelativePathUnderAssets)
+{
+	if (UTexture2D** Cached = UiTextureCache.Find(RelativePathUnderAssets))
+	{
+		return *Cached;
+	}
+
+	const FString FullPath = FPaths::ConvertRelativePathToFull(
+		FPaths::Combine(FPaths::ProjectDir(), TEXT(".."), TEXT(".."), TEXT("assets"), RelativePathUnderAssets));
+	UTexture2D* Texture = FImageUtils::ImportFileAsTexture2D(FullPath);
+	UiTextureCache.Add(RelativePathUnderAssets, Texture);
+	return Texture;
+}
+
+FReply UGT_GameHudWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
+{
+	// 点小地图已探索的安全格 -> 瞬移(对齐 Lua MapOverlay.onTeleport + main.lua TeleportTo)。
+	UGT_DebugSubsystem* Debug = GetDebugSubsystem();
+	if (MiniMapGrid && Debug)
+	{
+		const FGeometry GridGeometry = MiniMapGrid->GetCachedGeometry();
+		const FVector2D LocalPos = GridGeometry.AbsoluteToLocal(InMouseEvent.GetScreenSpacePosition());
+		const FVector2D GridSize = GridGeometry.GetLocalSize();
+		if (LocalPos.X >= 0.f && LocalPos.Y >= 0.f && LocalPos.X < GridSize.X && LocalPos.Y < GridSize.Y)
+		{
+			TArray<FGT_MiniMapCellViewData> Cells;
+			int32 Width = 0;
+			int32 Height = 0;
+			if (Debug->GetDebugMiniMapViewData(Cells, Width, Height) && Width > 0 && Height > 0)
+			{
+				const int32 CellX = FMath::Clamp(static_cast<int32>(LocalPos.X / (GridSize.X / Width)), 0, Width - 1);
+				const int32 CellY = FMath::Clamp(static_cast<int32>(LocalPos.Y / (GridSize.Y / Height)), 0, Height - 1);
+				const FGT_MiniMapCellViewData& Cell = Cells[CellY * Width + CellX];
+
+				// 仅已探索的安全格可传送("只能传送到已探索的安全房间")。
+				if (Cell.bExplored && Cell.VisibleRoomIcon != FName(TEXT("Mine")))
+				{
+					FGT_DebugRunSnapshot Snapshot;
+					Debug->DebugTeleport(CellX, CellY, Snapshot);
+					RefreshAll();
+				}
+				return FReply::Handled();
+			}
+		}
+	}
+	return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
 }
 
 void UGT_GameHudWidget::OnSearch()

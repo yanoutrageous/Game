@@ -37,7 +37,7 @@
 
 ## 待认领（机动任务，谁有余力谁接）
 
-- **协议压力系统**（`Protocol.lua`）：压力随移动/踩雷/杀怪上涨、5 级协议阈值、压满强制失败——核心循环的"倒计时紧迫感"，量不大但优先级高，建议战斗双人组里先完成规则轨的人顺手接
+- ~~协议压力系统~~ **已完成**（`Core/GT_ProtocolState.h`：探索+2/踩雷+10/杀怪+5，阈值 80/60/40/20→协议 1-4，满压强制败北，右上面板已接数据；事件 `ProtocolPressureChanged`/`ProtocolLevelChanged` 可供 UI/表现监听）
 - **事件房真内容**（`EventSystem.lua`）：骰子/祭坛/旅商/陷阱替换当前 Debug 假选项
 - 零碎 TODO：教学难度可见撤离点、特殊房唯一 RoomInstanceId、`gt.StartStd` 难度名拼错静默回退
 

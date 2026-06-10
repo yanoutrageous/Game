@@ -4,6 +4,7 @@
 #include "UObject/Object.h"
 #include "Core/GT_CommandBus.h"
 #include "Core/GT_RoomResolver.h"
+#include "Core/GT_RunContext.h"
 #include "GT_CommandProcessor.generated.h"
 
 class UGT_EventBus;
@@ -31,6 +32,9 @@ private:
 	bool ProcessResolveCombatCommand(const FGT_Command& Command);
 	bool ProcessAttackCommand(const FGT_Command& Command);
 	void PublishCommandEvent(FName EventType, FName SourceActorId, FName TargetActorId, int32 X, int32 Y, bool bSuccess) const;
+
+	// 协议压力变化广播: 总压力(ProtocolPressureChanged) + 等级变化(ProtocolLevelChanged) + 满压败北(RunFailed)。
+	void PublishProtocolPressureEvent(FName ActorId, int32 X, int32 Y, int32 PressureDelta, const UGT_RunContext::FProtocolPressureResult& Result) const;
 
 	UPROPERTY(Transient)
 	UGT_RunContext* RunContext = nullptr;

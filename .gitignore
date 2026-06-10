@@ -20,3 +20,5 @@ UE/Graytail/*.opensdf
 UE/Graytail/*.sdf
 
 CLAUDE.local.md
+
+.mcp.json

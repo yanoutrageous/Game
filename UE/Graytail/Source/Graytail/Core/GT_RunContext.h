@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
 #include "Core/GT_ActorTypes.h"
+#include "Core/GT_ProtocolState.h"
 #include "Domains/Map/GT_MapTypes.h"
 #include "Domains/Inventory/GT_InventoryTypes.h"
 #include "Domains/Combat/GT_CombatRules.h"
@@ -183,6 +184,36 @@ public:
 	// 踩雷扣血(Standard 模式规则, 对齐 Combat.TakeMineHit)。返回实际伤害与是否致死。
 	void ApplyMineHitToPlayer(int32& OutDamage, bool& bOutDead);
 
+	// 协议压力系统(对齐 Protocol.lua): 压力随行动上升, 触发阈值时等级下降, 满压强制败北。
+	// 返回值包含 level/pressure/changed/bForcedFail(压力满时触发败北)。
+	// 已探索格子不会重复加压(对齐 Lua 里只在首次探索未知房时加压)。
+	bool MarkExploredForPressure(int32 X, int32 Y);
+	bool IsExploredForPressure(int32 X, int32 Y) const;
+
+	struct FProtocolPressureResult
+	{
+		int32 Level = 5;
+		int32 Pressure = 0;
+		bool bLevelChanged = false;
+		bool bForcedFail = false;
+	};
+	FProtocolPressureResult AddProtocolPressure(int32 Amount);
+
+	UFUNCTION(BlueprintPure, Category = "Graytail|Protocol")
+	const FGT_ProtocolState& GetProtocolState() const;
+
+	UFUNCTION(BlueprintPure, Category = "Graytail|Protocol")
+	int32 GetProtocolLevel() const;
+
+	UFUNCTION(BlueprintPure, Category = "Graytail|Protocol")
+	int32 GetProtocolPressure() const;
+
+	UFUNCTION(BlueprintPure, Category = "Graytail|Protocol")
+	int32 GetProtocolMaxPressure() const;
+
+	UFUNCTION(BlueprintPure, Category = "Graytail|Protocol")
+	float GetProtocolPressureRatio() const;
+
 	// 玩家当前格能否搜索。不能搜索时 OutReason 给出原因(对齐 Lua GetSearchState 的 reason)。
 	bool EvaluateSearchAtPlayer(FName& OutReason, bool& bOutIsChest) const;
 
@@ -235,6 +266,9 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat", meta = (AllowPrivateAccess = "true"))
 	FGT_PlayerCombatState PlayerCombatState;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Protocol", meta = (AllowPrivateAccess = "true"))
+	FGT_ProtocolState ProtocolState;
+
 	// 本局地图模式: Standard 用真实战斗/雷伤规则, BasicDebug 保持测试夹具行为。
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run", meta = (AllowPrivateAccess = "true"))
 	EGT_MapMode MapMode = EGT_MapMode::Unknown;
@@ -242,4 +276,8 @@ private:
 	// Standard 模式已击杀的战斗房坐标(注意: TruthCell.bResolved 在进房时就被置位, 不能用来判断)。
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat", meta = (AllowPrivateAccess = "true"))
 	TArray<FIntPoint> DefeatedCombatRooms;
+
+	// 已因探索而加过协议压力的格子坐标(防重复加压)。
+	UPROPERTY(Transient, meta = (AllowPrivateAccess = "true"))
+	TArray<FIntPoint> PressureExploredCells;
 };

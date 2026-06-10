@@ -7,23 +7,23 @@
 class UTextBlock;
 class UButton;
 class UHorizontalBox;
+class UVerticalBox;
+class UProgressBar;
 class UUniformGridPanel;
 class UTexture2D;
 class UGT_DebugSubsystem;
 class UGT_RunContext;
 class UGT_RoomViewWidget;
 
-// 最小可玩 HUD: 纯 C++ 搭 UMG 树(无蓝图资产)。
-// 薄壳原则: 动作走 DebugSubsystem 现成入口, 显示读 RunContext 只读状态。
-// 入口: 控制台 gt.HUD。
+// 主游戏界面(对齐 Lua 原版构图): 房间视图铺满全屏为背景,
+// 左侧信息面板/右上协议面板/底部快捷键栏全部悬浮其上。
+// 纯 C++ 搭 UMG 树(无蓝图资产), 入口: 控制台 gt.HUD。
 UCLASS()
 class GRAYTAIL_API UGT_GameHudWidget : public UUserWidget
 {
 	GENERATED_BODY()
 
 public:
-	// 纯 C++ 搭树必须在 RebuildWidget(Slate 构建前)完成;
-	// NativeConstruct 时 Slate 树已生成, 再设 RootWidget 不会显示。
 	virtual TSharedRef<SWidget> RebuildWidget() override;
 	virtual void NativeConstruct() override;
 	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
@@ -34,23 +34,28 @@ private:
 	const UGT_RunContext* GetRunContext() const;
 	void RefreshAll();
 	void RefreshPanels();
-	void RefreshStatusLine();
+	void RefreshStatusPanel();
 	void RefreshMiniMapGrid();
-	void RefreshItemsRow();
+	void RefreshItemsList();
 	UTexture2D* GetItemIcon(FName ItemId);
 	UTexture2D* LoadUiTexture(const FString& RelativePathUnderAssets);
 	UButton* MakeButton(UHorizontalBox* Row, const FString& Label);
+	UTextBlock* MakePanelText(UVerticalBox* Panel, int32 FontSize, const FLinearColor& Color);
 
 	UFUNCTION() void OnSearch();
 	UFUNCTION() void OnAttack();
 	UFUNCTION() void OnExtract();
 	UFUNCTION() void OnNewRun();
 
-	UPROPERTY(Transient) UTextBlock* StatusText = nullptr;
-	UPROPERTY(Transient) UUniformGridPanel* MiniMapGrid = nullptr;
-	UPROPERTY(Transient) UHorizontalBox* ItemsRow = nullptr;
-	UPROPERTY(Transient) UTextBlock* LogText = nullptr;
 	UPROPERTY(Transient) UGT_RoomViewWidget* RoomView = nullptr;
+	UPROPERTY(Transient) UUniformGridPanel* MiniMapGrid = nullptr;
+	UPROPERTY(Transient) UProgressBar* HpBar = nullptr;
+	UPROPERTY(Transient) UTextBlock* HpText = nullptr;
+	UPROPERTY(Transient) UTextBlock* StatsText = nullptr;
+	UPROPERTY(Transient) UTextBlock* StateText = nullptr;
+	UPROPERTY(Transient) UVerticalBox* ItemsList = nullptr;
+	UPROPERTY(Transient) UTextBlock* LogText = nullptr;
+	UPROPERTY(Transient) UTextBlock* ProtocolText = nullptr;
 	UPROPERTY(Transient) UButton* SearchButton = nullptr;
 
 	// 运行时加载的物品图标缓存(防 GC)。

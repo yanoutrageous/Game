@@ -1,5 +1,6 @@
 #include "Core/GT_RunContext.h"
 
+#include "Core/GT_ProtocolState.h"
 #include "Domains/Inventory/GT_LootRules.h"
 #include "Domains/Map/GT_MapGenerator.h"
 
@@ -44,7 +45,9 @@ void UGT_RunContext::InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec)
 	RunSummary = FGT_RunSummary();
 	RunInventory.Reset();
 	PlayerCombatState = FGT_PlayerCombatState();
+	ProtocolState.Reset();
 	DefeatedCombatRooms.Reset();
+	PressureExploredCells.Reset();
 
 	PlayerActorId = FName(TEXT("Player"));
 
@@ -89,7 +92,9 @@ void UGT_RunContext::ResetRun()
 	RunSummary = FGT_RunSummary();
 	RunInventory.Reset();
 	PlayerCombatState = FGT_PlayerCombatState();
+	ProtocolState.Reset();
 	DefeatedCombatRooms.Reset();
+	PressureExploredCells.Reset();
 	MapMode = EGT_MapMode::Unknown;
 }
 
@@ -454,6 +459,79 @@ void UGT_RunContext::ApplyMineHitToPlayer(int32& OutDamage, bool& bOutDead)
 	OutDamage = FMath::Max(GT_CombatRules::MineDamageFloor, GT_CombatRules::MineDamage);
 	PlayerCombatState.ApplyDamage(OutDamage);
 	bOutDead = !PlayerCombatState.IsAlive();
+}
+
+bool UGT_RunContext::MarkExploredForPressure(int32 X, int32 Y)
+{
+	const FIntPoint Coord(X, Y);
+	if (PressureExploredCells.Contains(Coord))
+	{
+		return false;
+	}
+	PressureExploredCells.Add(Coord);
+	return true;
+}
+
+bool UGT_RunContext::IsExploredForPressure(int32 X, int32 Y) const
+{
+	return PressureExploredCells.Contains(FIntPoint(X, Y));
+}
+
+UGT_RunContext::FProtocolPressureResult UGT_RunContext::AddProtocolPressure(int32 Amount)
+{
+	FProtocolPressureResult Result;
+
+	if (!IsRunActive())
+	{
+		Result.Level = ProtocolState.Level;
+		Result.Pressure = ProtocolState.Pressure;
+		return Result;
+	}
+
+	Amount = FMath::Max(0, Amount);
+	ProtocolState.LastDelta = Amount;
+	ProtocolState.Pressure = FMath::Clamp(ProtocolState.Pressure + Amount, 0, ProtocolState.MaxPressure);
+
+	const int32 PrevLevel = ProtocolState.Level;
+	ProtocolState.Level = GT_ProtocolRules::ComputeLevel(ProtocolState.Pressure);
+	ProtocolState.bLevelChanged = ProtocolState.Level != PrevLevel;
+
+	Result.Level = ProtocolState.Level;
+	Result.Pressure = ProtocolState.Pressure;
+	Result.bLevelChanged = ProtocolState.bLevelChanged;
+
+	// 满压强制败北(对齐协议 1 时的"撤离是建议, 不撤离是选择"): 压力到顶 = 信号中断。
+	if (ProtocolState.Pressure >= ProtocolState.MaxPressure)
+	{
+		Result.bForcedFail = MarkRunFailed(FName(TEXT("Protocol")));
+	}
+
+	return Result;
+}
+
+const FGT_ProtocolState& UGT_RunContext::GetProtocolState() const
+{
+	return ProtocolState;
+}
+
+int32 UGT_RunContext::GetProtocolLevel() const
+{
+	return ProtocolState.Level;
+}
+
+int32 UGT_RunContext::GetProtocolPressure() const
+{
+	return ProtocolState.Pressure;
+}
+
+int32 UGT_RunContext::GetProtocolMaxPressure() const
+{
+	return ProtocolState.MaxPressure;
+}
+
+float UGT_RunContext::GetProtocolPressureRatio() const
+{
+	return ProtocolState.GetPressureRatio();
 }
 
 bool UGT_RunContext::EvaluateSearchAtPlayer(FName& OutReason, bool& bOutIsChest) const

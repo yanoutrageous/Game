@@ -714,12 +714,17 @@ bool UGT_DebugSubsystem::GetDebugInventoryText(FString& OutInventoryText) const
 		EnemyText = FString::Printf(TEXT(" Enemy={%s Power=%d}"), *CombatState.EnemyName, CombatState.EnemyPower);
 	}
 
+	const FGT_ProtocolState& Protocol = RunContext->GetProtocolState();
+
 	OutInventoryText = FString::Printf(
-		TEXT("gt.Bag: Hp=%d/%d Power=%d%s PendingGold=%d SafeGold=%d Parts=%d LooseParts=%d CarriedItemCount=%d CarriedItemValue=%d SearchedRooms=%d Items={%s}"),
+		TEXT("gt.Bag: Hp=%d/%d Power=%d%s Protocol=L%d:%d/%d PendingGold=%d SafeGold=%d Parts=%d LooseParts=%d CarriedItemCount=%d CarriedItemValue=%d SearchedRooms=%d Items={%s}"),
 		PlayerCombat.Hp,
 		PlayerCombat.MaxHp,
 		PlayerCombat.Power,
 		*EnemyText,
+		Protocol.Level,
+		Protocol.Pressure,
+		Protocol.MaxPressure,
 		Inventory.PendingGold,
 		Inventory.SafeGold,
 		Inventory.Parts,

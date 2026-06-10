@@ -2,6 +2,7 @@
 
 #include "Core/GT_ContentRegistry.h"
 #include "Core/GT_EventBus.h"
+#include "Core/GT_ProtocolState.h"
 #include "Core/GT_RunContext.h"
 
 namespace
@@ -21,7 +22,12 @@ namespace
 	const FName GTEventType_RunSucceeded(TEXT("RunSucceeded"));
 	const FName GTRunFailureReason_Mine(TEXT("Mine"));
 	const FName GTRunFailureReason_CombatDeath(TEXT("CombatDeath"));
+	const FName GTRunFailureReason_Protocol(TEXT("Protocol"));
 	const FName GTEventType_MineDamaged(TEXT("MineDamaged"));
+	const FName GTEventType_ProtocolPressureChanged(TEXT("ProtocolPressureChanged"));
+	const FName GTEventType_ProtocolLevelChanged(TEXT("ProtocolLevelChanged"));
+	const FName GTEventType_ProtocolChanged(TEXT("ProtocolChanged"));
+	const FName GTEventType_PressureAdded(TEXT("PressureAdded"));
 	const FName GTRunSuccessReason_Extract(TEXT("Extract"));
 	const FName GTSourceSystem_CommandProcessor(TEXT("CommandProcessor"));
 }
@@ -132,6 +138,13 @@ bool UGT_CommandProcessor::ProcessMoveCommand(const FGT_Command& Command)
 			{
 				RunContext->SetPlayerIntelCellScannedNumber(Command.TargetX, Command.TargetY, AutoScanMines);
 			}
+
+			// 首次探索未知房加协议压力(对齐 Balance.pressure.explore = 2)。
+			if (RunContext->MarkExploredForPressure(Command.TargetX, Command.TargetY))
+			{
+				const auto PressureResult = RunContext->AddProtocolPressure(GT_ProtocolRules::ExplorePressure);
+				PublishProtocolPressureEvent(Command.TargetActorId, Command.TargetX, Command.TargetY, GT_ProtocolRules::ExplorePressure, PressureResult);
+			}
 		}
 	}
 
@@ -172,6 +185,12 @@ bool UGT_CommandProcessor::ProcessMoveCommand(const FGT_Command& Command)
 				if (IsValid(EventBus))
 				{
 					EventBus->PublishEvent(MineEvent);
+				}
+
+				// 踩雷加协议压力(对齐 Balance.pressure.mine = 10)。
+				{
+					const auto MinePressureResult = RunContext->AddProtocolPressure(GT_ProtocolRules::MinePressure);
+					PublishProtocolPressureEvent(Command.TargetActorId, Command.TargetX, Command.TargetY, GT_ProtocolRules::MinePressure, MinePressureResult);
 				}
 
 				if (bPlayerDead && RunContext->MarkRunFailed(GTRunFailureReason_Mine))
@@ -361,15 +380,60 @@ bool UGT_CommandProcessor::ProcessAttackCommand(const FGT_Command& Command)
 		return false;
 	}
 
-	// Standard 真战斗可能反伤致死(战力差扣血), 此处统一判定败北。
-	if (RunContext->GetMapMode() == EGT_MapMode::Standard
-		&& !RunContext->IsPlayerAlive()
-		&& RunContext->MarkRunFailed(GTRunFailureReason_CombatDeath))
+	if (RunContext->GetMapMode() == EGT_MapMode::Standard)
 	{
-		PublishCommandEvent(GTEventType_RunFailed, Command.SourceActorId, EventTargetActorId, PlayerX, PlayerY, true);
+		// Standard 真战斗可能反伤致死(战力差扣血), 此处统一判定败北。
+		if (!RunContext->IsPlayerAlive())
+		{
+			if (RunContext->MarkRunFailed(GTRunFailureReason_CombatDeath))
+			{
+				PublishCommandEvent(GTEventType_RunFailed, Command.SourceActorId, EventTargetActorId, PlayerX, PlayerY, true);
+			}
+		}
+		else
+		{
+			// 击杀怪物加协议压力(对齐 Balance.pressure.monsterKill = 5)。
+			const UGT_RunContext::FProtocolPressureResult KillPressureResult = RunContext->AddProtocolPressure(GT_ProtocolRules::CombatKillPressure);
+			PublishProtocolPressureEvent(EventTargetActorId, PlayerX, PlayerY, GT_ProtocolRules::CombatKillPressure, KillPressureResult);
+		}
 	}
 
 	return true;
+}
+
+void UGT_CommandProcessor::PublishProtocolPressureEvent(FName ActorId, int32 X, int32 Y, int32 PressureDelta, const UGT_RunContext::FProtocolPressureResult& Result) const
+{
+	if (!IsValid(EventBus))
+	{
+		return;
+	}
+
+	FGT_GameEvent PressureEvent;
+	PressureEvent.EventType = GTEventType_ProtocolPressureChanged;
+	PressureEvent.SourceSystem = GTSourceSystem_CommandProcessor;
+	PressureEvent.SourceActorId = ActorId;
+	PressureEvent.TargetActorId = ActorId;
+	PressureEvent.X = X;
+	PressureEvent.Y = Y;
+	PressureEvent.RoomCoord = FIntPoint(X, Y);
+	PressureEvent.NumericValue = Result.Pressure;
+	PressureEvent.bSuccess = true;
+	EventBus->PublishEvent(PressureEvent);
+
+	if (Result.bLevelChanged)
+	{
+		FGT_GameEvent LevelEvent = PressureEvent;
+		LevelEvent.EventId = FGuid::NewGuid();
+		LevelEvent.EventType = GTEventType_ProtocolLevelChanged;
+		LevelEvent.NumericValue = Result.Level;
+		EventBus->PublishEvent(LevelEvent);
+	}
+
+	// 满压败北: MarkRunFailed 已在 AddProtocolPressure 内部完成, 此处只补广播。
+	if (Result.bForcedFail)
+	{
+		PublishCommandEvent(GTEventType_RunFailed, ActorId, ActorId, X, Y, true);
+	}
 }
 
 void UGT_CommandProcessor::PublishCommandEvent(FName EventType, FName SourceActorId, FName TargetActorId, int32 X, int32 Y, bool bSuccess) const

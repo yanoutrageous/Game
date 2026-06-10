@@ -5,6 +5,7 @@
 #include "Core/GT_ActorTypes.h"
 #include "Domains/Map/GT_MapTypes.h"
 #include "Domains/Inventory/GT_InventoryTypes.h"
+#include "Domains/Combat/GT_CombatRules.h"
 #include "GT_RunContext.generated.h"
 
 struct FGT_MapGenerationSpec;
@@ -47,6 +48,16 @@ struct GRAYTAIL_API FGT_CombatRuntimeState
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat")
 	FName LastCombatResultId = NAME_None;
+
+	// Standard 模式真怪信息(bStandardEnemy=false 时为 BasicDebug 的 1 血 dummy)。
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat")
+	bool bStandardEnemy = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat")
+	FString EnemyName;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat")
+	int32 EnemyPower = 0;
 };
 
 USTRUCT(BlueprintType)
@@ -165,6 +176,13 @@ public:
 
 	const FGT_RunInventoryState& GetRunInventory() const;
 
+	const FGT_PlayerCombatState& GetPlayerCombatState() const;
+	EGT_MapMode GetMapMode() const;
+	bool IsPlayerAlive() const;
+
+	// 踩雷扣血(Standard 模式规则, 对齐 Combat.TakeMineHit)。返回实际伤害与是否致死。
+	void ApplyMineHitToPlayer(int32& OutDamage, bool& bOutDead);
+
 	// 玩家当前格能否搜索。不能搜索时 OutReason 给出原因(对齐 Lua GetSearchState 的 reason)。
 	bool EvaluateSearchAtPlayer(FName& OutReason, bool& bOutIsChest) const;
 
@@ -213,4 +231,15 @@ private:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Inventory", meta = (AllowPrivateAccess = "true"))
 	FGT_RunInventoryState RunInventory;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat", meta = (AllowPrivateAccess = "true"))
+	FGT_PlayerCombatState PlayerCombatState;
+
+	// 本局地图模式: Standard 用真实战斗/雷伤规则, BasicDebug 保持测试夹具行为。
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run", meta = (AllowPrivateAccess = "true"))
+	EGT_MapMode MapMode = EGT_MapMode::Unknown;
+
+	// Standard 模式已击杀的战斗房坐标(注意: TruthCell.bResolved 在进房时就被置位, 不能用来判断)。
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat", meta = (AllowPrivateAccess = "true"))
+	TArray<FIntPoint> DefeatedCombatRooms;
 };

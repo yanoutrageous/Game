@@ -696,8 +696,20 @@ bool UGT_DebugSubsystem::GetDebugInventoryText(FString& OutInventoryText) const
 			Def ? Def->Value : 0);
 	}
 
+	const FGT_PlayerCombatState& PlayerCombat = RunContext->GetPlayerCombatState();
+	FString EnemyText;
+	FGT_CombatRuntimeState CombatState;
+	if (RunContext->GetCombatStateSnapshot(CombatState) && CombatState.bStandardEnemy && CombatState.bCombatActive)
+	{
+		EnemyText = FString::Printf(TEXT(" Enemy={%s Power=%d}"), *CombatState.EnemyName, CombatState.EnemyPower);
+	}
+
 	OutInventoryText = FString::Printf(
-		TEXT("gt.Bag: PendingGold=%d SafeGold=%d Parts=%d LooseParts=%d CarriedItemCount=%d CarriedItemValue=%d SearchedRooms=%d Items={%s}"),
+		TEXT("gt.Bag: Hp=%d/%d Power=%d%s PendingGold=%d SafeGold=%d Parts=%d LooseParts=%d CarriedItemCount=%d CarriedItemValue=%d SearchedRooms=%d Items={%s}"),
+		PlayerCombat.Hp,
+		PlayerCombat.MaxHp,
+		PlayerCombat.Power,
+		*EnemyText,
 		Inventory.PendingGold,
 		Inventory.SafeGold,
 		Inventory.Parts,

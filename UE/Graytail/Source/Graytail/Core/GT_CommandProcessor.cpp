@@ -20,6 +20,8 @@ namespace
 	const FName GTEventType_RunFailed(TEXT("RunFailed"));
 	const FName GTEventType_RunSucceeded(TEXT("RunSucceeded"));
 	const FName GTRunFailureReason_Mine(TEXT("Mine"));
+	const FName GTRunFailureReason_CombatDeath(TEXT("CombatDeath"));
+	const FName GTEventType_MineDamaged(TEXT("MineDamaged"));
 	const FName GTRunSuccessReason_Extract(TEXT("Extract"));
 	const FName GTSourceSystem_CommandProcessor(TEXT("CommandProcessor"));
 }
@@ -128,10 +130,40 @@ bool UGT_CommandProcessor::ProcessMoveCommand(const FGT_Command& Command)
 	{
 		FGT_RoomResolveResult RoomResolveResult;
 		if (RoomResolver->ResolveRoomAt(Command.TargetX, Command.TargetY, RoomResolveResult)
-			&& RoomResolveResult.Outcome == EGT_RoomResolveOutcome::MineEncountered
-			&& RunContext->MarkRunFailed(GTRunFailureReason_Mine))
+			&& RoomResolveResult.Outcome == EGT_RoomResolveOutcome::MineEncountered)
 		{
-			PublishCommandEvent(GTEventType_RunFailed, Command.SourceActorId, Command.TargetActorId, Command.TargetX, Command.TargetY, true);
+			if (RunContext->GetMapMode() == EGT_MapMode::Standard)
+			{
+				// Standard 真规则(对齐 Combat.TakeMineHit): 雷只扣血, 血尽才败北。
+				int32 MineDamage = 0;
+				bool bPlayerDead = false;
+				RunContext->ApplyMineHitToPlayer(MineDamage, bPlayerDead);
+
+				FGT_GameEvent MineEvent;
+				MineEvent.EventType = GTEventType_MineDamaged;
+				MineEvent.SourceSystem = GTSourceSystem_CommandProcessor;
+				MineEvent.SourceActorId = Command.TargetActorId;
+				MineEvent.TargetActorId = Command.TargetActorId;
+				MineEvent.X = Command.TargetX;
+				MineEvent.Y = Command.TargetY;
+				MineEvent.RoomCoord = FIntPoint(Command.TargetX, Command.TargetY);
+				MineEvent.NumericValue = MineDamage;
+				MineEvent.bSuccess = true;
+				if (IsValid(EventBus))
+				{
+					EventBus->PublishEvent(MineEvent);
+				}
+
+				if (bPlayerDead && RunContext->MarkRunFailed(GTRunFailureReason_Mine))
+				{
+					PublishCommandEvent(GTEventType_RunFailed, Command.SourceActorId, Command.TargetActorId, Command.TargetX, Command.TargetY, true);
+				}
+			}
+			else if (RunContext->MarkRunFailed(GTRunFailureReason_Mine))
+			{
+				// BasicDebug 测试夹具: 保持"踩雷即败北"的老行为。
+				PublishCommandEvent(GTEventType_RunFailed, Command.SourceActorId, Command.TargetActorId, Command.TargetX, Command.TargetY, true);
+			}
 		}
 	}
 
@@ -307,6 +339,14 @@ bool UGT_CommandProcessor::ProcessAttackCommand(const FGT_Command& Command)
 	{
 		PublishCommandEvent(GTEventType_CommandFailed, Command.SourceActorId, EventTargetActorId, PlayerX, PlayerY, false);
 		return false;
+	}
+
+	// Standard 真战斗可能反伤致死(战力差扣血), 此处统一判定败北。
+	if (RunContext->GetMapMode() == EGT_MapMode::Standard
+		&& !RunContext->IsPlayerAlive()
+		&& RunContext->MarkRunFailed(GTRunFailureReason_CombatDeath))
+	{
+		PublishCommandEvent(GTEventType_RunFailed, Command.SourceActorId, EventTargetActorId, PlayerX, PlayerY, true);
 	}
 
 	return true;

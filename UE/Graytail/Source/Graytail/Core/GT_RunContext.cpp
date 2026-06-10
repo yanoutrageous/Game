@@ -34,6 +34,7 @@ void UGT_RunContext::InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec)
 	RunId = FGuid::NewGuid();
 	RunState = EGT_RunState::Running;
 	RunEndReason = NAME_None;
+	MapMode = MapResult.MapMode;
 	Seed = MapResult.Seed;
 	MapWidth = MapResult.Width;
 	MapHeight = MapResult.Height;
@@ -42,6 +43,8 @@ void UGT_RunContext::InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec)
 	CombatRuntimeState = FGT_CombatRuntimeState();
 	RunSummary = FGT_RunSummary();
 	RunInventory.Reset();
+	PlayerCombatState = FGT_PlayerCombatState();
+	DefeatedCombatRooms.Reset();
 
 	PlayerActorId = FName(TEXT("Player"));
 
@@ -75,6 +78,9 @@ void UGT_RunContext::ResetRun()
 	CombatRuntimeState = FGT_CombatRuntimeState();
 	RunSummary = FGT_RunSummary();
 	RunInventory.Reset();
+	PlayerCombatState = FGT_PlayerCombatState();
+	DefeatedCombatRooms.Reset();
+	MapMode = EGT_MapMode::Unknown;
 }
 
 FGuid UGT_RunContext::GetRunId() const
@@ -265,6 +271,12 @@ bool UGT_RunContext::StartDummyCombat(int32 X, int32 Y, FName RoomContentId, FNa
 		return true;
 	}
 
+	// Standard 模式: 该战斗房已打过(真怪已死)就不再重开。
+	if (MapMode == EGT_MapMode::Standard && DefeatedCombatRooms.Contains(FIntPoint(X, Y)))
+	{
+		return true;
+	}
+
 	CombatRuntimeState.bCombatActive = true;
 	CombatRuntimeState.bCombatResolved = false;
 	CombatRuntimeState.DummyEnemyHp = FMath::Max(1, InitialDummyHp);
@@ -273,6 +285,18 @@ bool UGT_RunContext::StartDummyCombat(int32 X, int32 Y, FName RoomContentId, FNa
 	CombatRuntimeState.RoomContentId = RoomContentId;
 	CombatRuntimeState.RoomRuleId = RoomRuleId;
 	CombatRuntimeState.LastCombatResultId = NAME_None;
+	CombatRuntimeState.bStandardEnemy = false;
+	CombatRuntimeState.EnemyName.Reset();
+	CombatRuntimeState.EnemyPower = 0;
+
+	// Standard 模式: 用确定性规则生成真怪(对齐 Combat.TrySpawnEnemy), 替换 1 血 dummy。
+	if (MapMode == EGT_MapMode::Standard)
+	{
+		int32 AdjacentMineCount = 0;
+		TruthMap.CountAdjacentMines8(X, Y, AdjacentMineCount);
+		CombatRuntimeState.bStandardEnemy = true;
+		GT_CombatRules::MakeEnemyForCell(Seed, X, Y, AdjacentMineCount, CombatRuntimeState.EnemyName, CombatRuntimeState.EnemyPower);
+	}
 	return true;
 }
 
@@ -282,6 +306,34 @@ bool UGT_RunContext::AttackDummyCombat(FGT_CombatRuntimeState& OutState)
 	if (!IsRunActive() || !CombatRuntimeState.bCombatActive || CombatRuntimeState.DummyEnemyHp <= 0)
 	{
 		return false;
+	}
+
+	// Standard 模式: 一击整场结算(对齐 Combat.FightEnemy):
+	// 战力 >= 怪则无伤胜; 不够则扣差值血, 怪同样死。存活才拿奖励(金币+战力成长)。
+	if (CombatRuntimeState.bStandardEnemy)
+	{
+		const int32 Damage = FMath::Max(0, CombatRuntimeState.EnemyPower - PlayerCombatState.Power);
+		PlayerCombatState.ApplyDamage(Damage);
+
+		CombatRuntimeState.DummyEnemyHp = 0;
+		CombatRuntimeState.bCombatActive = false;
+		CombatRuntimeState.bCombatResolved = true;
+		CombatRuntimeState.LastCombatResultId = GTCombatResult_Success;
+		DefeatedCombatRooms.AddUnique(FIntPoint(CombatRuntimeState.CombatX, CombatRuntimeState.CombatY));
+
+		if (PlayerCombatState.IsAlive())
+		{
+			RunInventory.AddPendingGold(GT_CombatRules::KillRewardGold(CombatRuntimeState.EnemyPower));
+			const int32 PowerGain = FMath::Min(GT_CombatRules::PowerGainPerKill, GT_CombatRules::PowerGainCap - PlayerCombatState.MonsterPowerBonus);
+			if (PowerGain > 0)
+			{
+				PlayerCombatState.Power += PowerGain;
+				PlayerCombatState.MonsterPowerBonus += PowerGain;
+			}
+		}
+
+		OutState = CombatRuntimeState;
+		return true;
 	}
 
 	CombatRuntimeState.DummyEnemyHp = FMath::Max(0, CombatRuntimeState.DummyEnemyHp - 1);
@@ -369,6 +421,29 @@ bool UGT_RunContext::GetRunSummarySnapshot(FGT_RunSummary& OutSummary) const
 const FGT_RunInventoryState& UGT_RunContext::GetRunInventory() const
 {
 	return RunInventory;
+}
+
+const FGT_PlayerCombatState& UGT_RunContext::GetPlayerCombatState() const
+{
+	return PlayerCombatState;
+}
+
+EGT_MapMode UGT_RunContext::GetMapMode() const
+{
+	return MapMode;
+}
+
+bool UGT_RunContext::IsPlayerAlive() const
+{
+	return PlayerCombatState.IsAlive();
+}
+
+void UGT_RunContext::ApplyMineHitToPlayer(int32& OutDamage, bool& bOutDead)
+{
+	// 对齐 Combat.TakeMineHit: 雷伤 30(装备减免后最低 5, 减免待装备阶段)。
+	OutDamage = FMath::Max(GT_CombatRules::MineDamageFloor, GT_CombatRules::MineDamage);
+	PlayerCombatState.ApplyDamage(OutDamage);
+	bOutDead = !PlayerCombatState.IsAlive();
 }
 
 bool UGT_RunContext::EvaluateSearchAtPlayer(FName& OutReason, bool& bOutIsChest) const

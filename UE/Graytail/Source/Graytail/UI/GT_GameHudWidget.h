@@ -11,6 +11,7 @@ class UUniformGridPanel;
 class UTexture2D;
 class UGT_DebugSubsystem;
 class UGT_RunContext;
+class UGT_RoomViewWidget;
 
 // 最小可玩 HUD: 纯 C++ 搭 UMG 树(无蓝图资产)。
 // 薄壳原则: 动作走 DebugSubsystem 现成入口, 显示读 RunContext 只读状态。
@@ -25,34 +26,36 @@ public:
 	// NativeConstruct 时 Slate 树已生成, 再设 RootWidget 不会显示。
 	virtual TSharedRef<SWidget> RebuildWidget() override;
 	virtual void NativeConstruct() override;
+	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
 
 private:
 	void BuildWidgetTree();
 	UGT_DebugSubsystem* GetDebugSubsystem() const;
 	const UGT_RunContext* GetRunContext() const;
 	void RefreshAll();
+	void RefreshPanels();
 	void RefreshStatusLine();
 	void RefreshMiniMapGrid();
 	void RefreshItemsRow();
 	UTexture2D* GetItemIcon(FName ItemId);
+	UTexture2D* LoadUiTexture(const FString& RelativePathUnderAssets);
 	UButton* MakeButton(UHorizontalBox* Row, const FString& Label);
 
-	UFUNCTION() void OnMoveUp();
-	UFUNCTION() void OnMoveDown();
-	UFUNCTION() void OnMoveLeft();
-	UFUNCTION() void OnMoveRight();
 	UFUNCTION() void OnSearch();
 	UFUNCTION() void OnAttack();
 	UFUNCTION() void OnExtract();
 	UFUNCTION() void OnNewRun();
 
-	void TryMove(int32 DeltaX, int32 DeltaY);
-
 	UPROPERTY(Transient) UTextBlock* StatusText = nullptr;
 	UPROPERTY(Transient) UUniformGridPanel* MiniMapGrid = nullptr;
 	UPROPERTY(Transient) UHorizontalBox* ItemsRow = nullptr;
 	UPROPERTY(Transient) UTextBlock* LogText = nullptr;
+	UPROPERTY(Transient) UGT_RoomViewWidget* RoomView = nullptr;
+	UPROPERTY(Transient) UButton* SearchButton = nullptr;
 
 	// 运行时加载的物品图标缓存(防 GC)。
 	UPROPERTY(Transient) TMap<FName, UTexture2D*> IconCache;
+
+	// 运行时加载的 UI 贴图缓存(key = assets 下相对路径, 防 GC)。
+	UPROPERTY(Transient) TMap<FString, UTexture2D*> UiTextureCache;
 };

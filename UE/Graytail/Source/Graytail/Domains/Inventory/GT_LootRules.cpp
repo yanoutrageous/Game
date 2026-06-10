@@ -144,10 +144,14 @@ namespace GT_LootRules
 
 		// TODO(装备阶段): Lua 的 searchBonus(搜索奖励加成百分比)依赖装备效果, 局外系统迁入后补。
 
-		Reward.Items = BuildRewardItems(BaseRoll, bIsChest, AdjacentMineCount);
-		for (const FGT_ItemStack& Stack : Reward.Items)
+		// 设计改动(2026-06-10 用户定): 藏品只在宝箱房掉落, 普通房搜索只出金币(Lua 原版普通房也掉物品)。
+		if (bIsChest)
 		{
-			Reward.Parts += Stack.Count;
+			Reward.Items = BuildRewardItems(BaseRoll, bIsChest, AdjacentMineCount);
+			for (const FGT_ItemStack& Stack : Reward.Items)
+			{
+				Reward.Parts += Stack.Count;
+			}
 		}
 		return Reward;
 	}

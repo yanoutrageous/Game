@@ -1,0 +1,69 @@
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Blueprint/UserWidget.h"
+#include "GT_RoomViewWidget.generated.h"
+
+class UBorder;
+class UCanvasPanel;
+class UImage;
+class UTextBlock;
+class UTexture2D;
+class UGT_DebugSubsystem;
+class UGT_RunContext;
+
+// 2D 房间视图(对齐 Lua DungeonRoom.lua / TapTap 版):
+// 一屏一个房间, 人物 WASD 实时行走, 对准四边的门走出边界 -> 发 Move 命令切相邻格。
+// 表现层薄壳: 只发命令/读状态, 移动合法性/踩雷/战斗全由内核裁决。
+UCLASS()
+class GRAYTAIL_API UGT_RoomViewWidget : public UUserWidget
+{
+	GENERATED_BODY()
+
+public:
+	virtual TSharedRef<SWidget> RebuildWidget() override;
+	virtual void NativeConstruct() override;
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
+	virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
+	virtual FReply NativeOnKeyUp(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
+	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+	virtual bool NativeSupportsKeyboardFocus() const override { return true; }
+
+	// 房间状态变化后(开局/外部移动)由 HUD 调用, 重读当前格并重绘。
+	void SyncToCurrentCell(bool bCenterPlayer);
+
+	// WASD 过门移动成功后通知 HUD 刷新信息面板(不含房间视图自身)。
+	FSimpleDelegate OnRoomChanged;
+
+	// F 键搜索/开箱(对齐原版快捷键), 由 HUD 绑定到 OnSearch。
+	FSimpleDelegate OnSearchRequested;
+
+private:
+	void BuildWidgetTree();
+	UGT_DebugSubsystem* GetDebugSubsystem() const;
+	UTexture2D* LoadAssetTexture(const FString& Folder, const FString& FilePrefix);
+	UTexture2D* GetWalkFrame(int32 DirX, int32 DirY, int32 FrameIndex);
+	void TryCrossDoor(int32 DirX, int32 DirY);
+	void UpdatePlayerImagePosition();
+	void RefreshRoomDecor();
+
+	UPROPERTY(Transient) UCanvasPanel* RoomCanvas = nullptr;
+	UPROPERTY(Transient) UBorder* FloorBorder = nullptr;
+	UPROPERTY(Transient) UTextBlock* RoomLabel = nullptr;
+	UPROPERTY(Transient) UImage* DoorImages[4] = {};
+	UPROPERTY(Transient) UImage* EnemyImage = nullptr;
+	UPROPERTY(Transient) UImage* PlayerImage = nullptr;
+
+	// 运行时贴图缓存(防 GC): key = 文件前缀。
+	UPROPERTY(Transient) TMap<FString, UTexture2D*> TextureCache;
+
+	// 房间内归一化坐标(0-1), 对齐 Lua playerPos。
+	FVector2D PlayerPos = FVector2D(0.5, 0.5);
+	FVector2D HeldInput = FVector2D::ZeroVector;
+	bool HeldKeys[4] = {};   // W A S D
+	float WalkAnimTime = 0.f;
+	int32 LastDirX = 0;
+	int32 LastDirY = 1;       // 默认朝下
+	int32 CurrentCellX = -1;
+	int32 CurrentCellY = -1;
+};

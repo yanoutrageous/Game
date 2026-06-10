@@ -514,7 +514,7 @@ bool UGT_RunContext::EvaluateSearchAtPlayer(FName& OutReason, bool& bOutIsChest)
 		return false;
 	}
 
-	// 宝箱房可搜(走宝箱数值表), 普通房可搜(走搜索数值表), 各一次。
+	// 普通房和宝箱房均可搜一次; 物品掉落仅宝箱房有(见 GT_LootRules), 普通房只出金币。
 	bOutIsChest = Cell->RoomBaseType == EGT_RoomBaseType::Chest;
 	return true;
 }

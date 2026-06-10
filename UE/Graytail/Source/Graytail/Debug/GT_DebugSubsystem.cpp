@@ -289,6 +289,16 @@ bool UGT_DebugSubsystem::DebugTeleport(int32 X, int32 Y, FGT_DebugRunSnapshot& O
 	PlayerState->Y = Y;
 	RunContext->MarkPlayerIntelCellExplored(X, Y);
 
+	// MarkExplored 会重置 bScanned, Standard 模式下与走路一致: 落点自动亮雷数。
+	if (RunContext->GetMapMode() == EGT_MapMode::Standard)
+	{
+		int32 AdjacentMines = 0;
+		if (RunContext->CountAdjacentMines8(X, Y, AdjacentMines))
+		{
+			RunContext->SetPlayerIntelCellScannedNumber(X, Y, AdjacentMines);
+		}
+	}
+
 	GetDebugRunSnapshot(OutSnapshot);
 	return true;
 }

@@ -430,7 +430,10 @@ namespace
 
 		HudWidget->AddToViewport();
 		PlayerController->bShowMouseCursor = true;
-		PlayerController->SetInputMode(FInputModeGameAndUI());
+		// UIOnly: 键盘只进 UI 层, 不再漏给场景里的默认 Pawn(WASD 飞天问题)。
+		FInputModeUIOnly InputMode;
+		InputMode.SetWidgetToFocus(HudWidget->TakeWidget());
+		PlayerController->SetInputMode(InputMode);
 		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.HUD: minimal playable HUD added to viewport."));
 	}
 

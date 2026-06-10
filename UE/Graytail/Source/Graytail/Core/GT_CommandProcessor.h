@@ -25,6 +25,7 @@ public:
 private:
 	bool ProcessMoveCommand(const FGT_Command& Command);
 	bool ProcessScanCommand(const FGT_Command& Command);
+	bool ProcessSearchCommand(const FGT_Command& Command);
 	bool ProcessExtractCommand(const FGT_Command& Command);
 	bool ProcessChooseEventOptionCommand(const FGT_Command& Command);
 	bool ProcessResolveCombatCommand(const FGT_Command& Command);

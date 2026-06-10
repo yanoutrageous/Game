@@ -8,12 +8,14 @@ namespace
 {
 	const FName GTCommandType_Move(TEXT("Move"));
 	const FName GTCommandType_Scan(TEXT("Scan"));
+	const FName GTCommandType_Search(TEXT("Search"));
 	const FName GTCommandType_Extract(TEXT("Extract"));
 	const FName GTCommandType_ChooseEventOption(TEXT("ChooseEventOption"));
 	const FName GTCommandType_ResolveCombat(TEXT("ResolveCombat"));
 	const FName GTCommandType_Attack(TEXT("Attack"));
 	const FName GTEventType_ActorMoved(TEXT("ActorMoved"));
 	const FName GTEventType_CellScanned(TEXT("CellScanned"));
+	const FName GTEventType_RoomSearched(TEXT("RoomSearched"));
 	const FName GTEventType_CommandFailed(TEXT("CommandFailed"));
 	const FName GTEventType_RunFailed(TEXT("RunFailed"));
 	const FName GTEventType_RunSucceeded(TEXT("RunSucceeded"));
@@ -55,6 +57,11 @@ bool UGT_CommandProcessor::ProcessCommand(const FGT_Command& Command)
 	if (Command.CommandType == GTCommandType_Scan)
 	{
 		return ProcessScanCommand(Command);
+	}
+
+	if (Command.CommandType == GTCommandType_Search)
+	{
+		return ProcessSearchCommand(Command);
 	}
 
 	if (Command.CommandType == GTCommandType_Extract)
@@ -152,6 +159,59 @@ bool UGT_CommandProcessor::ProcessScanCommand(const FGT_Command& Command)
 	}
 
 	PublishCommandEvent(GTEventType_CellScanned, Command.SourceActorId, EventTargetActorId, Command.TargetX, Command.TargetY, true);
+	return true;
+}
+
+bool UGT_CommandProcessor::ProcessSearchCommand(const FGT_Command& Command)
+{
+	const FName EventTargetActorId = Command.TargetActorId.IsNone() && IsValid(RunContext)
+		? RunContext->GetPlayerActorId()
+		: Command.TargetActorId;
+
+	int32 PlayerX = 0;
+	int32 PlayerY = 0;
+	if (!IsValid(RunContext) || !RunContext->TryGetPlayerPosition(PlayerX, PlayerY))
+	{
+		PublishCommandEvent(GTEventType_CommandFailed, Command.SourceActorId, EventTargetActorId, Command.TargetX, Command.TargetY, false);
+		return false;
+	}
+
+	FGT_SearchOutcome Outcome;
+	if (!RunContext->SearchCurrentRoom(Outcome))
+	{
+		// 失败原因(spawn/exit/monster/searched...)放进 RuleId, 供监听方区分。
+		FGT_GameEvent FailedEvent;
+		FailedEvent.EventType = GTEventType_CommandFailed;
+		FailedEvent.SourceSystem = GTSourceSystem_CommandProcessor;
+		FailedEvent.SourceActorId = Command.SourceActorId.IsNone() ? EventTargetActorId : Command.SourceActorId;
+		FailedEvent.TargetActorId = EventTargetActorId;
+		FailedEvent.X = PlayerX;
+		FailedEvent.Y = PlayerY;
+		FailedEvent.RoomCoord = FIntPoint(PlayerX, PlayerY);
+		FailedEvent.RuleId = Outcome.Status;
+		FailedEvent.bSuccess = false;
+		if (IsValid(EventBus))
+		{
+			EventBus->PublishEvent(FailedEvent);
+		}
+		return false;
+	}
+
+	// 成功事件: NumericValue 带本次金币收益, 物品明细由查询层从背包状态读取。
+	FGT_GameEvent SearchedEvent;
+	SearchedEvent.EventType = GTEventType_RoomSearched;
+	SearchedEvent.SourceSystem = GTSourceSystem_CommandProcessor;
+	SearchedEvent.SourceActorId = Command.SourceActorId.IsNone() ? EventTargetActorId : Command.SourceActorId;
+	SearchedEvent.TargetActorId = EventTargetActorId;
+	SearchedEvent.X = PlayerX;
+	SearchedEvent.Y = PlayerY;
+	SearchedEvent.RoomCoord = FIntPoint(PlayerX, PlayerY);
+	SearchedEvent.NumericValue = Outcome.Reward.Gold;
+	SearchedEvent.bSuccess = true;
+	if (IsValid(EventBus))
+	{
+		EventBus->PublishEvent(SearchedEvent);
+	}
 	return true;
 }
 

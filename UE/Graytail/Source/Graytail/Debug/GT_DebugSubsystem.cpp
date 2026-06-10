@@ -4,8 +4,10 @@
 #include "Core/GT_ContentRegistry.h"
 #include "Core/GT_EventBus.h"
 #include "Core/GT_QueryFacade.h"
+#include "Core/GT_RunContext.h"
 #include "Core/GT_RunSubsystem.h"
 #include "Debug/GT_RuntimeSmokeValidator.h"
+#include "Domains/Inventory/GT_ItemCatalog.h"
 #include "Domains/Map/GT_MapGenerator.h"
 #include "Engine/GameInstance.h"
 
@@ -13,6 +15,7 @@ namespace
 {
 	const FName GTDebugCommandType_Move(TEXT("Move"));
 	const FName GTDebugCommandType_Scan(TEXT("Scan"));
+	const FName GTDebugCommandType_Search(TEXT("Search"));
 	const FName GTDebugCommandType_Extract(TEXT("Extract"));
 	const FName GTDebugCommandType_ChooseEventOption(TEXT("ChooseEventOption"));
 	const FName GTDebugCommandType_ResolveCombat(TEXT("ResolveCombat"));
@@ -249,6 +252,35 @@ bool UGT_DebugSubsystem::DebugMoveTo(int32 X, int32 Y, FGT_DebugRunSnapshot& Out
 bool UGT_DebugSubsystem::DebugScanCell(int32 X, int32 Y, FGT_DebugRunSnapshot& OutSnapshot)
 {
 	return SubmitDebugCommand(GTDebugCommandType_Scan, X, Y, OutSnapshot);
+}
+
+bool UGT_DebugSubsystem::DebugSearch(FGT_DebugRunSnapshot& OutSnapshot)
+{
+	int32 PlayerX = 0;
+	int32 PlayerY = 0;
+
+	UGT_RunSubsystem* RunSubsystem = GetRunSubsystem();
+	const UGT_QueryFacade* QueryFacade = RunSubsystem ? RunSubsystem->GetQueryFacade() : nullptr;
+	if (QueryFacade)
+	{
+		QueryFacade->TryGetPlayerPosition(PlayerX, PlayerY);
+	}
+
+	const bool bAccepted = SubmitDebugCommand(GTDebugCommandType_Search, PlayerX, PlayerY, OutSnapshot);
+	if (!bAccepted && !OutSnapshot.Summary.Equals(TEXT("No active run")))
+	{
+		// 拒绝时把判定原因(spawn/exit/monster/event/searched/unsafe)带给玩家。
+		FName Reason = NAME_None;
+		bool bIsChest = false;
+		const UGT_RunContext* RunContext = RunSubsystem ? RunSubsystem->GetCurrentRunContext() : nullptr;
+		if (RunContext)
+		{
+			RunContext->EvaluateSearchAtPlayer(Reason, bIsChest);
+		}
+		OutSnapshot.Summary = FString::Printf(TEXT("Search rejected: reason=%s. %s"), *Reason.ToString(), *OutSnapshot.Summary);
+	}
+
+	return bAccepted;
 }
 
 bool UGT_DebugSubsystem::DebugExtract(FGT_DebugRunSnapshot& OutSnapshot)
@@ -577,6 +609,8 @@ void UGT_DebugSubsystem::GetDebugCommandHelpLines(TArray<FString>& OutLines) con
 	OutLines.Add(TEXT("  gt.Room - Show current room details and placeholder action hints."));
 	OutLines.Add(TEXT("  gt.Move X Y - Move to an adjacent coordinate through the command path."));
 	OutLines.Add(TEXT("  gt.Scan X Y - Scan a cell through the command path."));
+	OutLines.Add(TEXT("  gt.Search - Search the current room for gold and loot (once per room)."));
+	OutLines.Add(TEXT("  gt.Bag - Show run inventory: gold, parts, carried items, searched rooms."));
 	OutLines.Add(TEXT("  gt.Extract - Attempt extraction at the current cell."));
 	OutLines.Add(TEXT("  gt.Summary - Show the latest successful extract summary if one is available."));
 	OutLines.Add(TEXT("  gt.Snapshot - Log the raw debug run snapshot."));
@@ -594,6 +628,45 @@ void UGT_DebugSubsystem::GetDebugCommandHelpLines(TArray<FString>& OutLines) con
 	OutLines.Add(TEXT("Event demo path: gt.StartRun -> gt.Move 1 0 -> gt.Move 2 0 -> gt.Move 3 0 -> gt.Move 4 0 -> gt.Move 4 1 -> gt.ChooseEventOption Event_DebugOption_Continue -> gt.Events."));
 	OutLines.Add(TEXT("Combat demo path: gt.StartRun -> gt.Move 0 1 -> gt.Move 0 2 -> gt.Move 0 3 -> gt.Move 0 4 -> gt.Move 1 4 -> gt.Attack -> gt.Events."));
 	OutLines.Add(TEXT("Extract summary path: gt.RunDemo or move to Exit (9,9) -> gt.Extract -> gt.Summary."));
+}
+
+bool UGT_DebugSubsystem::GetDebugInventoryText(FString& OutInventoryText) const
+{
+	const UGT_RunSubsystem* RunSubsystem = GetRunSubsystem();
+	const UGT_RunContext* RunContext = RunSubsystem ? RunSubsystem->GetCurrentRunContext() : nullptr;
+	if (!RunContext)
+	{
+		OutInventoryText = TEXT("gt.Bag: No active run. Start with gt.StartRun or gt.StartStd.");
+		return false;
+	}
+
+	const FGT_RunInventoryState& Inventory = RunContext->GetRunInventory();
+
+	FString ItemsText;
+	for (const FGT_ItemStack& Stack : Inventory.CarriedItems)
+	{
+		const FGT_ItemCatalogEntry* Def = GT_ItemCatalog::FindItemDef(Stack.ItemId);
+		if (!ItemsText.IsEmpty())
+		{
+			ItemsText += TEXT(" / ");
+		}
+		ItemsText += FString::Printf(TEXT("%s x%d (value %d)"),
+			Def ? *Def->DisplayName : *Stack.ItemId.ToString(),
+			Stack.Count,
+			Def ? Def->Value : 0);
+	}
+
+	OutInventoryText = FString::Printf(
+		TEXT("gt.Bag: PendingGold=%d SafeGold=%d Parts=%d LooseParts=%d CarriedItemCount=%d CarriedItemValue=%d SearchedRooms=%d Items={%s}"),
+		Inventory.PendingGold,
+		Inventory.SafeGold,
+		Inventory.Parts,
+		Inventory.GetLooseParts(),
+		Inventory.GetCarriedItemCount(),
+		GT_ItemCatalog::GetCarriedItemsValue(Inventory.CarriedItems),
+		Inventory.SearchedRooms.Num(),
+		ItemsText.IsEmpty() ? TEXT("none") : *ItemsText);
+	return true;
 }
 
 bool UGT_DebugSubsystem::GetDebugStatusText(FString& OutStatus) const

@@ -35,6 +35,9 @@ public:
 	bool DebugScanCell(int32 X, int32 Y, FGT_DebugRunSnapshot& OutSnapshot);
 
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
+	bool DebugSearch(FGT_DebugRunSnapshot& OutSnapshot);
+
+	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
 	bool DebugExtract(FGT_DebugRunSnapshot& OutSnapshot);
 
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
@@ -60,6 +63,7 @@ public:
 
 	void GetDebugCommandHelpLines(TArray<FString>& OutLines) const;
 	bool GetDebugStatusText(FString& OutStatus) const;
+	bool GetDebugInventoryText(FString& OutInventoryText) const;
 	bool GetDebugRoomText(FString& OutRoomText) const;
 	bool GetDebugRunSummaryText(FString& OutSummaryText) const;
 	bool DebugRunDemo(TArray<FString>& OutLogLines, FGT_DebugRunSnapshot& OutSnapshot);

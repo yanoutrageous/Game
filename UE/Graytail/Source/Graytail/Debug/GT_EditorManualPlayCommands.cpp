@@ -373,6 +373,56 @@ namespace
 		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.Scan %d %d %s: %s"), X, Y, bAccepted ? TEXT("accepted") : TEXT("rejected"), *Snapshot.Summary);
 	}
 
+	void HandleSearch(const TArray<FString>& Args, UWorld* World)
+	{
+		FString FailureReason;
+		UGT_DebugSubsystem* DebugSubsystem = FindDebugSubsystem(World, FailureReason);
+		if (!DebugSubsystem)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("gt.Search failed: %s"), *FailureReason);
+			return;
+		}
+
+		if (!Args.IsEmpty())
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("Usage: gt.Search"));
+			return;
+		}
+
+		FGT_DebugRunSnapshot Snapshot;
+		const bool bAccepted = DebugSubsystem->DebugSearch(Snapshot);
+		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.Search %s: %s"), bAccepted ? TEXT("accepted") : TEXT("rejected"), *Snapshot.Summary);
+
+		// 搜索成功后顺手打印背包, 省一次 gt.Bag。
+		if (bAccepted)
+		{
+			FString InventoryText;
+			DebugSubsystem->GetDebugInventoryText(InventoryText);
+			UE_LOG(LogGraytailManualPlay, Display, TEXT("%s"), *InventoryText);
+		}
+	}
+
+	void HandleBag(const TArray<FString>& Args, UWorld* World)
+	{
+		FString FailureReason;
+		UGT_DebugSubsystem* DebugSubsystem = FindDebugSubsystem(World, FailureReason);
+		if (!DebugSubsystem)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("gt.Bag failed: %s"), *FailureReason);
+			return;
+		}
+
+		if (!Args.IsEmpty())
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("Usage: gt.Bag"));
+			return;
+		}
+
+		FString InventoryText;
+		DebugSubsystem->GetDebugInventoryText(InventoryText);
+		UE_LOG(LogGraytailManualPlay, Display, TEXT("%s"), *InventoryText);
+	}
+
 	void HandleExtract(const TArray<FString>& Args, UWorld* World)
 	{
 		FString FailureReason;
@@ -726,6 +776,16 @@ namespace
 		TEXT("gt.Scan"),
 		TEXT("Scans a cell through the existing command path. Usage: gt.Scan X Y"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleScan));
+
+	FAutoConsoleCommandWithWorldAndArgs GTSearchCommand(
+		TEXT("gt.Search"),
+		TEXT("Searches the current room for gold and loot. Usage: gt.Search"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleSearch));
+
+	FAutoConsoleCommandWithWorldAndArgs GTBagCommand(
+		TEXT("gt.Bag"),
+		TEXT("Shows the current run inventory. Usage: gt.Bag"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleBag));
 
 	FAutoConsoleCommandWithWorldAndArgs GTExtractCommand(
 		TEXT("gt.Extract"),

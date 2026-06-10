@@ -1,5 +1,6 @@
 #include "Core/GT_RunContext.h"
 
+#include "Domains/Inventory/GT_LootRules.h"
 #include "Domains/Map/GT_MapGenerator.h"
 
 namespace
@@ -40,6 +41,7 @@ void UGT_RunContext::InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec)
 	PlayerIntelMap.Initialize(MapWidth, MapHeight, FName(TEXT("Player")));
 	CombatRuntimeState = FGT_CombatRuntimeState();
 	RunSummary = FGT_RunSummary();
+	RunInventory.Reset();
 
 	PlayerActorId = FName(TEXT("Player"));
 
@@ -72,6 +74,7 @@ void UGT_RunContext::ResetRun()
 	PlayerActorId = NAME_None;
 	CombatRuntimeState = FGT_CombatRuntimeState();
 	RunSummary = FGT_RunSummary();
+	RunInventory.Reset();
 }
 
 FGuid UGT_RunContext::GetRunId() const
@@ -361,4 +364,107 @@ bool UGT_RunContext::GetRunSummarySnapshot(FGT_RunSummary& OutSummary) const
 {
 	OutSummary = RunSummary;
 	return RunSummary.bSummaryAvailable;
+}
+
+const FGT_RunInventoryState& UGT_RunContext::GetRunInventory() const
+{
+	return RunInventory;
+}
+
+bool UGT_RunContext::EvaluateSearchAtPlayer(FName& OutReason, bool& bOutIsChest) const
+{
+	OutReason = NAME_None;
+	bOutIsChest = false;
+
+	int32 PlayerX = 0;
+	int32 PlayerY = 0;
+	if (!IsRunActive() || !TryGetPlayerPosition(PlayerX, PlayerY))
+	{
+		OutReason = FName(TEXT("not_ready"));
+		return false;
+	}
+
+	const FGT_TruthCell* Cell = TruthMap.GetCellConst(PlayerX, PlayerY);
+	if (!Cell)
+	{
+		OutReason = FName(TEXT("not_ready"));
+		return false;
+	}
+
+	// 检查顺序对齐 Lua GetSearchState: 雷格 -> 出生点 -> 撤离点 -> 怪物房 -> 事件房 -> 已搜过。
+	if (Cell->bHasMine)
+	{
+		OutReason = FName(TEXT("unsafe"));
+		return false;
+	}
+
+	// 出生点固定 (0, 0)(InitializeFromSpec 放置), 不可搜刮。
+	if (PlayerX == 0 && PlayerY == 0)
+	{
+		OutReason = FName(TEXT("spawn"));
+		return false;
+	}
+
+	if (Cell->bIsExit)
+	{
+		OutReason = FName(TEXT("exit"));
+		return false;
+	}
+
+	if (Cell->RoomBaseType == EGT_RoomBaseType::Combat)
+	{
+		OutReason = FName(TEXT("monster"));
+		return false;
+	}
+
+	if (Cell->RoomBaseType == EGT_RoomBaseType::Event)
+	{
+		OutReason = FName(TEXT("event"));
+		return false;
+	}
+
+	if (RunInventory.IsRoomSearched(PlayerX, PlayerY))
+	{
+		OutReason = FName(TEXT("searched"));
+		return false;
+	}
+
+	// TODO(宝箱回合): EGT_RoomBaseType 补上 Chest 后, 这里按真实房型置位。
+	bOutIsChest = false;
+	return true;
+}
+
+bool UGT_RunContext::SearchCurrentRoom(FGT_SearchOutcome& OutOutcome)
+{
+	OutOutcome = FGT_SearchOutcome();
+
+	FName Reason = NAME_None;
+	bool bIsChest = false;
+	if (!EvaluateSearchAtPlayer(Reason, bIsChest))
+	{
+		OutOutcome.Status = Reason;
+		return false;
+	}
+
+	int32 PlayerX = 0;
+	int32 PlayerY = 0;
+	TryGetPlayerPosition(PlayerX, PlayerY);
+
+	int32 AdjacentMineCount = 0;
+	TruthMap.CountAdjacentMines8(PlayerX, PlayerY, AdjacentMineCount);
+
+	// 入账顺序对齐 Lua SearchCurrentRoom: 标记已搜 -> 待结算金币 -> parts -> 物品堆叠。
+	const FGT_SearchReward Reward = GT_LootRules::ComputeSearchReward(Seed, PlayerX, PlayerY, AdjacentMineCount, bIsChest);
+	RunInventory.MarkRoomSearched(PlayerX, PlayerY);
+	RunInventory.AddPendingGold(Reward.Gold);
+	RunInventory.Parts += Reward.Parts;
+	for (const FGT_ItemStack& Stack : Reward.Items)
+	{
+		RunInventory.AddCarriedItem(Stack.ItemId, Stack.Count, Stack.Source);
+	}
+
+	OutOutcome.bSearched = true;
+	OutOutcome.Status = FName(TEXT("searched"));
+	OutOutcome.Reward = Reward;
+	return true;
 }

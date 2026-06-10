@@ -4,6 +4,7 @@
 #include "UObject/Object.h"
 #include "Core/GT_ActorTypes.h"
 #include "Domains/Map/GT_MapTypes.h"
+#include "Domains/Inventory/GT_InventoryTypes.h"
 #include "GT_RunContext.generated.h"
 
 struct FGT_MapGenerationSpec;
@@ -162,6 +163,14 @@ public:
 	bool GenerateExtractSummary(int32 TotalEventCount);
 	bool GetRunSummarySnapshot(FGT_RunSummary& OutSummary) const;
 
+	const FGT_RunInventoryState& GetRunInventory() const;
+
+	// 玩家当前格能否搜索。不能搜索时 OutReason 给出原因(对齐 Lua GetSearchState 的 reason)。
+	bool EvaluateSearchAtPlayer(FName& OutReason, bool& bOutIsChest) const;
+
+	// 搜索玩家当前格: 判定 -> 确定性结奖 -> 入账并标记已搜。失败时 Outcome.Status 是原因。
+	bool SearchCurrentRoom(FGT_SearchOutcome& OutOutcome);
+
 private:
 	// 新老开局路径共享的初始化逻辑: 生成地图、放置玩家、重置运行态。
 	void InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec);
@@ -201,4 +210,7 @@ private:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run", meta = (AllowPrivateAccess = "true"))
 	FGT_RunSummary RunSummary;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Inventory", meta = (AllowPrivateAccess = "true"))
+	FGT_RunInventoryState RunInventory;
 };

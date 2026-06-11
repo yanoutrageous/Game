@@ -38,6 +38,9 @@ public:
 	// F 键搜索/开箱(对齐原版快捷键), 由 HUD 绑定到 OnSearch。
 	FSimpleDelegate OnSearchRequested;
 
+	// M 键打开全屏区域扫描图, 由 HUD 绑定到 OpenMapOverlay。
+	FSimpleDelegate OnMapRequested;
+
 private:
 	void BuildWidgetTree();
 	UGT_DebugSubsystem* GetDebugSubsystem() const;

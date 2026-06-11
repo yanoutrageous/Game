@@ -383,6 +383,15 @@ FReply UGT_RoomViewWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FK
 		}
 		return FReply::Handled();
 	}
+	if (Key == EKeys::M)
+	{
+		// M = 打开全屏区域扫描图。
+		if (OnMapRequested.IsBound())
+		{
+			OnMapRequested.Execute();
+		}
+		return FReply::Handled();
+	}
 	return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
 }
 

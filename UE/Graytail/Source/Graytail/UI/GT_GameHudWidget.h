@@ -14,6 +14,7 @@ class UTexture2D;
 class UGT_DebugSubsystem;
 class UGT_RunContext;
 class UGT_RoomViewWidget;
+class UGT_MapOverlayWidget;
 
 // 主游戏界面(对齐 Lua 原版构图): 房间视图铺满全屏为背景,
 // 左侧信息面板/右上协议面板/底部快捷键栏全部悬浮其上。
@@ -47,7 +48,11 @@ private:
 	UFUNCTION() void OnExtract();
 	UFUNCTION() void OnNewRun();
 
+	void OpenMapOverlay();
+	void HandleMapOverlayClosed();
+
 	UPROPERTY(Transient) UGT_RoomViewWidget* RoomView = nullptr;
+	UPROPERTY(Transient) UGT_MapOverlayWidget* MapOverlay = nullptr;
 	UPROPERTY(Transient) UUniformGridPanel* MiniMapGrid = nullptr;
 	UPROPERTY(Transient) UProgressBar* HpBar = nullptr;
 	UPROPERTY(Transient) UTextBlock* HpText = nullptr;

@@ -26,6 +26,7 @@
 #include "Input/Events.h"
 #include "Misc/PackageName.h"
 #include "Styling/CoreStyle.h"
+#include "UI/GT_MapOverlayWidget.h"
 #include "UI/GT_RoomViewWidget.h"
 
 namespace
@@ -84,6 +85,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	{
 		RoomView->OnRoomChanged.BindUObject(this, &UGT_GameHudWidget::RefreshPanels);
 		RoomView->OnSearchRequested.BindUObject(this, &UGT_GameHudWidget::OnSearch);
+		RoomView->OnMapRequested.BindUObject(this, &UGT_GameHudWidget::OpenMapOverlay);
 
 		UScaleBox* RoomScale = WidgetTree->ConstructWidget<UScaleBox>(UScaleBox::StaticClass());
 		RoomScale->SetStretch(EStretch::ScaleToFit);
@@ -181,13 +183,26 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	UTextBlock* HotbarText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	HotbarText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 13));
 	HotbarText->SetColorAndOpacity(FSlateColor(FLinearColor(0.75f, 0.78f, 0.85f, 1.f)));
-	HotbarText->SetText(FText::FromString(TEXT("WASD 移动  |  F 搜索/开箱  |  小地图点已探索格回传")));
+	HotbarText->SetText(FText::FromString(TEXT("WASD 移动  |  F 搜索/开箱  |  M/点小地图 区域扫描图")));
 	Hotbar->SetContent(HotbarText);
 	if (UOverlaySlot* HotbarSlot = Screen->AddChildToOverlay(Hotbar))
 	{
 		HotbarSlot->SetHorizontalAlignment(HAlign_Center);
 		HotbarSlot->SetVerticalAlignment(VAlign_Bottom);
 		HotbarSlot->SetPadding(FMargin(0.f, 0.f, 0.f, 6.f));
+	}
+
+	// 第 5 层(最顶): 全屏区域扫描图, 默认收起。
+	MapOverlay = CreateWidget<UGT_MapOverlayWidget>(this, UGT_MapOverlayWidget::StaticClass());
+	if (MapOverlay)
+	{
+		MapOverlay->OnClosed.BindUObject(this, &UGT_GameHudWidget::HandleMapOverlayClosed);
+		MapOverlay->SetVisibility(ESlateVisibility::Collapsed);
+		if (UOverlaySlot* MapSlot = Screen->AddChildToOverlay(MapOverlay))
+		{
+			MapSlot->SetHorizontalAlignment(HAlign_Fill);
+			MapSlot->SetVerticalAlignment(VAlign_Fill);
+		}
 	}
 }
 
@@ -537,36 +552,33 @@ UTexture2D* UGT_GameHudWidget::LoadUiTexture(const FString& AssetPath)
 
 FReply UGT_GameHudWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
-	// 点小地图已探索的安全格 -> 瞬移(对齐 Lua MapOverlay.onTeleport + main.lua TeleportTo)。
-	UGT_DebugSubsystem* Debug = GetDebugSubsystem();
-	if (MiniMapGrid && Debug)
+	// 点左上角小地图 -> 放大成全屏区域扫描图(对齐原版; 插旗/回传都在大图里操作)。
+	if (MiniMapGrid)
 	{
 		const FGeometry GridGeometry = MiniMapGrid->GetCachedGeometry();
 		const FVector2D LocalPos = GridGeometry.AbsoluteToLocal(InMouseEvent.GetScreenSpacePosition());
 		const FVector2D GridSize = GridGeometry.GetLocalSize();
 		if (LocalPos.X >= 0.f && LocalPos.Y >= 0.f && LocalPos.X < GridSize.X && LocalPos.Y < GridSize.Y)
 		{
-			TArray<FGT_MiniMapCellViewData> Cells;
-			int32 Width = 0;
-			int32 Height = 0;
-			if (Debug->GetDebugMiniMapViewData(Cells, Width, Height) && Width > 0 && Height > 0)
-			{
-				const int32 CellX = FMath::Clamp(static_cast<int32>(LocalPos.X / (GridSize.X / Width)), 0, Width - 1);
-				const int32 CellY = FMath::Clamp(static_cast<int32>(LocalPos.Y / (GridSize.Y / Height)), 0, Height - 1);
-				const FGT_MiniMapCellViewData& Cell = Cells[CellY * Width + CellX];
-
-				// 仅已探索的安全格可传送("只能传送到已探索的安全房间")。
-				if (Cell.bExplored && Cell.VisibleRoomIcon != FName(TEXT("Mine")))
-				{
-					FGT_DebugRunSnapshot Snapshot;
-					Debug->DebugTeleport(CellX, CellY, Snapshot);
-					RefreshAll();
-				}
-				return FReply::Handled();
-			}
+			OpenMapOverlay();
+			return FReply::Handled();
 		}
 	}
 	return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
+}
+
+void UGT_GameHudWidget::OpenMapOverlay()
+{
+	if (MapOverlay)
+	{
+		MapOverlay->Open();
+	}
+}
+
+void UGT_GameHudWidget::HandleMapOverlayClosed()
+{
+	// 回传可能已换房: 整体刷新(RefreshAll 会把焦点还给房间视图, WASD 立即可用)。
+	RefreshAll();
 }
 
 void UGT_GameHudWidget::OnSearch()
@@ -610,6 +622,11 @@ void UGT_GameHudWidget::OnNewRun()
 	{
 		// 每局随机种子(对齐原版); 局内随机仍由该种子完全确定, 复现指定地图用 gt.StartStd。
 		Debug->DebugStartStandardRun(FMath::RandRange(1, MAX_int32 - 1), EGT_Difficulty::Standard, Snapshot);
+	}
+	if (MapOverlay)
+	{
+		// 上一局的标雷旗随新局清空。
+		MapOverlay->ResetFlags();
 	}
 	RefreshAll();
 

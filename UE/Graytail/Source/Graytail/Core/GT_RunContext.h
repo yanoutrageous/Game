@@ -223,6 +223,9 @@ public:
 	// 最近一次成功搜索的结算明细(开新局重置), 供 UI 结果弹窗读取。
 	const FGT_SearchOutcome& GetLastSearchOutcome() const { return LastSearchOutcome; }
 
+	// 本局结束原因(Mine/Protocol/CombatDeath 等), 进行中为 None。供局终结算面板显示。
+	FName GetRunEndReason() const { return RunEndReason; }
+
 private:
 	// 新老开局路径共享的初始化逻辑: 生成地图、放置玩家、重置运行态。
 	void InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec);

@@ -5,6 +5,7 @@
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
 #include "Components/Image.h"
+#include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
 #include "Core/GT_RunContext.h"
 #include "Core/GT_RunSubsystem.h"
@@ -24,6 +25,8 @@ namespace
 	constexpr float GTMoveSpeed = 0.385f;      // 归一化坐标/秒(Lua moveSpeed 手感的 70%, 用户调速)
 	constexpr float GTDoorHalfWidth = 0.13f;   // 门对准判定半宽(归一化)
 	constexpr float GTWalkFrameTime = 0.18f;   // 走路两帧轮播间隔
+	constexpr float GTChestOpenDuration = 1.4f;    // 开箱金光时长(对齐 Lua CHEST_OPEN_DURATION)
+	constexpr float GTChestRewardDuration = 2.0f;  // 奖励飘字时长(对齐 Lua CHEST_REWARD_DURATION)
 
 	const FLinearColor GTFloor_Normal(0.16f, 0.17f, 0.20f, 1.f);
 	const FLinearColor GTFloor_Mine(0.45f, 0.12f, 0.10f, 1.f);
@@ -101,6 +104,8 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 	{
 		DoorImages[DoorIndex] = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
 		DoorImages[DoorIndex]->SetColorAndOpacity(GTDoorColor);
+		// 地板贴图自带门洞美术, 色块隐藏(过门判定只看坐标, 与可见性无关)。
+		DoorImages[DoorIndex]->SetVisibility(ESlateVisibility::Collapsed);
 		if (UCanvasPanelSlot* DoorSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(DoorImages[DoorIndex])))
 		{
 			DoorSlot->SetPosition(DoorPositions[DoorIndex]);
@@ -109,29 +114,39 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 		}
 	}
 
-	// 搜索点宝箱 + 两侧金币/零件堆 + 提示文字(对齐 Lua drawSearchPoint 布局:
-	// 判定 rect = 房中心 58x36, 箱宽 104 底部锚在 rect 底+14, 两堆宽 46 在 ±58 底+22, 文字在 rect 底+16)。
+	// 开箱光晕双圆(黄色, 内实外淡), 垫在宝箱下层, 仅演出期间可见。
+	GlowOuter = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+	GlowOuter->SetVisibility(ESlateVisibility::Collapsed);
+	RoomCanvas->AddChild(GlowOuter);
+	GlowInner = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+	GlowInner->SetVisibility(ESlateVisibility::Collapsed);
+	RoomCanvas->AddChild(GlowInner);
+
+	// 搜索点宝箱 + 两侧金币/零件堆 + 提示文字(布局对齐 Lua drawSearchPoint, 整体缩小到约原版一半:
+	// 判定 rect = 房中心 58x36, 两堆在 ±42, 文字在 rect 底+16)。
 	ChestImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
 	ChestImage->SetVisibility(ESlateVisibility::Collapsed);
+	// 开箱演出的上抬/缩放以箱底为支点。
+	ChestImage->SetRenderTransformPivot(FVector2D(0.5f, 1.f));
 	if (UCanvasPanelSlot* ChestSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(ChestImage)))
 	{
 		// 实际尺寸随开/关状态在 RefreshRoomDecor 里调整(两张贴图留白不同)。
-		ChestSlot->SetPosition(FVector2D(GTRoomSize * 0.5f - 39.f, GTRoomSize * 0.5f - 46.f));
-		ChestSlot->SetSize(FVector2D(78.f, 78.f));
+		ChestSlot->SetPosition(FVector2D(GTRoomSize * 0.5f - 20.f, GTRoomSize * 0.5f - 7.f));
+		ChestSlot->SetSize(FVector2D(39.f, 39.f));
 	}
 	GoldPileImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
 	GoldPileImage->SetVisibility(ESlateVisibility::Collapsed);
 	if (UCanvasPanelSlot* GoldSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(GoldPileImage)))
 	{
-		GoldSlot->SetPosition(FVector2D(GTRoomSize * 0.5f - 58.f - 23.f, GTRoomSize * 0.5f - 6.f));
-		GoldSlot->SetSize(FVector2D(46.f, 46.f));
+		GoldSlot->SetPosition(FVector2D(GTRoomSize * 0.5f - 42.f - 14.f, GTRoomSize * 0.5f + 8.f));
+		GoldSlot->SetSize(FVector2D(28.f, 28.f));
 	}
 	PartsPileImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
 	PartsPileImage->SetVisibility(ESlateVisibility::Collapsed);
 	if (UCanvasPanelSlot* PartsSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(PartsPileImage)))
 	{
-		PartsSlot->SetPosition(FVector2D(GTRoomSize * 0.5f + 58.f - 23.f, GTRoomSize * 0.5f - 6.f));
-		PartsSlot->SetSize(FVector2D(46.f, 46.f));
+		PartsSlot->SetPosition(FVector2D(GTRoomSize * 0.5f + 42.f - 14.f, GTRoomSize * 0.5f + 8.f));
+		PartsSlot->SetSize(FVector2D(28.f, 28.f));
 	}
 	ChestCaption = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	ChestCaption->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 12));
@@ -143,15 +158,61 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 		CaptionSlot->SetSize(FVector2D(200.f, 18.f));
 	}
 
-	// 房型标签(雷/撤离点/宝箱等提示文字, 居中)。
-	RoomLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	RoomLabel->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 22));
-	RoomLabel->SetColorAndOpacity(FSlateColor(FLinearColor(1.f, 1.f, 1.f, 0.45f)));
-	if (UCanvasPanelSlot* LabelSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(RoomLabel)))
+	// 奖励飘字(金币/零件图标 + "+N" 文本), 仅演出期间可见, 位置每帧由动画驱动。
+	auto MakeBurstImage = [this]() -> UImage*
 	{
-		LabelSlot->SetPosition(FVector2D(GTRoomSize * 0.5f - 180.f, GTRoomSize * 0.5f - 90.f));
-		LabelSlot->SetSize(FVector2D(380.f, 40.f));
+		UImage* Image = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+		Image->SetVisibility(ESlateVisibility::Collapsed);
+		if (UCanvasPanelSlot* ImageSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(Image)))
+		{
+			ImageSlot->SetSize(FVector2D(56.f, 56.f));
+		}
+		return Image;
+	};
+	auto MakeBurstText = [this](const FColor& Color) -> UTextBlock*
+	{
+		UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		Text->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 15));
+		Text->SetColorAndOpacity(FSlateColor(FLinearColor(Color)));
+		Text->SetJustification(ETextJustify::Center);
+		Text->SetVisibility(ESlateVisibility::Collapsed);
+		if (UCanvasPanelSlot* TextSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(Text)))
+		{
+			TextSlot->SetSize(FVector2D(80.f, 24.f));
+		}
+		return Text;
+	};
+	BurstGoldImage = MakeBurstImage();
+	BurstGoldText = MakeBurstText(FColor(255, 235, 130));
+	BurstPartsImage = MakeBurstImage();
+	BurstPartsText = MakeBurstText(FColor(170, 230, 255));
+
+	// 周围雷险标牌(原版 ui_mine_risk_tag 底图自带图标), 房间底部居中, 未扫描时隐藏。
+	MineRiskTag = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+	MineRiskTag->SetWidthOverride(220.f);
+	MineRiskTag->SetHeightOverride(44.f);
+	MineRiskTag->SetVisibility(ESlateVisibility::Collapsed);
+	if (UCanvasPanelSlot* TagSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(MineRiskTag)))
+	{
+		TagSlot->SetPosition(FVector2D(GTRoomSize * 0.5f - 110.f, GTRoomSize - 62.f));
+		TagSlot->SetSize(FVector2D(220.f, 44.f));
 	}
+	UBorder* TagBorder = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+	if (UTexture2D* TagTexture = LoadTextureAsset(TEXT("/Game/Graytail/UI/hud/ui_mine_risk_tag")))
+	{
+		FSlateBrush TagBrush;
+		TagBrush.SetResourceObject(TagTexture);
+		TagBrush.DrawAs = ESlateBrushDrawType::Image;
+		TagBorder->SetBrush(TagBrush);
+	}
+	// 文字避开底图左侧自带的图标。
+	TagBorder->SetPadding(FMargin(52.f, 0.f, 12.f, 0.f));
+	MineRiskTag->SetContent(TagBorder);
+	RoomLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+	RoomLabel->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 16));
+	RoomLabel->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(232, 222, 198))));
+	TagBorder->SetContent(RoomLabel);
+	TagBorder->SetVerticalAlignment(VAlign_Center);
 
 	// 怪物(史莱姆), 战斗激活时显示在房间偏左上(对齐 Lua monsterPosition 0.35/0.45)。
 	EnemyImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
@@ -242,21 +303,21 @@ void UGT_RoomViewWidget::RefreshRoomDecor()
 	}
 
 	// 房间底图: 复用 Lua 版 room_*.png(资产化在 Sprites/Misc 下), 按房型切换(对齐 DungeonRoom.lua)。
+	// 房型不再加文字标签(用户要求): 地板美术本身已表达房型。
 	FLinearColor FloorColor = GTFloor_Normal;
 	const TCHAR* FloorAsset = TEXT("/Game/Graytail/Sprites/Misc/room_safe");
-	FString Label;
 	switch (Snapshot.CurrentRoomBaseType)
 	{
 	case EGT_RoomBaseType::Mine:
-		FloorColor = GTFloor_Mine; FloorAsset = TEXT("/Game/Graytail/Sprites/Misc/room_danger"); Label = TEXT("雷区废墟"); break;
+		FloorColor = GTFloor_Mine; FloorAsset = TEXT("/Game/Graytail/Sprites/Misc/room_danger"); break;
 	case EGT_RoomBaseType::Exit:
-		FloorColor = GTFloor_Exit; FloorAsset = TEXT("/Game/Graytail/Sprites/Misc/room_exit"); Label = TEXT("撤离点 (Extract)"); break;
+		FloorColor = GTFloor_Exit; FloorAsset = TEXT("/Game/Graytail/Sprites/Misc/room_exit"); break;
 	case EGT_RoomBaseType::Combat:
 		FloorColor = GTFloor_Combat; FloorAsset = TEXT("/Game/Graytail/Sprites/Misc/room_monster"); break;
 	case EGT_RoomBaseType::Event:
-		FloorColor = GTFloor_Event; FloorAsset = TEXT("/Game/Graytail/Sprites/Misc/room_event"); Label = TEXT("异常事件"); break;
+		FloorColor = GTFloor_Event; FloorAsset = TEXT("/Game/Graytail/Sprites/Misc/room_event"); break;
 	case EGT_RoomBaseType::Chest:
-		FloorColor = GTFloor_Chest; FloorAsset = TEXT("/Game/Graytail/Sprites/Misc/room_treasure"); Label = TEXT("补给箱 (Search)"); break;
+		FloorColor = GTFloor_Chest; FloorAsset = TEXT("/Game/Graytail/Sprites/Misc/room_treasure"); break;
 	default:
 		break;
 	}
@@ -274,24 +335,22 @@ void UGT_RoomViewWidget::RefreshRoomDecor()
 		FloorBorder->SetBrushColor(FloorColor);
 	}
 
-	// 本房周围雷数直接显示在房间里(不用回头看小地图)。
+	// 周围雷险标牌(原版 ui_mine_risk_tag): 本房已扫描才显示。
 	TArray<FGT_MiniMapCellViewData> IntelCells;
 	int32 IntelWidth = 0;
 	int32 IntelHeight = 0;
+	bool bShowMineTag = false;
 	if (Debug->GetDebugMiniMapViewData(IntelCells, IntelWidth, IntelHeight)
 		&& IntelCells.IsValidIndex(CurrentCellY * IntelWidth + CurrentCellX))
 	{
 		const FGT_MiniMapCellViewData& CurrentIntel = IntelCells[CurrentCellY * IntelWidth + CurrentCellX];
 		if (CurrentIntel.bScanned)
 		{
-			if (!Label.IsEmpty())
-			{
-				Label += TEXT("  ");
-			}
-			Label += FString::Printf(TEXT("周围雷数: %d"), CurrentIntel.DisplayedNumber);
+			RoomLabel->SetText(FText::FromString(FString::Printf(TEXT("周围雷险: %d"), CurrentIntel.DisplayedNumber)));
+			bShowMineTag = true;
 		}
 	}
-	RoomLabel->SetText(FText::FromString(Label));
+	MineRiskTag->SetVisibility(bShowMineTag ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 
 	// 战斗激活时显示史莱姆。
 	const bool bShowEnemy = Snapshot.bCombatActive
@@ -322,13 +381,18 @@ void UGT_RoomViewWidget::RefreshRoomDecor()
 		{
 			ChestImage->SetBrushFromTexture(ChestTexture);
 		}
-		// 开箱图内容只占画布宽 75%(关箱 97.5%), 槽位按可见宽度 ~76px 对齐两态, 底部同高。
+		// 槽位居中锚定; 宝箱房用大箱盖住地板美术里的大宝箱, 普通房用小箱。
+		// 开箱图内容只占画布宽 75%(关箱 97.5%), 两态槽位按可见宽度对齐。
 		if (UCanvasPanelSlot* ChestSlot = Cast<UCanvasPanelSlot>(ChestImage->Slot))
 		{
-			const float SlotSize = bSearched ? 101.f : 78.f;
-			const float BottomY = GTRoomSize * 0.5f + 32.f;
-			ChestSlot->SetPosition(FVector2D(GTRoomSize * 0.5f - SlotSize * 0.5f, BottomY - SlotSize));
+			const float SlotSize = bChestRoom ? (bSearched ? 101.f : 78.f) : (bSearched ? 51.f : 39.f);
+			ChestSlot->SetPosition(FVector2D(GTRoomSize * 0.5f - SlotSize * 0.5f, GTRoomSize * 0.5f - SlotSize * 0.5f));
 			ChestSlot->SetSize(FVector2D(SlotSize, SlotSize));
+		}
+		// 提示文字跟着箱体大小下移。
+		if (UCanvasPanelSlot* CaptionSlot = Cast<UCanvasPanelSlot>(ChestCaption->Slot))
+		{
+			CaptionSlot->SetPosition(FVector2D(GTRoomSize * 0.5f - 100.f, GTRoomSize * 0.5f + (bChestRoom ? 56.f : 30.f)));
 		}
 		if (UTexture2D* GoldTexture = LoadTextureAsset(TEXT("/Game/Graytail/Sprites/Props/09_jinbi_dui")))
 		{
@@ -338,17 +402,16 @@ void UGT_RoomViewWidget::RefreshRoomDecor()
 		{
 			PartsPileImage->SetBrushFromTexture(PartsTexture);
 		}
-		ChestCaption->SetText(FText::FromString(bChestRoom
-			? (bSearched ? TEXT("物资箱已开启") : TEXT("F 开启物资箱"))
-			: (bSearched ? TEXT("已搜索") : TEXT("F 搜索"))));
-		ChestCaption->SetColorAndOpacity(FSlateColor(bSearched
-			? FLinearColor(FColor(170, 160, 145, 180))
-			: FLinearColor(FColor(255, 230, 140, 230))));
+		// 已搜过的房间不再显示提示文字(用户要求), 开箱状态由贴图本身表达。
+		ChestCaption->SetText(FText::FromString(bChestRoom ? TEXT("F 开启物资箱") : TEXT("F 搜索")));
+		ChestCaption->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(255, 230, 140, 230))));
 	}
 	ChestImage->SetVisibility(bShowChest ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
-	ChestCaption->SetVisibility(bShowChest ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
-	GoldPileImage->SetVisibility(bCanSearch ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
-	PartsPileImage->SetVisibility(bCanSearch ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	ChestCaption->SetVisibility(bCanSearch ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	// 两侧堆只在普通房显示(宝箱房地板美术自带金币堆)。
+	const bool bShowPiles = bCanSearch && !bChestRoom;
+	GoldPileImage->SetVisibility(bShowPiles ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	PartsPileImage->SetVisibility(bShowPiles ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 
 	// 初始站立帧。
 	if (UTexture2D* IdleFrame = GetIdleFrame(LastDirX, LastDirY))
@@ -392,6 +455,15 @@ FReply UGT_RoomViewWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FK
 		}
 		return FReply::Handled();
 	}
+	if (Key == EKeys::E)
+	{
+		// E = 撤离(对齐原版底栏; 是否在撤离点由内核裁决)。
+		if (OnExtractRequested.IsBound())
+		{
+			OnExtractRequested.Execute();
+		}
+		return FReply::Handled();
+	}
 	return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
 }
 
@@ -421,6 +493,103 @@ void UGT_RoomViewWidget::SetHeldMovementKey(const FKey& Key, bool bDown)
 	else if (Key == EKeys::D) { HeldKeys[3] = bDown; }
 }
 
+void UGT_RoomViewWidget::PlayChestRewardBurst(int32 Gold, int32 Parts)
+{
+	ChestOpenTimer = GTChestOpenDuration;
+	RewardBurstTimer = GTChestRewardDuration;
+	BurstParts = Parts;
+
+	if (UTexture2D* GoldTexture = LoadTextureAsset(TEXT("/Game/Graytail/Sprites/Props/09_jinbi_dui")))
+	{
+		BurstGoldImage->SetBrushFromTexture(GoldTexture);
+	}
+	if (UTexture2D* PartsTexture = LoadTextureAsset(TEXT("/Game/Graytail/Sprites/Props/07_lingjian_dui")))
+	{
+		BurstPartsImage->SetBrushFromTexture(PartsTexture);
+	}
+	BurstGoldText->SetText(FText::FromString(FString::Printf(TEXT("+%d"), Gold)));
+	BurstPartsText->SetText(FText::FromString(FString::Printf(TEXT("+%d"), Parts)));
+	UpdateChestBurstAnim(0.f);
+}
+
+void UGT_RoomViewWidget::UpdateChestBurstAnim(float DeltaTime)
+{
+	// 开箱瞬间: 箱体极轻微上抬回落 + 黄色双圆光晕扩散消散(对齐 Lua 的双 nvgCircle)。
+	if (ChestOpenTimer > 0.f)
+	{
+		ChestOpenTimer = FMath::Max(0.f, ChestOpenTimer - DeltaTime);
+		const float Flash = ChestOpenTimer / GTChestOpenDuration;
+		ChestImage->SetRenderTransform(FWidgetTransform(
+			FVector2D(0.f, -3.f * Flash),
+			FVector2D(1.f + 0.05f * Flash, 1.f + 0.05f * Flash),
+			FVector2D::ZeroVector,
+			0.f));
+
+		auto UpdateGlow = [](UImage* Glow, float Diameter, float Opacity, float CenterY)
+		{
+			FSlateBrush Brush;
+			Brush.DrawAs = ESlateBrushDrawType::RoundedBox;
+			Brush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+			const float Radius = Diameter * 0.5f;
+			Brush.OutlineSettings.CornerRadii = FVector4(Radius, Radius, Radius, Radius);
+			Brush.TintColor = FSlateColor(FLinearColor(FColor(255, 205, 70)));
+			Glow->SetBrush(Brush);
+			Glow->SetRenderOpacity(Opacity);
+			if (UCanvasPanelSlot* GlowSlot = Cast<UCanvasPanelSlot>(Glow->Slot))
+			{
+				GlowSlot->SetPosition(FVector2D(GTRoomSize * 0.5f - Radius, CenterY - Radius));
+				GlowSlot->SetSize(FVector2D(Diameter, Diameter));
+			}
+			Glow->SetVisibility(Opacity > 0.f ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+		};
+		// 光晕中心对箱体中心; 内圆实、外圆淡, 随时间扩散(对齐 Lua 60+40/90+50 的比例, 按缩小后的箱体等比)。
+		const float GlowCenterY = GTRoomSize * 0.5f;
+		UpdateGlow(GlowInner, 50.f + 36.f * (1.f - Flash), 0.62f * Flash, GlowCenterY);
+		UpdateGlow(GlowOuter, 76.f + 52.f * (1.f - Flash), 0.25f * Flash, GlowCenterY);
+	}
+
+	// 奖励飘字(对齐 Lua chestRewardBurst: 上升 120, 散开 44->80, 70% 后淡出, sin 缩放脉冲)。
+	if (RewardBurstTimer > 0.f)
+	{
+		RewardBurstTimer = FMath::Max(0.f, RewardBurstTimer - DeltaTime);
+		const float Progress = 1.f - RewardBurstTimer / GTChestRewardDuration;
+		const float EaseOut = 1.f - (1.f - Progress) * (1.f - Progress);
+		const float Rise = 120.f * EaseOut;
+		const float Spread = 44.f + 36.f * EaseOut;
+		const float FadeStart = 0.7f;
+		const float Alpha = Progress < FadeStart ? 1.f : FMath::Max(0.f, (1.f - Progress) / (1.f - FadeStart));
+		const float Scale = 1.f + 0.4f * FMath::Sin(Progress * PI);
+		const float IconSize = 40.f * Scale;
+		const float IconCenterY = GTRoomSize * 0.5f - 2.f - Rise;
+		const bool bActive = RewardBurstTimer > 0.f;
+		const ESlateVisibility BurstVisibility = bActive ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed;
+		const ESlateVisibility PartsVisibility = bActive && BurstParts > 0 ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed;
+
+		auto PlaceBurst = [this](UWidget* Widget, float CenterX, float CenterY, float Width, float Height)
+		{
+			if (UCanvasPanelSlot* WidgetSlot = Cast<UCanvasPanelSlot>(Widget->Slot))
+			{
+				WidgetSlot->SetPosition(FVector2D(CenterX - Width * 0.5f, CenterY - Height * 0.5f));
+				WidgetSlot->SetSize(FVector2D(Width, Height));
+			}
+		};
+		const float CenterX = GTRoomSize * 0.5f;
+		PlaceBurst(BurstGoldImage, CenterX - Spread, IconCenterY, IconSize, IconSize);
+		PlaceBurst(BurstGoldText, CenterX - Spread, IconCenterY + 30.f, 80.f, 24.f);
+		PlaceBurst(BurstPartsImage, CenterX + Spread, IconCenterY + 4.f, IconSize, IconSize);
+		PlaceBurst(BurstPartsText, CenterX + Spread, IconCenterY + 34.f, 80.f, 24.f);
+
+		BurstGoldImage->SetRenderOpacity(Alpha);
+		BurstGoldText->SetRenderOpacity(Alpha);
+		BurstPartsImage->SetRenderOpacity(Alpha);
+		BurstPartsText->SetRenderOpacity(Alpha);
+		BurstGoldImage->SetVisibility(BurstVisibility);
+		BurstGoldText->SetVisibility(BurstVisibility);
+		BurstPartsImage->SetVisibility(PartsVisibility);
+		BurstPartsText->SetVisibility(PartsVisibility);
+	}
+}
+
 void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
@@ -429,6 +598,9 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 	{
 		return;
 	}
+
+	// 开箱演出不受焦点影响(弹窗刚关/按钮持焦时也要继续播)。
+	UpdateChestBurstAnim(InDeltaTime);
 
 	// 焦点在弹窗/按钮上时暂停移动(持键状态仍经 HUD 冒泡转发保持准确, 关弹窗立刻续走)。
 	if (!HasKeyboardFocus())

@@ -7,6 +7,7 @@
 class UBorder;
 class UCanvasPanel;
 class UImage;
+class USizeBox;
 class UTextBlock;
 class UTexture2D;
 class UGT_DebugSubsystem;
@@ -33,6 +34,9 @@ public:
 	// 保证状态始终与物理按键一致(关弹窗后按住的键立刻续走, 不卡键不断手感)。
 	void SetHeldMovementKey(const FKey& Key, bool bDown);
 
+	// 播放开箱金光 + 奖励飘字(对齐 Lua TriggerChestOpen/chestRewardBurst)。
+	void PlayChestRewardBurst(int32 Gold, int32 Parts);
+
 	// 房间状态变化后(开局/外部移动)由 HUD 调用, 重读当前格并重绘。
 	void SyncToCurrentCell(bool bCenterPlayer);
 
@@ -45,6 +49,9 @@ public:
 	// M 键打开全屏区域扫描图, 由 HUD 绑定到 OpenMapOverlay。
 	FSimpleDelegate OnMapRequested;
 
+	// E 键撤离(对齐原版底栏), 由 HUD 绑定到 OnExtract。
+	FSimpleDelegate OnExtractRequested;
+
 private:
 	void BuildWidgetTree();
 	UGT_DebugSubsystem* GetDebugSubsystem() const;
@@ -55,15 +62,24 @@ private:
 	void TryCrossDoor(int32 DirX, int32 DirY);
 	void UpdatePlayerImagePosition();
 	void RefreshRoomDecor();
+	void UpdateChestBurstAnim(float DeltaTime);
 
 	UPROPERTY(Transient) UCanvasPanel* RoomCanvas = nullptr;
 	UPROPERTY(Transient) UBorder* FloorBorder = nullptr;
+	// 周围雷险标牌(原版 ui_mine_risk_tag 底图 + 数字), 房间底部居中。
+	UPROPERTY(Transient) USizeBox* MineRiskTag = nullptr;
 	UPROPERTY(Transient) UTextBlock* RoomLabel = nullptr;
 	UPROPERTY(Transient) UImage* DoorImages[4] = {};
+	UPROPERTY(Transient) UImage* GlowOuter = nullptr;
+	UPROPERTY(Transient) UImage* GlowInner = nullptr;
 	UPROPERTY(Transient) UImage* ChestImage = nullptr;
 	UPROPERTY(Transient) UImage* GoldPileImage = nullptr;
 	UPROPERTY(Transient) UImage* PartsPileImage = nullptr;
 	UPROPERTY(Transient) UTextBlock* ChestCaption = nullptr;
+	UPROPERTY(Transient) UImage* BurstGoldImage = nullptr;
+	UPROPERTY(Transient) UTextBlock* BurstGoldText = nullptr;
+	UPROPERTY(Transient) UImage* BurstPartsImage = nullptr;
+	UPROPERTY(Transient) UTextBlock* BurstPartsText = nullptr;
 	UPROPERTY(Transient) UImage* EnemyImage = nullptr;
 	UPROPERTY(Transient) UImage* PlayerImage = nullptr;
 
@@ -77,6 +93,11 @@ private:
 	float WalkAnimTime = 0.f;
 	int32 LastDirX = 0;
 	int32 LastDirY = 1;       // 默认朝下
+
+	// 开箱演出计时(对齐 Lua chestOpenTimer/chestRewardBurst)。
+	float ChestOpenTimer = 0.f;
+	float RewardBurstTimer = 0.f;
+	int32 BurstParts = 0;
 	int32 CurrentCellX = -1;
 	int32 CurrentCellY = -1;
 };

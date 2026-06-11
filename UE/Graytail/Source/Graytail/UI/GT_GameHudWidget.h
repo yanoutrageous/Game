@@ -4,6 +4,7 @@
 #include "Blueprint/UserWidget.h"
 #include "GT_GameHudWidget.generated.h"
 
+class UBorder;
 class UTextBlock;
 class UButton;
 class UHorizontalBox;
@@ -41,13 +42,15 @@ private:
 	void RefreshStatusPanel();
 	void RefreshMiniMapGrid();
 	void RefreshItemsList();
+	void RefreshRunEndPanel();
 	UTexture2D* GetItemIcon(FName ItemId);
 	UTexture2D* LoadUiTexture(const FString& AssetPath);
+	// 蓝底科技风面板: 深蓝底 + 原版边框贴图(冷色调降透明度)叠层, 返回挂到屏幕上的包装件。
+	UWidget* MakeSkinnedPanel(UBorder* Panel, const FString& AssetPath);
 	UButton* MakeButton(UHorizontalBox* Row, const FString& Label);
 	UTextBlock* MakePanelText(UVerticalBox* Panel, int32 FontSize, const FLinearColor& Color);
 
 	UFUNCTION() void OnSearch();
-	UFUNCTION() void OnAttack();
 	UFUNCTION() void OnExtract();
 	UFUNCTION() void OnNewRun();
 
@@ -61,12 +64,24 @@ private:
 	UPROPERTY(Transient) UUniformGridPanel* MiniMapGrid = nullptr;
 	UPROPERTY(Transient) UProgressBar* HpBar = nullptr;
 	UPROPERTY(Transient) UTextBlock* HpText = nullptr;
-	UPROPERTY(Transient) UTextBlock* StatsText = nullptr;
+	// 属性行按原版分色: 战斗力白 / 待结算金 / 已锁定绿 / 回收物青 / 已搜索灰。
+	UPROPERTY(Transient) UTextBlock* PowerText = nullptr;
+	UPROPERTY(Transient) UTextBlock* PendingText = nullptr;
+	UPROPERTY(Transient) UTextBlock* SafeText = nullptr;
+	UPROPERTY(Transient) UTextBlock* PartsText = nullptr;
+	UPROPERTY(Transient) UTextBlock* SearchedText = nullptr;
 	UPROPERTY(Transient) UTextBlock* StateText = nullptr;
 	UPROPERTY(Transient) UVerticalBox* ItemsList = nullptr;
 	UPROPERTY(Transient) UTextBlock* LogText = nullptr;
 	UPROPERTY(Transient) UTextBlock* ProtocolText = nullptr;
-	UPROPERTY(Transient) UButton* SearchButton = nullptr;
+
+	// 局终结算弹窗(死亡/撤离后弹出, 含重新出发按钮; NewRun 按钮已移除)。
+	UPROPERTY(Transient) UWidget* RunEndRoot = nullptr;
+	UPROPERTY(Transient) UBorder* RunEndFrame = nullptr;
+	UPROPERTY(Transient) UTextBlock* RunEndTitle = nullptr;
+	UPROPERTY(Transient) UTextBlock* RunEndBody = nullptr;
+	UPROPERTY(Transient) UButton* RunEndButton = nullptr;
+	bool bRunEndShown = false;
 
 	// UI 贴图资产缓存(key = /Game 包路径, 防 GC)。
 	UPROPERTY(Transient) TMap<FString, UTexture2D*> UiTextureCache;

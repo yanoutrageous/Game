@@ -5,6 +5,7 @@
 #include "Components/Border.h"
 #include "Components/Button.h"
 #include "Components/HorizontalBox.h"
+#include "Components/HorizontalBoxSlot.h"
 #include "Components/Image.h"
 #include "Components/Overlay.h"
 #include "Components/OverlaySlot.h"
@@ -63,6 +64,13 @@ void UGT_GameHudWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 	RefreshAll();
+
+	// NewRun 按钮已移除: HUD 打开时若还没有局, 直接自动开一局。
+	const UGT_RunContext* RunContext = GetRunContext();
+	if (!RunContext || RunContext->GetRunState() == EGT_RunState::NotStarted)
+	{
+		OnNewRun();
+	}
 }
 
 void UGT_GameHudWidget::BuildWidgetTree()
@@ -87,6 +95,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		RoomView->OnRoomChanged.BindUObject(this, &UGT_GameHudWidget::RefreshPanels);
 		RoomView->OnSearchRequested.BindUObject(this, &UGT_GameHudWidget::OnSearch);
 		RoomView->OnMapRequested.BindUObject(this, &UGT_GameHudWidget::OpenMapOverlay);
+		RoomView->OnExtractRequested.BindUObject(this, &UGT_GameHudWidget::OnExtract);
 
 		UScaleBox* RoomScale = WidgetTree->ConstructWidget<UScaleBox>(UScaleBox::StaticClass());
 		RoomScale->SetStretch(EStretch::ScaleToFit);
@@ -107,7 +116,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	UBorder* LeftPanel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 	LeftPanel->SetBrushColor(FLinearColor(0.03f, 0.03f, 0.05f, 0.92f));
 	LeftPanel->SetPadding(FMargin(14.f));
-	if (UOverlaySlot* LeftSlot = Screen->AddChildToOverlay(LeftPanel))
+	if (UOverlaySlot* LeftSlot = Screen->AddChildToOverlay(MakeSkinnedPanel(LeftPanel, TEXT("/Game/Graytail/UI/hud/ui_panel_left"))))
 	{
 		LeftSlot->SetHorizontalAlignment(HAlign_Left);
 		LeftSlot->SetVerticalAlignment(VAlign_Fill);
@@ -137,7 +146,12 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	}
 	HpText = MakePanelText(Panel, 12, FLinearColor(0.9f, 0.9f, 0.9f, 1.f));
 
-	StatsText = MakePanelText(Panel, 13, FLinearColor(0.85f, 0.85f, 0.9f, 1.f));
+	// 属性行分色(对齐原版面板配色)。
+	PowerText = MakePanelText(Panel, 13, FLinearColor(0.92f, 0.93f, 0.95f, 1.f));
+	PendingText = MakePanelText(Panel, 13, FLinearColor(FColor(255, 226, 120)));
+	SafeText = MakePanelText(Panel, 13, FLinearColor(FColor(120, 220, 170)));
+	PartsText = MakePanelText(Panel, 13, FLinearColor(FColor(130, 200, 255)));
+	SearchedText = MakePanelText(Panel, 11, FLinearColor(0.55f, 0.60f, 0.70f, 1.f));
 	StateText = MakePanelText(Panel, 13, FLinearColor(0.95f, 0.85f, 0.5f, 1.f));
 
 	UTextBlock* BagTitle = MakePanelText(Panel, 13, FLinearColor(0.65f, 0.75f, 0.95f, 1.f));
@@ -146,18 +160,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	ItemsList = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	Panel->AddChildToVerticalBox(ItemsList);
 
-	// 动作按钮(Search 由可搜索性启用)。
-	UHorizontalBox* ActionRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	if (UVerticalBoxSlot* ActionSlot = Panel->AddChildToVerticalBox(ActionRow))
-	{
-		ActionSlot->SetPadding(FMargin(0.f, 8.f, 0.f, 2.f));
-	}
-	SearchButton = MakeButton(ActionRow, TEXT("Search"));
-	SearchButton->OnClicked.AddDynamic(this, &UGT_GameHudWidget::OnSearch);
-	MakeButton(ActionRow, TEXT("Attack"))->OnClicked.AddDynamic(this, &UGT_GameHudWidget::OnAttack);
-	MakeButton(ActionRow, TEXT("Extract"))->OnClicked.AddDynamic(this, &UGT_GameHudWidget::OnExtract);
-	MakeButton(ActionRow, TEXT("NewRun"))->OnClicked.AddDynamic(this, &UGT_GameHudWidget::OnNewRun);
-
+	// 动作按钮已移除: F=搜索/攻击, E=撤离, 重开走局终弹窗。
 	LogText = MakePanelText(Panel, 11, FLinearColor(0.6f, 0.65f, 0.72f, 1.f));
 	LogText->SetAutoWrapText(true);
 
@@ -170,7 +173,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	ProtocolText->SetColorAndOpacity(FSlateColor(FLinearColor(0.95f, 0.55f, 0.45f, 1.f)));
 	ProtocolText->SetText(FText::FromString(TEXT("协议 5")));
 	ProtocolPanel->SetContent(ProtocolText);
-	if (UOverlaySlot* ProtocolSlot = Screen->AddChildToOverlay(ProtocolPanel))
+	if (UOverlaySlot* ProtocolSlot = Screen->AddChildToOverlay(MakeSkinnedPanel(ProtocolPanel, TEXT("/Game/Graytail/UI/hud/ui_panel_protocol"))))
 	{
 		ProtocolSlot->SetHorizontalAlignment(HAlign_Right);
 		ProtocolSlot->SetVerticalAlignment(VAlign_Top);
@@ -180,13 +183,69 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	// 第 4 层: 底部快捷键栏。
 	UBorder* Hotbar = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 	Hotbar->SetBrushColor(FLinearColor(0.03f, 0.03f, 0.05f, 0.85f));
-	Hotbar->SetPadding(FMargin(16.f, 4.f));
-	UTextBlock* HotbarText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	HotbarText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 13));
-	HotbarText->SetColorAndOpacity(FSlateColor(FLinearColor(0.75f, 0.78f, 0.85f, 1.f)));
-	HotbarText->SetText(FText::FromString(TEXT("WASD 移动  |  F 搜索/开箱  |  M/点小地图 区域扫描图")));
-	Hotbar->SetContent(HotbarText);
-	if (UOverlaySlot* HotbarSlot = Screen->AddChildToOverlay(Hotbar))
+	Hotbar->SetPadding(FMargin(16.f, 8.f));
+	// 四个键位块, 等宽分布对齐底栏贴图的四个格子, 块内居中(对齐原版底栏)。
+	USizeBox* HotSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+	HotSize->SetWidthOverride(720.f);
+	HotSize->SetHeightOverride(40.f);
+	Hotbar->SetContent(HotSize);
+	UHorizontalBox* HotRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+	HotSize->SetContent(HotRow);
+	auto AddKeyHint = [this, HotRow](const TCHAR* KeyAssetPath, const FString& KeyLabel, const FString& Action)
+	{
+		UHorizontalBox* Block = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+		if (UHorizontalBoxSlot* BlockSlot = HotRow->AddChildToHorizontalBox(Block))
+		{
+			BlockSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+			BlockSlot->SetHorizontalAlignment(HAlign_Center);
+			BlockSlot->SetVerticalAlignment(VAlign_Center);
+		}
+		// 键帽: 有贴图用贴图(自带字母), 没有(WASD)画一个键帽样式的小框。
+		if (UTexture2D* KeyTexture = KeyAssetPath ? LoadUiTexture(KeyAssetPath) : nullptr)
+		{
+			USizeBox* KeySize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+			KeySize->SetWidthOverride(24.f);
+			KeySize->SetHeightOverride(24.f);
+			UImage* KeyImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+			KeyImage->SetBrushFromTexture(KeyTexture);
+			KeySize->SetContent(KeyImage);
+			if (UHorizontalBoxSlot* KeySlot = Block->AddChildToHorizontalBox(KeySize))
+			{
+				KeySlot->SetPadding(FMargin(0.f, 0.f, 6.f, 0.f));
+				KeySlot->SetVerticalAlignment(VAlign_Center);
+			}
+		}
+		else
+		{
+			UBorder* KeyCap = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+			KeyCap->SetBrushColor(FLinearColor(0.13f, 0.12f, 0.10f, 1.f));
+			KeyCap->SetPadding(FMargin(6.f, 3.f));
+			UTextBlock* KeyText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+			KeyText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 10));
+			KeyText->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(214, 178, 92))));
+			KeyText->SetText(FText::FromString(KeyLabel));
+			KeyCap->SetContent(KeyText);
+			if (UHorizontalBoxSlot* KeySlot = Block->AddChildToHorizontalBox(KeyCap))
+			{
+				KeySlot->SetPadding(FMargin(0.f, 0.f, 6.f, 0.f));
+				KeySlot->SetVerticalAlignment(VAlign_Center);
+			}
+		}
+
+		UTextBlock* ActionText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		ActionText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 13));
+		ActionText->SetColorAndOpacity(FSlateColor(FLinearColor(0.78f, 0.80f, 0.86f, 1.f)));
+		ActionText->SetText(FText::FromString(Action));
+		if (UHorizontalBoxSlot* ActionSlot = Block->AddChildToHorizontalBox(ActionText))
+		{
+			ActionSlot->SetVerticalAlignment(VAlign_Center);
+		}
+	};
+	AddKeyHint(nullptr, TEXT("WASD"), TEXT("移动"));
+	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_m"), TEXT("M"), TEXT("扫描图"));
+	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_f"), TEXT("F"), TEXT("搜索/攻击"));
+	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_e"), TEXT("E"), TEXT("撤离"));
+	if (UOverlaySlot* HotbarSlot = Screen->AddChildToOverlay(MakeSkinnedPanel(Hotbar, TEXT("/Game/Graytail/UI/hud/ui_bottom_bar"))))
 	{
 		HotbarSlot->SetHorizontalAlignment(HAlign_Center);
 		HotbarSlot->SetVerticalAlignment(VAlign_Bottom);
@@ -216,6 +275,67 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		{
 			LootSlot->SetHorizontalAlignment(HAlign_Fill);
 			LootSlot->SetVerticalAlignment(VAlign_Fill);
+		}
+	}
+
+	// 第 7 层(最顶): 局终结算弹窗(死亡"信号中断"/撤离成功), 默认收起。
+	{
+		UOverlay* EndRoot = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
+		UBorder* EndMask = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+		EndMask->SetBrushColor(FLinearColor(0.f, 0.f, 0.f, 0.66f));
+		if (UOverlaySlot* MaskSlot = EndRoot->AddChildToOverlay(EndMask))
+		{
+			MaskSlot->SetHorizontalAlignment(HAlign_Fill);
+			MaskSlot->SetVerticalAlignment(VAlign_Fill);
+		}
+
+		RunEndFrame = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+		RunEndFrame->SetPadding(FMargin(2.f));
+		if (UOverlaySlot* FrameSlot = EndRoot->AddChildToOverlay(RunEndFrame))
+		{
+			FrameSlot->SetHorizontalAlignment(HAlign_Center);
+			FrameSlot->SetVerticalAlignment(VAlign_Center);
+		}
+		UBorder* EndBg = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+		EndBg->SetBrushColor(FLinearColor(FColor(26, 16, 18, 244)));
+		EndBg->SetPadding(FMargin(34.f, 24.f));
+		RunEndFrame->SetContent(EndBg);
+
+		USizeBox* EndWidth = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+		EndWidth->SetWidthOverride(380.f);
+		EndBg->SetContent(EndWidth);
+		UVerticalBox* EndColumn = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+		EndWidth->SetContent(EndColumn);
+
+		RunEndTitle = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		RunEndTitle->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 24));
+		RunEndTitle->SetJustification(ETextJustify::Center);
+		EndColumn->AddChildToVerticalBox(RunEndTitle);
+
+		RunEndBody = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		RunEndBody->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 13));
+		RunEndBody->SetColorAndOpacity(FSlateColor(FLinearColor(0.88f, 0.86f, 0.84f, 1.f)));
+		RunEndBody->SetJustification(ETextJustify::Center);
+		if (UVerticalBoxSlot* BodySlot = EndColumn->AddChildToVerticalBox(RunEndBody))
+		{
+			BodySlot->SetPadding(FMargin(0.f, 14.f, 0.f, 0.f));
+		}
+
+		UHorizontalBox* ButtonRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+		if (UVerticalBoxSlot* ButtonSlot = EndColumn->AddChildToVerticalBox(ButtonRow))
+		{
+			ButtonSlot->SetPadding(FMargin(0.f, 18.f, 0.f, 0.f));
+			ButtonSlot->SetHorizontalAlignment(HAlign_Center);
+		}
+		RunEndButton = MakeButton(ButtonRow, TEXT("重新出发"));
+		RunEndButton->OnClicked.AddDynamic(this, &UGT_GameHudWidget::OnNewRun);
+
+		RunEndRoot = EndRoot;
+		RunEndRoot->SetVisibility(ESlateVisibility::Collapsed);
+		if (UOverlaySlot* EndSlot = Screen->AddChildToOverlay(EndRoot))
+		{
+			EndSlot->SetHorizontalAlignment(HAlign_Fill);
+			EndSlot->SetVerticalAlignment(VAlign_Fill);
 		}
 	}
 }
@@ -303,13 +423,79 @@ void UGT_GameHudWidget::RefreshPanels()
 		}
 	}
 
-	// 当前格可搜索(普通房出金币/宝箱房出藏品, 各一次)才启用按钮, 判定问内核。
-	if (SearchButton)
+	// 局终(死亡/撤离成功)弹结算面板, 每局只弹一次。
+	RefreshRunEndPanel();
+}
+
+void UGT_GameHudWidget::RefreshRunEndPanel()
+{
+	const UGT_RunContext* RunContext = GetRunContext();
+	if (!RunContext || !RunEndRoot)
 	{
-		const UGT_RunContext* RunContext = GetRunContext();
-		FName SearchBlockReason;
-		bool bIsChest = false;
-		SearchButton->SetIsEnabled(RunContext && RunContext->EvaluateSearchAtPlayer(SearchBlockReason, bIsChest));
+		return;
+	}
+
+	const EGT_RunState RunState = RunContext->GetRunState();
+	if (RunState != EGT_RunState::Failed && RunState != EGT_RunState::Succeeded)
+	{
+		bRunEndShown = false;
+		RunEndRoot->SetVisibility(ESlateVisibility::Collapsed);
+		return;
+	}
+	if (bRunEndShown)
+	{
+		return;
+	}
+	bRunEndShown = true;
+
+	const bool bSuccess = RunState == EGT_RunState::Succeeded;
+	RunEndTitle->SetText(FText::FromString(bSuccess ? TEXT("撤离成功") : TEXT("信号中断")));
+	RunEndTitle->SetColorAndOpacity(FSlateColor(bSuccess
+		? FLinearColor(FColor(120, 230, 150))
+		: FLinearColor(FColor(255, 90, 80))));
+	RunEndFrame->SetBrushColor(bSuccess
+		? FLinearColor(FColor(80, 170, 110, 220))
+		: FLinearColor(FColor(180, 60, 55, 220)));
+
+	const FName Reason = RunContext->GetRunEndReason();
+	FString ReasonLine;
+	if (bSuccess)
+	{
+		ReasonLine = TEXT("作业体已回收, 本次作业结算如下。");
+	}
+	else if (Reason == FName(TEXT("Mine")))
+	{
+		ReasonLine = TEXT("踩雷! 血量归零, 作业体信号丢失。");
+	}
+	else if (Reason == FName(TEXT("Protocol")))
+	{
+		ReasonLine = TEXT("协议压力满载, 调度台强制中断作业。");
+	}
+	else if (Reason == FName(TEXT("CombatDeath")))
+	{
+		ReasonLine = TEXT("作业体损毁于异常体交战。");
+	}
+	else
+	{
+		ReasonLine = TEXT("作业体信号丢失。");
+	}
+
+	const FGT_RunInventoryState& Inventory = RunContext->GetRunInventory();
+	RunEndBody->SetText(FText::FromString(FString::Printf(
+		TEXT("%s\n\n待结算: %d%s\n已锁定: %d\n回收物: %d 件%s\n已搜索: %d 格"),
+		*ReasonLine,
+		Inventory.PendingGold,
+		bSuccess ? TEXT("") : TEXT(" (已遗失)"),
+		Inventory.SafeGold,
+		Inventory.GetCarriedItemCount(),
+		bSuccess ? TEXT("") : TEXT(" (已遗失)"),
+		Inventory.SearchedRooms.Num())));
+
+	RunEndRoot->SetVisibility(ESlateVisibility::Visible);
+	// 按钮拿焦点: 房间视图失焦后移动闸门关闭, 局终不再响应 WASD。
+	if (RunEndButton)
+	{
+		RunEndButton->SetFocus();
 	}
 }
 
@@ -320,7 +506,11 @@ void UGT_GameHudWidget::RefreshStatusPanel()
 	{
 		HpBar->SetPercent(0.f);
 		HpText->SetText(FText::GetEmpty());
-		StatsText->SetText(FText::GetEmpty());
+		PowerText->SetText(FText::GetEmpty());
+		PendingText->SetText(FText::GetEmpty());
+		SafeText->SetText(FText::GetEmpty());
+		PartsText->SetText(FText::GetEmpty());
+		SearchedText->SetText(FText::GetEmpty());
 		StateText->SetText(FText::FromString(GetRunStateLabel(EGT_RunState::NotStarted)));
 		return;
 	}
@@ -330,13 +520,11 @@ void UGT_GameHudWidget::RefreshStatusPanel()
 
 	HpBar->SetPercent(Combat.MaxHp > 0 ? static_cast<float>(Combat.Hp) / Combat.MaxHp : 0.f);
 	HpText->SetText(FText::FromString(FString::Printf(TEXT("%d / %d"), Combat.Hp, Combat.MaxHp)));
-	StatsText->SetText(FText::FromString(FString::Printf(
-		TEXT("战斗力: %d\n待结算: %d\n已锁定: %d\n回收物: %d 件\n已搜索: %d 格"),
-		Combat.Power,
-		Inventory.PendingGold,
-		Inventory.SafeGold,
-		Inventory.GetCarriedItemCount(),
-		Inventory.SearchedRooms.Num())));
+	PowerText->SetText(FText::FromString(FString::Printf(TEXT("战斗力: %d"), Combat.Power)));
+	PendingText->SetText(FText::FromString(FString::Printf(TEXT("待结算: %d"), Inventory.PendingGold)));
+	SafeText->SetText(FText::FromString(FString::Printf(TEXT("已锁定: %d"), Inventory.SafeGold)));
+	PartsText->SetText(FText::FromString(FString::Printf(TEXT("回收物: %d 件"), Inventory.GetCarriedItemCount())));
+	SearchedText->SetText(FText::FromString(FString::Printf(TEXT("已搜索: %d 格"), Inventory.SearchedRooms.Num())));
 	StateText->SetText(FText::FromString(FString::Printf(TEXT("[%s]"), *GetRunStateLabel(RunContext->GetRunState()))));
 }
 
@@ -509,8 +697,32 @@ void UGT_GameHudWidget::RefreshItemsList()
 		return;
 	}
 
-	for (const FGT_ItemStack& Stack : RunContext->GetRunInventory().CarriedItems)
+	const TArray<FGT_ItemStack>& CarriedItems = RunContext->GetRunInventory().CarriedItems;
+	if (CarriedItems.Num() == 0)
 	{
+		// 空态占位, 面板不留白(对齐原版摘要区始终有内容)。
+		UTextBlock* EmptyText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		EmptyText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 11));
+		EmptyText->SetColorAndOpacity(FSlateColor(FLinearColor(0.5f, 0.54f, 0.62f, 1.f)));
+		EmptyText->SetText(FText::FromString(TEXT("(回收包为空, 搜索房间获取物资)")));
+		ItemsList->AddChildToVerticalBox(EmptyText);
+		return;
+	}
+
+	constexpr int32 MaxItemRows = 5;
+	int32 ShownRows = 0;
+	for (const FGT_ItemStack& Stack : CarriedItems)
+	{
+		if (ShownRows >= MaxItemRows)
+		{
+			UTextBlock* MoreText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+			MoreText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 11));
+			MoreText->SetColorAndOpacity(FSlateColor(FLinearColor(0.5f, 0.54f, 0.62f, 1.f)));
+			MoreText->SetText(FText::FromString(FString::Printf(TEXT("  另有 %d 项"), CarriedItems.Num() - MaxItemRows)));
+			ItemsList->AddChildToVerticalBox(MoreText);
+			break;
+		}
+		++ShownRows;
 		const FGT_ItemCatalogEntry* Def = GT_ItemCatalog::FindItemDef(Stack.ItemId);
 
 		UHorizontalBox* ItemRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
@@ -544,6 +756,36 @@ UTexture2D* UGT_GameHudWidget::GetItemIcon(FName ItemId)
 	return LoadUiTexture(Def && Def->Kind == EGT_ItemKind::Consumable
 		? TEXT("/Game/Graytail/Items/Consumable/item_consumable_medkit")
 		: TEXT("/Game/Graytail/Items/Recovered/item_recovered_ore"));
+}
+
+UWidget* UGT_GameHudWidget::MakeSkinnedPanel(UBorder* Panel, const FString& AssetPath)
+{
+	UTexture2D* Texture = LoadUiTexture(AssetPath);
+	if (!Texture)
+	{
+		// 资产缺失: 保留面板自身的纯色底(对齐 Lua drawPanel 的 fallback)。
+		return Panel;
+	}
+
+	// 两层: 原版边框贴图(无垫底, 直接透出场景) -> 内容面板(自身透明)。
+	UOverlay* Stack = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
+
+	UImage* Skin = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+	Skin->SetBrushFromTexture(Texture);
+	Skin->SetColorAndOpacity(FLinearColor(1.f, 1.f, 1.f, 0.85f));
+	if (UOverlaySlot* SkinSlot = Stack->AddChildToOverlay(Skin))
+	{
+		SkinSlot->SetHorizontalAlignment(HAlign_Fill);
+		SkinSlot->SetVerticalAlignment(VAlign_Fill);
+	}
+
+	Panel->SetBrushColor(FLinearColor::Transparent);
+	if (UOverlaySlot* PanelSlot = Stack->AddChildToOverlay(Panel))
+	{
+		PanelSlot->SetHorizontalAlignment(HAlign_Fill);
+		PanelSlot->SetVerticalAlignment(VAlign_Fill);
+	}
+	return Stack;
 }
 
 UTexture2D* UGT_GameHudWidget::LoadUiTexture(const FString& AssetPath)
@@ -622,8 +864,23 @@ FReply UGT_GameHudWidget::NativeOnKeyUp(const FGeometry& InGeometry, const FKeyE
 void UGT_GameHudWidget::OnSearch()
 {
 	UGT_DebugSubsystem* Debug = GetDebugSubsystem();
+	if (!Debug)
+	{
+		return;
+	}
+
+	// F = 搜索/攻击(对齐原版底栏): 战斗激活时 F 是攻击。
+	FGT_DebugRunSnapshot Probe;
+	if (Debug->GetDebugRunSnapshot(Probe) && Probe.bCombatActive)
+	{
+		FGT_DebugRunSnapshot AttackSnapshot;
+		Debug->DebugAttack(AttackSnapshot);
+		RefreshAll();
+		return;
+	}
+
 	FGT_DebugRunSnapshot Snapshot;
-	const bool bAccepted = Debug && Debug->DebugSearch(Snapshot);
+	const bool bAccepted = Debug->DebugSearch(Snapshot);
 	RefreshAll();
 
 	// 搜索成功 -> 弹结果面板(对齐 Lua OpenLootResultPanel; 明细从内核缓存的结算读取)。
@@ -640,17 +897,17 @@ void UGT_GameHudWidget::HandleLootResultClosed()
 {
 	// 确认入包: 整体刷新(背包/小地图/宝箱开闭状态), 焦点还给房间视图。
 	RefreshAll();
-}
 
-void UGT_GameHudWidget::OnAttack()
-{
-	UGT_DebugSubsystem* Debug = GetDebugSubsystem();
-	FGT_DebugRunSnapshot Snapshot;
-	if (Debug)
+	// 关弹窗瞬间播放开箱金光+奖励飘字(对齐 Lua TriggerChestOpen;
+	// 弹窗盖着房间时播放看不见, 故移到关闭时)。
+	if (RoomView)
 	{
-		Debug->DebugAttack(Snapshot);
+		if (const UGT_RunContext* RunContext = GetRunContext())
+		{
+			const FGT_SearchReward& Reward = RunContext->GetLastSearchOutcome().Reward;
+			RoomView->PlayChestRewardBurst(Reward.Gold, Reward.Parts);
+		}
 	}
-	RefreshAll();
 }
 
 void UGT_GameHudWidget::OnExtract()
@@ -677,6 +934,11 @@ void UGT_GameHudWidget::OnNewRun()
 	{
 		// 上一局的标雷旗随新局清空。
 		MapOverlay->ResetFlags();
+	}
+	if (RunEndRoot)
+	{
+		bRunEndShown = false;
+		RunEndRoot->SetVisibility(ESlateVisibility::Collapsed);
 	}
 	RefreshAll();
 

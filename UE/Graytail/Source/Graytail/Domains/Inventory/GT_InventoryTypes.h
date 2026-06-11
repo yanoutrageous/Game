@@ -27,7 +27,7 @@ enum class EGT_ItemKind : uint8
 };
 
 // 物品静态表条目(一条 = Lua ITEM_DEFS 的一项)。运行期数据走 FGT_ItemStack。
-// 注意: 框架已有 UGT_ItemDef(ContentDef 资产体系), 名字避让; 物品数据后续应合并进 UGT_ItemDef 资产。
+// 这是 UGT_ItemDef 资产的运行时值视图(GT_ItemCatalog 加载时拷出), 名字避让 UHT 撞名。
 USTRUCT(BlueprintType)
 struct GRAYTAIL_API FGT_ItemCatalogEntry
 {

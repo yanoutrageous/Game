@@ -1,18 +1,51 @@
 #include "Domains/Inventory/GT_ItemCatalog.h"
 
+#include "Data/GT_ItemDef.h"
+#include "UObject/UObjectGlobals.h"
+
 namespace
 {
-	FGT_ItemCatalogEntry MakeItemDef(const TCHAR* ItemId, const TCHAR* DisplayName, EGT_ItemKind Kind, const TCHAR* Rarity, int32 Value, const TCHAR* EffectText, const TCHAR* Description)
+	// 物品定义资产(由 Content/Python/create_item_defs.py 生成)。
+	// 顺序即表顺序, 对齐 Lua RunInventory.ITEM_DEFS。
+	const TCHAR* GTItemDefAssetPaths[] = {
+		TEXT("/Game/Graytail/Items/Defs/broken_copper_wire"),
+		TEXT("/Game/Graytail/Items/Defs/dim_capacitor"),
+		TEXT("/Game/Graytail/Items/Defs/whisper_wick"),
+		TEXT("/Game/Graytail/Items/Defs/sealed_core_shard"),
+		TEXT("/Game/Graytail/Items/Defs/emergency_bandage"),
+		TEXT("/Game/Graytail/Items/Defs/static_lens"),
+		TEXT("/Game/Graytail/Items/Defs/blackbox_tag"),
+	};
+
+	FGT_ItemCatalogEntry MakeEntryFromAsset(const UGT_ItemDef& Asset)
 	{
-		FGT_ItemCatalogEntry Def;
-		Def.ItemId = FName(ItemId);
-		Def.DisplayName = DisplayName;
-		Def.Kind = Kind;
-		Def.Rarity = FName(Rarity);
-		Def.Value = Value;
-		Def.EffectText = EffectText;
-		Def.Description = Description;
-		return Def;
+		FGT_ItemCatalogEntry Entry;
+		Entry.ItemId = Asset.ContentId;
+		Entry.DisplayName = Asset.DisplayName.ToString();
+		Entry.Kind = Asset.Kind;
+		Entry.Rarity = Asset.Rarity;
+		Entry.Value = Asset.Value;
+		Entry.EffectText = Asset.EffectText;
+		Entry.Description = Asset.Description.ToString();
+		return Entry;
+	}
+
+	TArray<FGT_ItemCatalogEntry> LoadItemDefsFromAssets()
+	{
+		TArray<FGT_ItemCatalogEntry> Entries;
+		for (const TCHAR* AssetPath : GTItemDefAssetPaths)
+		{
+			const FString ObjectPath = FString(AssetPath) + TEXT(".") + FPackageName::GetShortName(AssetPath);
+			if (const UGT_ItemDef* Asset = LoadObject<UGT_ItemDef>(nullptr, *ObjectPath))
+			{
+				Entries.Add(MakeEntryFromAsset(*Asset));
+			}
+			else
+			{
+				UE_LOG(LogTemp, Error, TEXT("GT_ItemCatalog: missing item def asset %s (run create_item_defs.py?)"), AssetPath);
+			}
+		}
+		return Entries;
 	}
 }
 
@@ -20,23 +53,8 @@ namespace GT_ItemCatalog
 {
 	const TArray<FGT_ItemCatalogEntry>& GetAllItemDefs()
 	{
-		// 对齐 Lua RunInventory.ITEM_DEFS(顺序一致, 文案一致)。
-		static const TArray<FGT_ItemCatalogEntry> ItemDefs = {
-			MakeItemDef(TEXT("broken_copper_wire"), TEXT("断裂铜线"), EGT_ItemKind::Relic, TEXT("common"), 8,
-				TEXT(""), TEXT("仍然能卖钱，这已经很难得了。")),
-			MakeItemDef(TEXT("dim_capacitor"), TEXT("暗淡电容"), EGT_ItemKind::Relic, TEXT("common"), 10,
-				TEXT(""), TEXT("拆下来时它轻轻响了一声，像是在叹气。")),
-			MakeItemDef(TEXT("whisper_wick"), TEXT("低语灯芯"), EGT_ItemKind::Relic, TEXT("rare"), 45,
-				TEXT(""), TEXT("它在没有电源的情况下发光，并且偶尔像在催你下班。")),
-			MakeItemDef(TEXT("sealed_core_shard"), TEXT("封存核心碎片"), EGT_ItemKind::Relic, TEXT("rare"), 45,
-				TEXT(""), TEXT("被封条压住的裂片仍在缓慢发热。")),
-			MakeItemDef(TEXT("emergency_bandage"), TEXT("应急止血贴"), EGT_ItemKind::Consumable, TEXT("common"), 10,
-				TEXT("恢复少量生命。"), TEXT("后勤部称它经过消毒。包装上的日期不建议细看。")),
-			MakeItemDef(TEXT("static_lens"), TEXT("静电透镜"), EGT_ItemKind::Tool, TEXT("uncommon"), 16,
-				TEXT("可作为后续扫描设备材料。"), TEXT("透过它看灯光时，会看见不存在的边界线。")),
-			MakeItemDef(TEXT("blackbox_tag"), TEXT("黑匣标签"), EGT_ItemKind::Record, TEXT("uncommon"), 18,
-				TEXT(""), TEXT("标签上的编号被刮掉了，只剩下回收部门的旧印章。")),
-		};
+		// 进程内只加载一次; 资产数据随后以值拷贝缓存, 不持有 UObject 引用(GC 安全)。
+		static const TArray<FGT_ItemCatalogEntry> ItemDefs = LoadItemDefsFromAssets();
 		return ItemDefs;
 	}
 
@@ -61,7 +79,7 @@ namespace GT_ItemCatalog
 
 	FName GetQualityItemId(EGT_ItemQuality Quality)
 	{
-		// 对齐 Lua QUALITY_ITEMS 表。
+		// 对齐 Lua QUALITY_ITEMS 表。掉落档位 -> 物品是平衡性规则, 留在代码里。
 		switch (Quality)
 		{
 		case EGT_ItemQuality::Low:

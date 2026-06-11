@@ -4,7 +4,8 @@
 #include "Domains/Inventory/GT_InventoryTypes.h"
 
 // 物品静态表(对齐 Lua RunInventory.ITEM_DEFS)。
-// 阶段性做法: 先硬编码在 C++ 里跑通逻辑, 后续再迁到 DataTable/DataAsset。
+// 数据源 = Content/Graytail/Items/Defs/ 下的 UGT_ItemDef 资产(create_item_defs.py 生成),
+// 首次访问时按固定顺序加载并缓存; 本接口只暴露值类型, 消费方不接触 UObject。
 namespace GT_ItemCatalog
 {
 	// 全部物品定义(只读)。

@@ -10,6 +10,7 @@
 #include "Core/GT_RunContext.h"
 #include "Core/GT_RunSubsystem.h"
 #include "Debug/GT_DebugSubsystem.h"
+#include "Domains/Events/GT_EventRules.h"
 #include "Engine/GameInstance.h"
 #include "Engine/Texture2D.h"
 #include "Fonts/SlateFontInfo.h"
@@ -158,6 +159,51 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 		CaptionSlot->SetSize(FVector2D(200.f, 18.f));
 	}
 
+	// 事件房 NPC(对齐 Lua DungeonRoom.lua 事件绘制): 房宽 50% / 高 35% 处,
+	// 头顶 "T:xxx" 提示 -> 顶部标识(骰子方块/菱形) -> 圆形身体 -> 眼睛 -> 脚下名字。
+	// 形状用 RoundedBox 画(圆/方/旋转45°菱形), 颜色逐项对齐 evtVisual, 每局按事件类型着色。
+	{
+		const FVector2D NpcCenter(GTRoomSize * 0.5f, GTRoomSize * 0.35f);
+		auto MakeEventImage = [this](const FVector2D& Center, float Size) -> UImage*
+		{
+			UImage* Image = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+			Image->SetVisibility(ESlateVisibility::Collapsed);
+			if (UCanvasPanelSlot* ImageSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(Image)))
+			{
+				ImageSlot->SetPosition(Center - FVector2D(Size * 0.5f, Size * 0.5f));
+				ImageSlot->SetSize(FVector2D(Size, Size));
+			}
+			return Image;
+		};
+
+		EventMarkerImage = MakeEventImage(NpcCenter + FVector2D(0.f, -19.f), 20.f);
+		EventMarkerImage->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
+		EventBodyImage = MakeEventImage(NpcCenter, 36.f);
+		EventEyeLeft = MakeEventImage(NpcCenter + FVector2D(-6.f, -3.f), 6.f);
+		EventEyeRight = MakeEventImage(NpcCenter + FVector2D(6.f, -3.f), 6.f);
+
+		EventNameLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		EventNameLabel->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 13));
+		EventNameLabel->SetJustification(ETextJustify::Center);
+		EventNameLabel->SetVisibility(ESlateVisibility::Collapsed);
+		if (UCanvasPanelSlot* NameSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(EventNameLabel)))
+		{
+			NameSlot->SetPosition(FVector2D(NpcCenter.X - 60.f, NpcCenter.Y + 24.f));
+			NameSlot->SetSize(FVector2D(120.f, 18.f));
+		}
+
+		EventCaption = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		EventCaption->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 12));
+		EventCaption->SetJustification(ETextJustify::Center);
+		EventCaption->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(255, 255, 255, 230))));
+		EventCaption->SetVisibility(ESlateVisibility::Collapsed);
+		if (UCanvasPanelSlot* EventCaptionSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(EventCaption)))
+		{
+			EventCaptionSlot->SetPosition(FVector2D(NpcCenter.X - 100.f, NpcCenter.Y - 56.f));
+			EventCaptionSlot->SetSize(FVector2D(200.f, 18.f));
+		}
+	}
+
 	// 奖励飘字(金币/零件图标 + "+N" 文本), 仅演出期间可见, 位置每帧由动画驱动。
 	auto MakeBurstImage = [this]() -> UImage*
 	{
@@ -187,32 +233,7 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 	BurstPartsImage = MakeBurstImage();
 	BurstPartsText = MakeBurstText(FColor(170, 230, 255));
 
-	// 周围雷险标牌(原版 ui_mine_risk_tag 底图自带图标), 房间底部居中, 未扫描时隐藏。
-	MineRiskTag = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-	MineRiskTag->SetWidthOverride(220.f);
-	MineRiskTag->SetHeightOverride(44.f);
-	MineRiskTag->SetVisibility(ESlateVisibility::Collapsed);
-	if (UCanvasPanelSlot* TagSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(MineRiskTag)))
-	{
-		TagSlot->SetPosition(FVector2D(GTRoomSize * 0.5f - 110.f, GTRoomSize - 62.f));
-		TagSlot->SetSize(FVector2D(220.f, 44.f));
-	}
-	UBorder* TagBorder = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-	if (UTexture2D* TagTexture = LoadTextureAsset(TEXT("/Game/Graytail/UI/hud/ui_mine_risk_tag")))
-	{
-		FSlateBrush TagBrush;
-		TagBrush.SetResourceObject(TagTexture);
-		TagBrush.DrawAs = ESlateBrushDrawType::Image;
-		TagBorder->SetBrush(TagBrush);
-	}
-	// 文字避开底图左侧自带的图标。
-	TagBorder->SetPadding(FMargin(52.f, 0.f, 12.f, 0.f));
-	MineRiskTag->SetContent(TagBorder);
-	RoomLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	RoomLabel->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 16));
-	RoomLabel->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(232, 222, 198))));
-	TagBorder->SetContent(RoomLabel);
-	TagBorder->SetVerticalAlignment(VAlign_Center);
+	// 周围雷险标牌已挪到 HUD 中央列(房间正下方), 不再占用房间画布。
 
 	// 怪物(史莱姆), 战斗激活时显示在房间偏左上(对齐 Lua monsterPosition 0.35/0.45)。
 	EnemyImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
@@ -335,23 +356,6 @@ void UGT_RoomViewWidget::RefreshRoomDecor()
 		FloorBorder->SetBrushColor(FloorColor);
 	}
 
-	// 周围雷险标牌(原版 ui_mine_risk_tag): 本房已扫描才显示。
-	TArray<FGT_MiniMapCellViewData> IntelCells;
-	int32 IntelWidth = 0;
-	int32 IntelHeight = 0;
-	bool bShowMineTag = false;
-	if (Debug->GetDebugMiniMapViewData(IntelCells, IntelWidth, IntelHeight)
-		&& IntelCells.IsValidIndex(CurrentCellY * IntelWidth + CurrentCellX))
-	{
-		const FGT_MiniMapCellViewData& CurrentIntel = IntelCells[CurrentCellY * IntelWidth + CurrentCellX];
-		if (CurrentIntel.bScanned)
-		{
-			RoomLabel->SetText(FText::FromString(FString::Printf(TEXT("周围雷险: %d"), CurrentIntel.DisplayedNumber)));
-			bShowMineTag = true;
-		}
-	}
-	MineRiskTag->SetVisibility(bShowMineTag ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
-
 	// 战斗激活时显示史莱姆。
 	const bool bShowEnemy = Snapshot.bCombatActive
 		&& Snapshot.CurrentRoomBaseType == EGT_RoomBaseType::Combat;
@@ -413,6 +417,85 @@ void UGT_RoomViewWidget::RefreshRoomDecor()
 	GoldPileImage->SetVisibility(bShowPiles ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 	PartsPileImage->SetVisibility(bShowPiles ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 
+	// 事件房(Standard): 原版简单图形 NPC(对齐 DungeonRoom.lua evtVisual 配色与构图)。
+	bool bShowEvent = false;
+	bool bShowEyes = false;
+	bool bShowCaption = false;
+	FGT_EventMenuView EventMenu;
+	if (Snapshot.CurrentRoomBaseType == EGT_RoomBaseType::Event
+		&& RunContext && RunContext->GetEventMenuAtPlayer(EventMenu))
+	{
+		bShowEvent = true;
+		const bool bDone = EventMenu.bCompleted;
+
+		// 四类事件配色(身体/顶饰/强调), 完成统一转灰(对齐 Lua completed 分支)。
+		FColor BodyColor(40, 140, 150, 230);
+		FColor HatColor(60, 180, 190, 240);
+		FColor AccentColor(80, 220, 230, 255);
+		switch (EventMenu.Kind)
+		{
+		case EGT_EventKind::Dice:
+			BodyColor = FColor(180, 120, 40, 230); HatColor = FColor(220, 160, 50, 240); AccentColor = FColor(255, 200, 80, 255); break;
+		case EGT_EventKind::Altar:
+			BodyColor = FColor(120, 50, 150, 230); HatColor = FColor(160, 70, 200, 240); AccentColor = FColor(200, 130, 255, 255); break;
+		case EGT_EventKind::Trap:
+			BodyColor = FColor(150, 80, 40, 230); HatColor = FColor(190, 100, 50, 240); AccentColor = FColor(240, 150, 70, 255); break;
+		default:
+			break;
+		}
+		if (bDone)
+		{
+			BodyColor = FColor(50, 60, 60, 160);
+			HatColor = FColor(60, 70, 70, 150);
+			AccentColor = FColor(80, 100, 100, 150);
+		}
+
+		auto MakeCircleBrush = [](float Radius, const FColor& Fill, const FColor& Outline, float OutlineWidth)
+		{
+			FSlateBrush Brush;
+			Brush.DrawAs = ESlateBrushDrawType::RoundedBox;
+			Brush.TintColor = FSlateColor(FLinearColor(Fill));
+			Brush.OutlineSettings = FSlateBrushOutlineSettings(
+				FVector4(Radius, Radius, Radius, Radius), FLinearColor(Outline), OutlineWidth);
+			Brush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+			return Brush;
+		};
+
+		// 身体: 圆 + 强调色描边。
+		EventBodyImage->SetBrush(MakeCircleBrush(18.f, BodyColor, AccentColor, 2.f));
+
+		// 顶部标识: 骰子=圆角方块, 其余=旋转 45° 菱形(近似原版三角帽/倒三角/六角)。
+		EventMarkerImage->SetBrush(MakeCircleBrush(EventMenu.Kind == EGT_EventKind::Dice ? 3.f : 2.f, HatColor, HatColor, 0.f));
+		EventMarkerImage->SetRenderTransformAngle(EventMenu.Kind == EGT_EventKind::Dice ? 0.f : 45.f);
+
+		// 眼睛(仅 NPC 类: 旅商/赌徒)。
+		bShowEyes = EventMenu.Kind == EGT_EventKind::Trader || EventMenu.Kind == EGT_EventKind::Dice;
+		if (bShowEyes)
+		{
+			const FColor EyeColor = bDone ? FColor(100, 120, 120, 150) : FColor(200, 255, 255, 255);
+			const FSlateBrush EyeBrush = MakeCircleBrush(3.f, EyeColor, EyeColor, 0.f);
+			EventEyeLeft->SetBrush(EyeBrush);
+			EventEyeRight->SetBrush(EyeBrush);
+		}
+
+		// 脚下名字 / 已完成; 头顶 "T:xxx" 提示仅未完成时显示。
+		EventNameLabel->SetText(FText::FromString(bDone
+			? TEXT("已完成")
+			: GT_EventRules::GetEventShortLabel(EventMenu.Kind)));
+		EventNameLabel->SetColorAndOpacity(FSlateColor(FLinearColor(bDone
+			? FColor(120, 140, 140, 180)
+			: AccentColor)));
+		bShowCaption = !bDone;
+		EventCaption->SetText(FText::FromString(GT_EventRules::GetEventHotkeyCaption(EventMenu.Kind)));
+	}
+	const ESlateVisibility EventVisibility = bShowEvent ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed;
+	EventBodyImage->SetVisibility(EventVisibility);
+	EventMarkerImage->SetVisibility(EventVisibility);
+	EventNameLabel->SetVisibility(EventVisibility);
+	EventEyeLeft->SetVisibility(bShowEvent && bShowEyes ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	EventEyeRight->SetVisibility(bShowEvent && bShowEyes ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	EventCaption->SetVisibility(bShowEvent && bShowCaption ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+
 	// 初始站立帧。
 	if (UTexture2D* IdleFrame = GetIdleFrame(LastDirX, LastDirY))
 	{
@@ -461,6 +544,15 @@ FReply UGT_RoomViewWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FK
 		if (OnExtractRequested.IsBound())
 		{
 			OnExtractRequested.Execute();
+		}
+		return FReply::Handled();
+	}
+	if (Key == EKeys::T)
+	{
+		// T = 处理事件(对齐原版 [T] 交互; 是否在事件房由内核裁决)。
+		if (OnEventRequested.IsBound())
+		{
+			OnEventRequested.Execute();
 		}
 		return FReply::Handled();
 	}
@@ -630,11 +722,16 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 	FVector2D NewPos = PlayerPos + FVector2D(InputX, InputY).GetSafeNormal() * GTMoveSpeed * InDeltaTime;
 
 	// 越界 + 对准门 -> 尝试过门(对齐 Lua isAlignedWithDoor)。
+	// 刚被内核拒绝过(地图边界等)的冷却内不重试, 落到下方撞墙逻辑: 人物贴墙原地踏步, 不来回闪现。
 	const float EdgeMargin = GTPlayerSize * 0.5f / GTRoomSize;
-	if (NewPos.Y < EdgeMargin && InputY < 0.f && FMath::Abs(NewPos.X - 0.5f) <= GTDoorHalfWidth) { TryCrossDoor(0, -1); return; }
-	if (NewPos.Y > 1.f - EdgeMargin && InputY > 0.f && FMath::Abs(NewPos.X - 0.5f) <= GTDoorHalfWidth) { TryCrossDoor(0, 1); return; }
-	if (NewPos.X < EdgeMargin && InputX < 0.f && FMath::Abs(NewPos.Y - 0.5f) <= GTDoorHalfWidth) { TryCrossDoor(-1, 0); return; }
-	if (NewPos.X > 1.f - EdgeMargin && InputX > 0.f && FMath::Abs(NewPos.Y - 0.5f) <= GTDoorHalfWidth) { TryCrossDoor(1, 0); return; }
+	CrossRetryCooldown = FMath::Max(0.f, CrossRetryCooldown - InDeltaTime);
+	if (CrossRetryCooldown <= 0.f)
+	{
+		if (NewPos.Y < EdgeMargin && InputY < 0.f && FMath::Abs(NewPos.X - 0.5f) <= GTDoorHalfWidth) { TryCrossDoor(0, -1); return; }
+		if (NewPos.Y > 1.f - EdgeMargin && InputY > 0.f && FMath::Abs(NewPos.X - 0.5f) <= GTDoorHalfWidth) { TryCrossDoor(0, 1); return; }
+		if (NewPos.X < EdgeMargin && InputX < 0.f && FMath::Abs(NewPos.Y - 0.5f) <= GTDoorHalfWidth) { TryCrossDoor(-1, 0); return; }
+		if (NewPos.X > 1.f - EdgeMargin && InputX > 0.f && FMath::Abs(NewPos.Y - 0.5f) <= GTDoorHalfWidth) { TryCrossDoor(1, 0); return; }
+	}
 
 	// 撞墙: 夹回房间内。
 	NewPos.X = FMath::Clamp(NewPos.X, EdgeMargin, 1.f - EdgeMargin);
@@ -661,21 +758,19 @@ void UGT_RoomViewWidget::TryCrossDoor(int32 DirX, int32 DirY)
 
 	FGT_DebugRunSnapshot Snapshot;
 	const bool bMoved = Debug->DebugMoveTo(CurrentCellX + DirX, CurrentCellY + DirY, Snapshot);
-	if (bMoved)
+	if (!bMoved)
 	{
-		CurrentCellX = Snapshot.PlayerX;
-		CurrentCellY = Snapshot.PlayerY;
-		// 从新房间对面的门走进来。
-		PlayerPos = FVector2D(0.5 - DirX * 0.42, 0.5 - DirY * 0.42);
-		RefreshRoomDecor();
+		// 内核拒绝(地图边界/死亡等): 当作撞墙 — 人物留在门口, 进入重试冷却,
+		// 冷却内持续推门走撞墙逻辑(贴墙原地踏步)。状态没变, 不刷 HUD。
+		CrossRetryCooldown = 0.4f;
+		return;
 	}
-	else
-	{
-		// 内核拒绝(边界/死亡等): 退回门口。
-		PlayerPos = FVector2D(
-			FMath::Clamp(PlayerPos.X, 0.1, 0.9),
-			FMath::Clamp(PlayerPos.Y, 0.1, 0.9));
-	}
+
+	CurrentCellX = Snapshot.PlayerX;
+	CurrentCellY = Snapshot.PlayerY;
+	// 从新房间对面的门走进来。
+	PlayerPos = FVector2D(0.5 - DirX * 0.42, 0.5 - DirY * 0.42);
+	RefreshRoomDecor();
 	UpdatePlayerImagePosition();
 
 	// 通知 HUD 整体刷新(状态行/小地图)。

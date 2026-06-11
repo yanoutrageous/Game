@@ -7,6 +7,7 @@
 #include "Domains/Map/GT_MapTypes.h"
 #include "Domains/Inventory/GT_InventoryTypes.h"
 #include "Domains/Combat/GT_CombatRules.h"
+#include "Domains/Events/GT_EventTypes.h"
 #include "GT_RunContext.generated.h"
 
 struct FGT_MapGenerationSpec;
@@ -223,6 +224,14 @@ public:
 	// 最近一次成功搜索的结算明细(开新局重置), 供 UI 结果弹窗读取。
 	const FGT_SearchOutcome& GetLastSearchOutcome() const { return LastSearchOutcome; }
 
+	// 事件房真实规则(旅商/赌徒/祭坛/机关, 仅 Standard 模式; BasicDebug 走注册表占位路径)。
+	// 菜单为只读查询; 执行必须经 Command 管线(ChooseEventOption 命令)调到这里。
+	bool GetEventMenuAtPlayer(FGT_EventMenuView& OutMenu) const;
+	bool ExecuteEventOptionAtPlayer(FName OptionId, FGT_EventOutcome& OutOutcome);
+
+	// 最近一次事件选项执行的结果(含失败原因文案), 供事件面板显示。
+	const FGT_EventOutcome& GetLastEventOutcome() const { return LastEventOutcome; }
+
 	// 本局结束原因(Mine/Protocol/CombatDeath 等), 进行中为 None。供局终结算面板显示。
 	FName GetRunEndReason() const { return RunEndReason; }
 
@@ -230,8 +239,19 @@ private:
 	// 新老开局路径共享的初始化逻辑: 生成地图、放置玩家、重置运行态。
 	void InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec);
 
+	// 事件房运行态查找(按坐标懒创建)。
+	const FGT_EventRoomState* FindEventRoomState(int32 X, int32 Y) const;
+	FGT_EventRoomState& FindOrAddEventRoomState(int32 X, int32 Y);
+
 	UPROPERTY(Transient)
 	FGT_SearchOutcome LastSearchOutcome;
+
+	UPROPERTY(Transient)
+	FGT_EventOutcome LastEventOutcome;
+
+	// 事件房运行态(Standard 模式: 完成标记/祭坛档数), 开局重置。
+	UPROPERTY(Transient)
+	TArray<FGT_EventRoomState> EventRoomStates;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run", meta = (AllowPrivateAccess = "true"))
 	FGuid RunId;

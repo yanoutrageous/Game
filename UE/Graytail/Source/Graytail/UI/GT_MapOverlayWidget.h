@@ -33,6 +33,9 @@ public:
 	void ResetFlags();
 	void RefreshGrid();
 
+	// 某格是否被玩家插旗(左上小地图同步显示用; 旗标是 UI 标注, 内核不感知)。
+	bool IsCellFlagged(int32 X, int32 Y) const { return FlaggedCells.Contains(FIntPoint(X, Y)); }
+
 	// 关闭后回调(HUD 整体刷新并还焦点给房间视图; 回传也走这条路)。
 	FSimpleDelegate OnClosed;
 

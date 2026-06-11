@@ -530,6 +530,44 @@ namespace
 		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.ChooseEventOption %s: %s"), bAccepted ? TEXT("accepted") : TEXT("rejected"), *Snapshot.Summary);
 	}
 
+	void HandleEventMenu(const TArray<FString>& Args, UWorld* World)
+	{
+		FString FailureReason;
+		UGT_DebugSubsystem* DebugSubsystem = FindDebugSubsystem(World, FailureReason);
+		if (!DebugSubsystem)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("gt.Event failed: %s"), *FailureReason);
+			return;
+		}
+
+		if (!Args.IsEmpty())
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("Usage: gt.Event"));
+			return;
+		}
+
+		FGT_EventMenuView Menu;
+		if (!DebugSubsystem->DebugGetEventMenu(Menu) || !Menu.bAvailable)
+		{
+			UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.Event: no Standard event menu here (need Standard run + Event room)."));
+			return;
+		}
+
+		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.Event: Kind=%d Title=%s Completed=%s Desc=%s"),
+			static_cast<int32>(Menu.Kind), *Menu.Title, Menu.bCompleted ? TEXT("true") : TEXT("false"), *Menu.Description);
+		for (const FGT_EventOptionView& Option : Menu.Options)
+		{
+			UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.Event option: Id=%s Enabled=%s Label=%s Cost=%s Reward=%s Risk=%s %s"),
+				*Option.OptionId.ToString(),
+				Option.bEnabled ? TEXT("true") : TEXT("false"),
+				*Option.Label,
+				*Option.CostText,
+				*Option.RewardText,
+				*Option.RiskText,
+				Option.bEnabled ? TEXT("") : *FString::Printf(TEXT("Disabled=%s"), *Option.DisabledReason));
+		}
+	}
+
 	void HandleResolveCombat(const TArray<FString>& Args, UWorld* World)
 	{
 		FString FailureReason;
@@ -868,8 +906,13 @@ namespace
 
 	FAutoConsoleCommandWithWorldAndArgs GTChooseEventOptionCommand(
 		TEXT("gt.ChooseEventOption"),
-		TEXT("Chooses a placeholder event option through the existing command path. Usage: gt.ChooseEventOption [Event_DebugOption_Continue|Event_DebugOption_Scout]"),
+		TEXT("Chooses an event option through the existing command path (Standard: real event rules; BasicDebug: placeholder). Usage: gt.ChooseEventOption [OptionId]"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleChooseEventOption));
+
+	FAutoConsoleCommandWithWorldAndArgs GTEventMenuCommand(
+		TEXT("gt.Event"),
+		TEXT("Shows the Standard event menu at the player cell (trader/dice/altar/trap). Usage: gt.Event"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleEventMenu));
 
 	FAutoConsoleCommandWithWorldAndArgs GTResolveCombatCommand(
 		TEXT("gt.ResolveCombat"),

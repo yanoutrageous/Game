@@ -52,6 +52,9 @@ public:
 	// E 键撤离(对齐原版底栏), 由 HUD 绑定到 OnExtract。
 	FSimpleDelegate OnExtractRequested;
 
+	// T 键处理事件(对齐原版 [T] 交互), 由 HUD 绑定到 OpenEventPanel。
+	FSimpleDelegate OnEventRequested;
+
 private:
 	void BuildWidgetTree();
 	UGT_DebugSubsystem* GetDebugSubsystem() const;
@@ -66,9 +69,6 @@ private:
 
 	UPROPERTY(Transient) UCanvasPanel* RoomCanvas = nullptr;
 	UPROPERTY(Transient) UBorder* FloorBorder = nullptr;
-	// 周围雷险标牌(原版 ui_mine_risk_tag 底图 + 数字), 房间底部居中。
-	UPROPERTY(Transient) USizeBox* MineRiskTag = nullptr;
-	UPROPERTY(Transient) UTextBlock* RoomLabel = nullptr;
 	UPROPERTY(Transient) UImage* DoorImages[4] = {};
 	UPROPERTY(Transient) UImage* GlowOuter = nullptr;
 	UPROPERTY(Transient) UImage* GlowInner = nullptr;
@@ -76,6 +76,13 @@ private:
 	UPROPERTY(Transient) UImage* GoldPileImage = nullptr;
 	UPROPERTY(Transient) UImage* PartsPileImage = nullptr;
 	UPROPERTY(Transient) UTextBlock* ChestCaption = nullptr;
+	// 事件房 NPC(对齐 Lua 原版简单图形): 圆身体+顶部标识+眼睛+名字+头顶 T 提示, 仅 Standard 事件房可见。
+	UPROPERTY(Transient) UImage* EventBodyImage = nullptr;
+	UPROPERTY(Transient) UImage* EventMarkerImage = nullptr;
+	UPROPERTY(Transient) UImage* EventEyeLeft = nullptr;
+	UPROPERTY(Transient) UImage* EventEyeRight = nullptr;
+	UPROPERTY(Transient) UTextBlock* EventNameLabel = nullptr;
+	UPROPERTY(Transient) UTextBlock* EventCaption = nullptr;
 	UPROPERTY(Transient) UImage* BurstGoldImage = nullptr;
 	UPROPERTY(Transient) UTextBlock* BurstGoldText = nullptr;
 	UPROPERTY(Transient) UImage* BurstPartsImage = nullptr;
@@ -97,6 +104,8 @@ private:
 	// 开箱演出计时(对齐 Lua chestOpenTimer/chestRewardBurst)。
 	float ChestOpenTimer = 0.f;
 	float RewardBurstTimer = 0.f;
+	// 过门被内核拒绝(地图边界等)后的重试冷却: 冷却内按撞墙处理, 防止逐帧重试抽搐。
+	float CrossRetryCooldown = 0.f;
 	int32 BurstParts = 0;
 	int32 CurrentCellX = -1;
 	int32 CurrentCellY = -1;

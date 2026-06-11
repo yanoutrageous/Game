@@ -266,11 +266,19 @@ void UGT_MapOverlayWidget::RefreshGrid()
 					AddCellIcon(LoadUiTexture(IconPath), 0.7f);
 				}
 
+				// 玩家头像画在数字之前(角标压在头像上层, 防止挡住本格雷数)。
+				if (bPlayerHere)
+				{
+					AddCellIcon(LoadUiTexture(TEXT("/Game/Graytail/UI/Icons64/00_wanjia_dingwei")), 0.8f);
+				}
+
 				if (Cell.bScanned && !bMineCell)
 				{
-					if (bSpecialIcon && Cell.DisplayedNumber > 0)
+					// 玩家所在格: 数字改右下角标(含 0), 不被头像遮挡(用户要求: 开图标雷要看得到本格雷数)。
+					const bool bBadgeNumber = (bSpecialIcon && Cell.DisplayedNumber > 0) || (bPlayerHere && !bSpecialIcon);
+					if (bBadgeNumber)
 					{
-						// 特殊格: 右下角数字角标(对齐 drawNumberBadge)。
+						// 右下角数字角标(对齐 drawNumberBadge)。
 						UBorder* Badge = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 						Badge->SetBrushColor(FLinearColor(0.02f, 0.03f, 0.06f, 0.88f));
 						Badge->SetPadding(FMargin(3.f, 1.f));
@@ -285,12 +293,12 @@ void UGT_MapOverlayWidget::RefreshGrid()
 							BadgeSlot->SetVerticalAlignment(VAlign_Bottom);
 						}
 					}
-					else if (!bSpecialIcon && Cell.DisplayedNumber >= 1 && Cell.DisplayedNumber <= 3)
+					else if (!bSpecialIcon && !bPlayerHere && Cell.DisplayedNumber >= 1 && Cell.DisplayedNumber <= 3)
 					{
 						AddCellIcon(LoadUiTexture(FString::Printf(
 							TEXT("/Game/Graytail/UI/Icons64/1%d_shuzi_%d"), Cell.DisplayedNumber, Cell.DisplayedNumber)), 0.7f);
 					}
-					else if (!bSpecialIcon)
+					else if (!bSpecialIcon && !bPlayerHere)
 					{
 						// 0 与 4+: 文本数字(0 也显示)。
 						UTextBlock* NumberText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
@@ -321,12 +329,6 @@ void UGT_MapOverlayWidget::RefreshGrid()
 					DotSlot->SetVerticalAlignment(VAlign_Bottom);
 					DotSlot->SetPadding(FMargin(3.f));
 				}
-			}
-
-			// 玩家头像盖最上层。
-			if (bPlayerHere)
-			{
-				AddCellIcon(LoadUiTexture(TEXT("/Game/Graytail/UI/Icons64/00_wanjia_dingwei")), 0.8f);
 			}
 
 			MapGrid->AddChildToUniformGrid(CellSize, Y, X);

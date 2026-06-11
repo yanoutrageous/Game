@@ -17,6 +17,7 @@ class UGT_RunContext;
 class UGT_RoomViewWidget;
 class UGT_MapOverlayWidget;
 class UGT_LootResultWidget;
+class UGT_EventPanelWidget;
 
 // 主游戏界面(对齐 Lua 原版构图): 房间视图铺满全屏为背景,
 // 左侧信息面板/右上协议面板/底部快捷键栏全部悬浮其上。
@@ -41,12 +42,15 @@ private:
 	void RefreshPanels();
 	void RefreshStatusPanel();
 	void RefreshMiniMapGrid();
+	void RefreshMineRiskTag();
 	void RefreshItemsList();
 	void RefreshRunEndPanel();
 	UTexture2D* GetItemIcon(FName ItemId);
 	UTexture2D* LoadUiTexture(const FString& AssetPath);
-	// 蓝底科技风面板: 深蓝底 + 原版边框贴图(冷色调降透明度)叠层, 返回挂到屏幕上的包装件。
-	UWidget* MakeSkinnedPanel(UBorder* Panel, const FString& AssetPath);
+	// 把原版边框贴图设为面板背景刷(背景刷不参与尺寸计算, 不会撑大面板)。
+	// 给 TextureSize+FramePx 时按 9-slice 绘制(四角原始像素, 只拉中段), 否则整图拉伸。
+	UWidget* MakeSkinnedPanel(UBorder* Panel, const FString& AssetPath,
+		const FVector2D& TextureSize = FVector2D::ZeroVector, float FramePx = 0.f);
 	UButton* MakeButton(UHorizontalBox* Row, const FString& Label);
 	UTextBlock* MakePanelText(UVerticalBox* Panel, int32 FontSize, const FLinearColor& Color);
 
@@ -57,11 +61,17 @@ private:
 	void OpenMapOverlay();
 	void HandleMapOverlayClosed();
 	void HandleLootResultClosed();
+	void OpenEventPanel();
+	void HandleEventPanelClosed();
 
 	UPROPERTY(Transient) UGT_RoomViewWidget* RoomView = nullptr;
 	UPROPERTY(Transient) UGT_MapOverlayWidget* MapOverlay = nullptr;
 	UPROPERTY(Transient) UGT_LootResultWidget* LootResult = nullptr;
+	UPROPERTY(Transient) UGT_EventPanelWidget* EventPanel = nullptr;
 	UPROPERTY(Transient) UUniformGridPanel* MiniMapGrid = nullptr;
+	// 周围雷险标牌(房间正下方, 中央列内; 未扫描时 Hidden 占位防房间缩放跳动)。
+	UPROPERTY(Transient) UWidget* MineRiskRoot = nullptr;
+	UPROPERTY(Transient) UTextBlock* MineRiskText = nullptr;
 	UPROPERTY(Transient) UProgressBar* HpBar = nullptr;
 	UPROPERTY(Transient) UTextBlock* HpText = nullptr;
 	// 属性行按原版分色: 战斗力白 / 待结算金 / 已锁定绿 / 回收物青 / 已搜索灰。

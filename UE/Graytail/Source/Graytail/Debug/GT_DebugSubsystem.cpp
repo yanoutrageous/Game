@@ -371,6 +371,14 @@ bool UGT_DebugSubsystem::DebugChooseEventOption(FName OptionId, FGT_DebugRunSnap
 	return bAccepted;
 }
 
+bool UGT_DebugSubsystem::DebugGetEventMenu(FGT_EventMenuView& OutMenu) const
+{
+	OutMenu = FGT_EventMenuView();
+	const UGT_RunSubsystem* RunSubsystem = GetRunSubsystem();
+	const UGT_RunContext* RunContext = RunSubsystem ? RunSubsystem->GetCurrentRunContext() : nullptr;
+	return RunContext && RunContext->GetEventMenuAtPlayer(OutMenu);
+}
+
 bool UGT_DebugSubsystem::DebugResolveCombat(FName ResultId, FGT_DebugRunSnapshot& OutSnapshot)
 {
 	int32 PlayerX = 0;
@@ -666,9 +674,10 @@ void UGT_DebugSubsystem::GetDebugCommandHelpLines(TArray<FString>& OutLines) con
 	OutLines.Add(TEXT("  gt.Snapshot - Log the raw debug run snapshot."));
 	OutLines.Add(TEXT("  gt.Minimap - Log a text minimap."));
 	OutLines.Add(TEXT("  gt.Events - Log event type counts and recent payload fields."));
-	OutLines.Add(TEXT("  gt.ChooseEventOption [OptionId] - Resolve the Event placeholder room through registry option data."));
-	OutLines.Add(TEXT("    Example: gt.ChooseEventOption Event_DebugOption_Continue"));
-	OutLines.Add(TEXT("    Example: gt.ChooseEventOption Event_DebugOption_Scout"));
+	OutLines.Add(TEXT("  gt.Event - Show the Standard event menu (trader/dice/altar/trap) at the player cell."));
+	OutLines.Add(TEXT("  gt.ChooseEventOption [OptionId] - Execute an event option (Standard: real rules; BasicDebug: registry placeholder)."));
+	OutLines.Add(TEXT("    Example (Standard): gt.ChooseEventOption bet_small / offer_hp / disarm / sell:dim_capacitor / leave"));
+	OutLines.Add(TEXT("    Example (BasicDebug): gt.ChooseEventOption Event_DebugOption_Continue"));
 	OutLines.Add(TEXT("  gt.ResolveCombat [Result] - Resolve the Combat placeholder room through registry result data."));
 	OutLines.Add(TEXT("    Example: gt.ResolveCombat Combat_DebugResult_Success"));
 	OutLines.Add(TEXT("    Example: gt.ResolveCombat Combat_DebugResult_Retreat"));
@@ -789,9 +798,18 @@ bool UGT_DebugSubsystem::GetDebugRoomText(FString& OutRoomText) const
 	FString Hint = TEXT("No placeholder room action is available here.");
 	if (Snapshot.CurrentRoomBaseType == EGT_RoomBaseType::Event)
 	{
-		Hint = FString::Printf(
-			TEXT("Event placeholder action: gt.ChooseEventOption [OptionId]. Available=%s."),
-			Snapshot.CurrentRoomAvailableEventOptions.IsEmpty() ? TEXT("none") : *Snapshot.CurrentRoomAvailableEventOptions);
+		// Standard 模式: 真实事件(旅商/赌徒/祭坛/机关)的进入/完成文案自带 "按 T" 提示。
+		FGT_EventMenuView EventMenu;
+		if (DebugGetEventMenu(EventMenu) && EventMenu.bAvailable)
+		{
+			Hint = EventMenu.Description;
+		}
+		else
+		{
+			Hint = FString::Printf(
+				TEXT("Event placeholder action: gt.ChooseEventOption [OptionId]. Available=%s."),
+				Snapshot.CurrentRoomAvailableEventOptions.IsEmpty() ? TEXT("none") : *Snapshot.CurrentRoomAvailableEventOptions);
+		}
 	}
 	else if (Snapshot.CurrentRoomBaseType == EGT_RoomBaseType::Combat)
 	{

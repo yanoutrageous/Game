@@ -222,7 +222,7 @@ void UGT_LootResultWidget::AddItemCard(const FGT_ItemStack& Stack)
 	UHorizontalBox* Row = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
 	CardBg->SetContent(Row);
 
-	// 图标: 稀有度淡色底 + 物品图(复用 HUD 的大类映射)。
+	// 图标: 稀有度淡色底 + 物品图(逐物品映射在 GT_ItemCatalog, 与 HUD 共用)。
 	USizeBox* IconSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
 	IconSize->SetWidthOverride(56.f);
 	IconSize->SetHeightOverride(56.f);
@@ -230,9 +230,7 @@ void UGT_LootResultWidget::AddItemCard(const FGT_ItemStack& Stack)
 	IconBg->SetBrushColor(FLinearColor(RarityColor.R, RarityColor.G, RarityColor.B, 0.19f));
 	IconBg->SetPadding(FMargin(4.f));
 	IconSize->SetContent(IconBg);
-	if (UTexture2D* IconTexture = LoadUiTexture(Def->Kind == EGT_ItemKind::Consumable
-		? TEXT("/Game/Graytail/Items/Consumable/item_consumable_medkit")
-		: TEXT("/Game/Graytail/Items/Recovered/item_recovered_ore")))
+	if (UTexture2D* IconTexture = LoadUiTexture(GT_ItemCatalog::GetItemIconAssetPath(Stack.ItemId)))
 	{
 		UImage* IconImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
 		IconImage->SetBrushFromTexture(IconTexture);

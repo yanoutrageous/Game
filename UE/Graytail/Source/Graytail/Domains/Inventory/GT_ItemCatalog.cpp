@@ -106,4 +106,20 @@ namespace GT_ItemCatalog
 		}
 		return TotalValue;
 	}
+
+	FString GetItemIconAssetPath(FName ItemId)
+	{
+		// 对齐 Lua UITheme 原版样式(2026-06-12 用户定): 局内回收物共用矿块图,
+		// 止血贴用部署绷带图, 其余消耗品用医疗包图。曾尝试挪用局外商店/装备图标做
+		// 逐物品区分, 但那批图本职是局外商店货架(Balance.shop), 等美术按 ITEM_DEFS
+		// 预留路径补齐 assets/items/<物品id>.png 后, 在这里换成逐物品映射即可。
+		if (ItemId == FName(TEXT("emergency_bandage")))
+		{
+			return TEXT("/Game/Graytail/UI/deploy/ui_icon_bandage");
+		}
+		const FGT_ItemCatalogEntry* Def = FindItemDef(ItemId);
+		return (Def && Def->Kind == EGT_ItemKind::Consumable)
+			? FString(TEXT("/Game/Graytail/Items/Consumable/item_consumable_medkit"))
+			: FString(TEXT("/Game/Graytail/Items/Recovered/item_recovered_ore"));
+	}
 }

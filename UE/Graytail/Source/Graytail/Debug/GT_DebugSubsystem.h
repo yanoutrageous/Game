@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Debug/GT_DebugTypes.h"
+#include "Domains/Events/GT_EventTypes.h"
 #include "Domains/Map/GT_MapTypes.h"
 #include "Debug/GT_RuntimeSmokeValidator.h"
 #include "UI/ViewModels/GT_MiniMapViewModel.h"
@@ -46,6 +47,10 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
 	bool DebugChooseEventOption(FName OptionId, FGT_DebugRunSnapshot& OutSnapshot);
+
+	// 玩家当前格的事件菜单(只读查询, 仅 Standard 模式事件房可用)。
+	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
+	bool DebugGetEventMenu(FGT_EventMenuView& OutMenu) const;
 
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
 	bool DebugResolveCombat(FName ResultId, FGT_DebugRunSnapshot& OutSnapshot);

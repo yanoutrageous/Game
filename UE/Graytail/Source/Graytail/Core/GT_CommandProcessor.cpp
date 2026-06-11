@@ -15,6 +15,7 @@ namespace
 	const FName GTCommandType_ResolveCombat(TEXT("ResolveCombat"));
 	const FName GTCommandType_Attack(TEXT("Attack"));
 	const FName GTEventType_ActorMoved(TEXT("ActorMoved"));
+	const FName GTEventType_EventOptionChosen(TEXT("EventOptionChosen"));
 	const FName GTEventType_CellScanned(TEXT("CellScanned"));
 	const FName GTEventType_RoomSearched(TEXT("RoomSearched"));
 	const FName GTEventType_CommandFailed(TEXT("CommandFailed"));
@@ -325,6 +326,26 @@ bool UGT_CommandProcessor::ProcessChooseEventOptionCommand(const FGT_Command& Co
 	{
 		PublishCommandEvent(GTEventType_CommandFailed, Command.SourceActorId, EventTargetActorId, PlayerX, PlayerY, false);
 		return false;
+	}
+
+	// Standard 模式: 事件房真实规则(旅商/赌徒/祭坛/机关)在 RunContext 内核执行;
+	// BasicDebug 保持注册表占位路径(163 冒烟测试夹具行为不动)。
+	if (RunContext->GetMapMode() == EGT_MapMode::Standard)
+	{
+		FGT_EventOutcome EventOutcome;
+		if (!RunContext->ExecuteEventOptionAtPlayer(Command.PayloadId, EventOutcome))
+		{
+			PublishCommandEvent(GTEventType_CommandFailed, Command.SourceActorId, EventTargetActorId, PlayerX, PlayerY, false);
+			return false;
+		}
+
+		PublishCommandEvent(GTEventType_EventOptionChosen, Command.SourceActorId, EventTargetActorId, PlayerX, PlayerY, true);
+		if (!RunContext->IsRunActive() && RunContext->IsRunFailed())
+		{
+			// 事件扣血致死(机关失控)或压力满载强制败北。
+			PublishCommandEvent(GTEventType_RunFailed, Command.SourceActorId, EventTargetActorId, PlayerX, PlayerY, true);
+		}
+		return true;
 	}
 
 	FGT_RoomResolveResult InteractionResult;

@@ -22,4 +22,7 @@ namespace GT_ItemCatalog
 
 	// 一组堆叠的总价值(按基础价值累加), 对齐 Lua GetCarriedItemValue。
 	GRAYTAIL_API int32 GetCarriedItemsValue(const TArray<FGT_ItemStack>& Stacks);
+
+	// 物品 UI 图标的 /Game 包路径(逐物品映射, 未知物品按大类兜底)。UI 层自行 LoadObject。
+	GRAYTAIL_API FString GetItemIconAssetPath(FName ItemId);
 }

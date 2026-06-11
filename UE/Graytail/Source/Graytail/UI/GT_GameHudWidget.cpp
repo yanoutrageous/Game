@@ -27,6 +27,7 @@
 #include "Input/Events.h"
 #include "Misc/PackageName.h"
 #include "Styling/CoreStyle.h"
+#include "UI/GT_EventPanelWidget.h"
 #include "UI/GT_LootResultWidget.h"
 #include "UI/GT_MapOverlayWidget.h"
 #include "UI/GT_RoomViewWidget.h"
@@ -88,7 +89,37 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		BackdropSlot->SetVerticalAlignment(VAlign_Fill);
 	}
 
-	// 第 1 层: 房间视图居中自适应放大(内部逻辑坐标固定 560, ScaleBox 只缩放显示)。
+	// 第 1 层: 主布局行 = 左侧信息面板列 + 中央列(房间/雷险标牌/底部键位栏)。
+	// 真实布局容器排版, 中央列内三者天然同轴居中, 不再用整屏悬浮+边距补偿对位。
+	UHorizontalBox* MainRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+	if (UOverlaySlot* MainSlot = Screen->AddChildToOverlay(MainRow))
+	{
+		MainSlot->SetHorizontalAlignment(HAlign_Fill);
+		MainSlot->SetVerticalAlignment(VAlign_Fill);
+	}
+
+	// 左列: 信息面板(对齐原版: 区域扫描图/生命/属性/作业包摘要)。
+	// 皮肤 9-slice 后边框厚度固定, 内边距在边框+角饰(~40px)基础上留呼吸空间。
+	UBorder* LeftPanel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+	LeftPanel->SetBrushColor(FLinearColor(0.03f, 0.03f, 0.05f, 0.92f));
+	LeftPanel->SetPadding(FMargin(30.f, 34.f, 30.f, 28.f));
+	USizeBox* LeftWidth = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+	LeftWidth->SetWidthOverride(360.f);
+	LeftWidth->SetContent(MakeSkinnedPanel(LeftPanel, TEXT("/Game/Graytail/UI/hud/ui_panel_left"), FVector2D(684.f, 580.f), 40.f));
+	if (UHorizontalBoxSlot* LeftSlot = MainRow->AddChildToHorizontalBox(LeftWidth))
+	{
+		LeftSlot->SetSize(FSlateChildSize(ESlateSizeRule::Automatic));
+		LeftSlot->SetVerticalAlignment(VAlign_Fill);
+	}
+
+	// 中央列: 房间在上(Fill), 雷险标牌/键位栏依次排在正下方。
+	UVerticalBox* CenterCol = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+	if (UHorizontalBoxSlot* CenterSlot = MainRow->AddChildToHorizontalBox(CenterCol))
+	{
+		CenterSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+	}
+
+	// 房间视图居中自适应放大(内部逻辑坐标固定 560, ScaleBox 只缩放显示)。
 	RoomView = CreateWidget<UGT_RoomViewWidget>(this, UGT_RoomViewWidget::StaticClass());
 	if (RoomView)
 	{
@@ -96,6 +127,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		RoomView->OnSearchRequested.BindUObject(this, &UGT_GameHudWidget::OnSearch);
 		RoomView->OnMapRequested.BindUObject(this, &UGT_GameHudWidget::OpenMapOverlay);
 		RoomView->OnExtractRequested.BindUObject(this, &UGT_GameHudWidget::OnExtract);
+		RoomView->OnEventRequested.BindUObject(this, &UGT_GameHudWidget::OpenEventPanel);
 
 		UScaleBox* RoomScale = WidgetTree->ConstructWidget<UScaleBox>(UScaleBox::StaticClass());
 		RoomScale->SetStretch(EStretch::ScaleToFit);
@@ -104,22 +136,44 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		RoomSize->SetHeightOverride(560.f);
 		RoomSize->AddChild(RoomView);
 		RoomScale->AddChild(RoomSize);
-		if (UOverlaySlot* RoomSlot = Screen->AddChildToOverlay(RoomScale))
+		if (UVerticalBoxSlot* RoomSlot = CenterCol->AddChildToVerticalBox(RoomScale))
 		{
+			RoomSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
 			RoomSlot->SetHorizontalAlignment(HAlign_Fill);
 			RoomSlot->SetVerticalAlignment(VAlign_Fill);
-			RoomSlot->SetPadding(FMargin(360.f, 16.f, 16.f, 40.f));
+			RoomSlot->SetPadding(FMargin(16.f, 12.f, 16.f, 4.f));
 		}
 	}
 
-	// 第 2 层: 左侧信息面板(对齐原版: 区域扫描图/生命/属性/作业包摘要)。
-	UBorder* LeftPanel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-	LeftPanel->SetBrushColor(FLinearColor(0.03f, 0.03f, 0.05f, 0.92f));
-	LeftPanel->SetPadding(FMargin(14.f));
-	if (UOverlaySlot* LeftSlot = Screen->AddChildToOverlay(MakeSkinnedPanel(LeftPanel, TEXT("/Game/Graytail/UI/hud/ui_panel_left"))))
+	// 雷险标牌: 房间正下方(从房间画布挪出, 不再遮挡地图/门)。
 	{
-		LeftSlot->SetHorizontalAlignment(HAlign_Left);
-		LeftSlot->SetVerticalAlignment(VAlign_Fill);
+		UBorder* RiskBorder = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+		if (UTexture2D* TagTexture = LoadUiTexture(TEXT("/Game/Graytail/UI/hud/ui_mine_risk_tag")))
+		{
+			FSlateBrush TagBrush;
+			TagBrush.SetResourceObject(TagTexture);
+			TagBrush.DrawAs = ESlateBrushDrawType::Image;
+			RiskBorder->SetBrush(TagBrush);
+		}
+		// 左留空避开底图自带图标; 上下不对称内边距校正中文字形基线(按 PIE 截图逐像素校准)。
+		RiskBorder->SetPadding(FMargin(59.f, 3.f, 12.f, 2.f));
+		RiskBorder->SetVerticalAlignment(VAlign_Center);
+		MineRiskText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		MineRiskText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 16));
+		MineRiskText->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(232, 222, 198))));
+		RiskBorder->SetContent(MineRiskText);
+
+		USizeBox* RiskSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+		RiskSize->SetWidthOverride(220.f);
+		RiskSize->SetHeightOverride(44.f);
+		RiskSize->SetContent(RiskBorder);
+		MineRiskRoot = RiskSize;
+		MineRiskRoot->SetVisibility(ESlateVisibility::Hidden);
+		if (UVerticalBoxSlot* RiskSlot = CenterCol->AddChildToVerticalBox(RiskSize))
+		{
+			RiskSlot->SetHorizontalAlignment(HAlign_Center);
+			RiskSlot->SetPadding(FMargin(0.f, 0.f, 0.f, 4.f));
+		}
 	}
 
 	UVerticalBox* Panel = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
@@ -130,7 +184,10 @@ void UGT_GameHudWidget::BuildWidgetTree()
 
 	MiniMapGrid = WidgetTree->ConstructWidget<UUniformGridPanel>(UUniformGridPanel::StaticClass());
 	MiniMapGrid->SetSlotPadding(FMargin(1.f));
-	Panel->AddChildToVerticalBox(MiniMapGrid);
+	if (UVerticalBoxSlot* GridSlot = Panel->AddChildToVerticalBox(MiniMapGrid))
+	{
+		GridSlot->SetPadding(FMargin(0.f, 6.f, 0.f, 0.f));
+	}
 
 	UTextBlock* Legend = MakePanelText(Panel, 10, FLinearColor(0.55f, 0.60f, 0.70f, 1.f));
 	Legend->SetText(FText::FromString(TEXT("数字 = 周围8格雷险 · 蓝点 = 可点击回传")));
@@ -173,6 +230,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	ProtocolText->SetColorAndOpacity(FSlateColor(FLinearColor(0.95f, 0.55f, 0.45f, 1.f)));
 	ProtocolText->SetText(FText::FromString(TEXT("协议 5")));
 	ProtocolPanel->SetContent(ProtocolText);
+	// 协议面板保持整图拉伸画法(竖版贴图压扁成小匾, 原版认可的效果; 9-slice 反而会摊开成大竖框)。
 	if (UOverlaySlot* ProtocolSlot = Screen->AddChildToOverlay(MakeSkinnedPanel(ProtocolPanel, TEXT("/Game/Graytail/UI/hud/ui_panel_protocol"))))
 	{
 		ProtocolSlot->SetHorizontalAlignment(HAlign_Right);
@@ -245,11 +303,10 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_m"), TEXT("M"), TEXT("扫描图"));
 	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_f"), TEXT("F"), TEXT("搜索/攻击"));
 	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_e"), TEXT("E"), TEXT("撤离"));
-	if (UOverlaySlot* HotbarSlot = Screen->AddChildToOverlay(MakeSkinnedPanel(Hotbar, TEXT("/Game/Graytail/UI/hud/ui_bottom_bar"))))
+	if (UVerticalBoxSlot* HotbarSlot = CenterCol->AddChildToVerticalBox(MakeSkinnedPanel(Hotbar, TEXT("/Game/Graytail/UI/hud/ui_bottom_bar"))))
 	{
 		HotbarSlot->SetHorizontalAlignment(HAlign_Center);
-		HotbarSlot->SetVerticalAlignment(VAlign_Bottom);
-		HotbarSlot->SetPadding(FMargin(0.f, 0.f, 0.f, 6.f));
+		HotbarSlot->SetPadding(FMargin(0.f, 0.f, 0.f, 8.f));
 	}
 
 	// 第 5 层(最顶): 全屏区域扫描图, 默认收起。
@@ -275,6 +332,21 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		{
 			LootSlot->SetHorizontalAlignment(HAlign_Fill);
 			LootSlot->SetVerticalAlignment(VAlign_Fill);
+		}
+	}
+
+	// 第 6.5 层(模态): 事件交互面板(旅商/赌徒/祭坛/机关), 默认收起。
+	EventPanel = CreateWidget<UGT_EventPanelWidget>(this, UGT_EventPanelWidget::StaticClass());
+	if (EventPanel)
+	{
+		EventPanel->OnClosed.BindUObject(this, &UGT_GameHudWidget::HandleEventPanelClosed);
+		// 每次选项执行后只刷侧栏数据, 不抢面板焦点。
+		EventPanel->OnStateChanged.BindUObject(this, &UGT_GameHudWidget::RefreshPanels);
+		EventPanel->SetVisibility(ESlateVisibility::Collapsed);
+		if (UOverlaySlot* EventSlot = Screen->AddChildToOverlay(EventPanel))
+		{
+			EventSlot->SetHorizontalAlignment(HAlign_Fill);
+			EventSlot->SetVerticalAlignment(VAlign_Fill);
 		}
 	}
 
@@ -390,6 +462,7 @@ void UGT_GameHudWidget::RefreshPanels()
 {
 	RefreshStatusPanel();
 	RefreshMiniMapGrid();
+	RefreshMineRiskTag();
 	RefreshItemsList();
 
 	FString RoomText;
@@ -475,6 +548,10 @@ void UGT_GameHudWidget::RefreshRunEndPanel()
 	{
 		ReasonLine = TEXT("作业体损毁于异常体交战。");
 	}
+	else if (Reason == FName(TEXT("Event")))
+	{
+		ReasonLine = TEXT("事件导致血量归零, 作业体信号丢失。");
+	}
 	else
 	{
 		ReasonLine = TEXT("作业体信号丢失。");
@@ -528,6 +605,35 @@ void UGT_GameHudWidget::RefreshStatusPanel()
 	StateText->SetText(FText::FromString(FString::Printf(TEXT("[%s]"), *GetRunStateLabel(RunContext->GetRunState()))));
 }
 
+void UGT_GameHudWidget::RefreshMineRiskTag()
+{
+	if (!MineRiskRoot || !MineRiskText)
+	{
+		return;
+	}
+
+	// 当前格已扫描才亮牌(对齐原版: 数字 = 周围8格雷险)。
+	bool bShow = false;
+	UGT_DebugSubsystem* Debug = GetDebugSubsystem();
+	FGT_DebugRunSnapshot Snapshot;
+	TArray<FGT_MiniMapCellViewData> Cells;
+	int32 Width = 0;
+	int32 Height = 0;
+	if (Debug && Debug->GetDebugRunSnapshot(Snapshot)
+		&& Debug->GetDebugMiniMapViewData(Cells, Width, Height)
+		&& Width > 0 && Cells.IsValidIndex(Snapshot.PlayerY * Width + Snapshot.PlayerX))
+	{
+		const FGT_MiniMapCellViewData& Cell = Cells[Snapshot.PlayerY * Width + Snapshot.PlayerX];
+		if (Cell.bScanned)
+		{
+			MineRiskText->SetText(FText::FromString(FString::Printf(TEXT("周围雷险: %d"), Cell.DisplayedNumber)));
+			bShow = true;
+		}
+	}
+	// Hidden 而非 Collapsed: 占位不变, 显隐切换时房间缩放不跳动。
+	MineRiskRoot->SetVisibility(bShow ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Hidden);
+}
+
 void UGT_GameHudWidget::RefreshMiniMapGrid()
 {
 	MiniMapGrid->ClearChildren();
@@ -561,15 +667,21 @@ void UGT_GameHudWidget::RefreshMiniMapGrid()
 			const bool bKnown = Cell.bExplored || Cell.bVisible;
 			const FString Icon = Cell.VisibleRoomIcon.ToString();
 			const bool bMineCell = bKnown && Icon == TEXT("Mine");
+			// 大图插的旗同步到小地图(旗标数据在 MapOverlay, 纯 UI 标注)。
+			const bool bFlagged = !bKnown && MapOverlay && MapOverlay->IsCellFlagged(X, Y);
 
 			USizeBox* CellSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
 			CellSize->SetWidthOverride(GTMiniMapCellSize);
 			CellSize->SetHeightOverride(GTMiniMapCellSize);
 
-			// 底色对齐 MapOverlay: 隐藏(70,75,95) / 雷(220,40,40) / 已知(40,45,60)。
+			// 底色对齐 MapOverlay: 隐藏(70,75,95) / 插旗(160,50,50) / 雷(220,40,40) / 已知(40,45,60)。
 			UBorder* CellBorder = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 			FLinearColor BgColor = FLinearColor(FColor(40, 45, 60));
-			if (!bKnown)
+			if (bFlagged)
+			{
+				BgColor = FLinearColor(FColor(160, 50, 50));
+			}
+			else if (!bKnown)
 			{
 				BgColor = FLinearColor(FColor(70, 75, 95));
 			}
@@ -602,8 +714,12 @@ void UGT_GameHudWidget::RefreshMiniMapGrid()
 
 			if (!bKnown)
 			{
-				// 未知格: ? 砖块贴图。
+				// 未知格: ? 砖块贴图; 插过旗的盖旗子图。
 				AddCellIcon(LoadUiTexture(TEXT("/Game/Graytail/UI/Icons64/01_weizhi_ge")), 0.95f);
+				if (bFlagged)
+				{
+					AddCellIcon(LoadUiTexture(TEXT("/Game/Graytail/UI/Icons64/04_biaoji_qi")), 0.85f);
+				}
 			}
 			else
 			{
@@ -751,14 +867,12 @@ void UGT_GameHudWidget::RefreshItemsList()
 
 UTexture2D* UGT_GameHudWidget::GetItemIcon(FName ItemId)
 {
-	// 复用 Lua 版美术: 按物品大类映射到通用图标资产(缓存在 LoadUiTexture 里)。
-	const FGT_ItemCatalogEntry* Def = GT_ItemCatalog::FindItemDef(ItemId);
-	return LoadUiTexture(Def && Def->Kind == EGT_ItemKind::Consumable
-		? TEXT("/Game/Graytail/Items/Consumable/item_consumable_medkit")
-		: TEXT("/Game/Graytail/Items/Recovered/item_recovered_ore"));
+	// 逐物品图标映射在 GT_ItemCatalog(与战利品弹窗共用), 纹理缓存在 LoadUiTexture 里。
+	return LoadUiTexture(GT_ItemCatalog::GetItemIconAssetPath(ItemId));
 }
 
-UWidget* UGT_GameHudWidget::MakeSkinnedPanel(UBorder* Panel, const FString& AssetPath)
+UWidget* UGT_GameHudWidget::MakeSkinnedPanel(UBorder* Panel, const FString& AssetPath,
+	const FVector2D& TextureSize, float FramePx)
 {
 	UTexture2D* Texture = LoadUiTexture(AssetPath);
 	if (!Texture)
@@ -767,25 +881,24 @@ UWidget* UGT_GameHudWidget::MakeSkinnedPanel(UBorder* Panel, const FString& Asse
 		return Panel;
 	}
 
-	// 两层: 原版边框贴图(无垫底, 直接透出场景) -> 内容面板(自身透明)。
-	UOverlay* Stack = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
-
-	UImage* Skin = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
-	Skin->SetBrushFromTexture(Texture);
-	Skin->SetColorAndOpacity(FLinearColor(1.f, 1.f, 1.f, 0.85f));
-	if (UOverlaySlot* SkinSlot = Stack->AddChildToOverlay(Skin))
+	// 皮肤直接作为面板的背景刷: 背景刷只负责绘制、不参与尺寸计算,
+	// 不会出现叠 Image 层时贴图原始尺寸撑大面板的问题。
+	FSlateBrush SkinBrush;
+	SkinBrush.SetResourceObject(Texture);
+	if (FramePx > 0.f && TextureSize.X > 0.f && TextureSize.Y > 0.f)
 	{
-		SkinSlot->SetHorizontalAlignment(HAlign_Fill);
-		SkinSlot->SetVerticalAlignment(VAlign_Fill);
+		// 9-slice: 四角按原始像素绘制, 只拉伸中段 — 面板与贴图长宽比差异大也不变形。
+		SkinBrush.ImageSize = TextureSize;
+		SkinBrush.DrawAs = ESlateBrushDrawType::Box;
+		SkinBrush.Margin = FMargin(FramePx / TextureSize.X, FramePx / TextureSize.Y);
 	}
-
-	Panel->SetBrushColor(FLinearColor::Transparent);
-	if (UOverlaySlot* PanelSlot = Stack->AddChildToOverlay(Panel))
+	else
 	{
-		PanelSlot->SetHorizontalAlignment(HAlign_Fill);
-		PanelSlot->SetVerticalAlignment(VAlign_Fill);
+		SkinBrush.DrawAs = ESlateBrushDrawType::Image;
 	}
-	return Stack;
+	Panel->SetBrush(SkinBrush);
+	Panel->SetBrushColor(FLinearColor(1.f, 1.f, 1.f, 0.85f));
+	return Panel;
 }
 
 UTexture2D* UGT_GameHudWidget::LoadUiTexture(const FString& AssetPath)
@@ -891,6 +1004,21 @@ void UGT_GameHudWidget::OnSearch()
 			LootResult->Open(RunContext->GetLastSearchOutcome());
 		}
 	}
+}
+
+void UGT_GameHudWidget::OpenEventPanel()
+{
+	// 是否在事件房由内核裁决(Open 内部查菜单, 不可用就不弹)。
+	if (EventPanel)
+	{
+		EventPanel->Open();
+	}
+}
+
+void UGT_GameHudWidget::HandleEventPanelClosed()
+{
+	// 事件可能改了金币/血量/背包/协议压力, 甚至终结本局; 整体刷新并把焦点还给房间。
+	RefreshAll();
 }
 
 void UGT_GameHudWidget::HandleLootResultClosed()

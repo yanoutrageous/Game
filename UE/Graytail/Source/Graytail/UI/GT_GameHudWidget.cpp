@@ -26,6 +26,7 @@
 #include "Input/Events.h"
 #include "Misc/PackageName.h"
 #include "Styling/CoreStyle.h"
+#include "UI/GT_LootResultWidget.h"
 #include "UI/GT_MapOverlayWidget.h"
 #include "UI/GT_RoomViewWidget.h"
 
@@ -202,6 +203,19 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		{
 			MapSlot->SetHorizontalAlignment(HAlign_Fill);
 			MapSlot->SetVerticalAlignment(VAlign_Fill);
+		}
+	}
+
+	// 第 6 层(模态): 搜索/开箱结果弹窗, 默认收起。
+	LootResult = CreateWidget<UGT_LootResultWidget>(this, UGT_LootResultWidget::StaticClass());
+	if (LootResult)
+	{
+		LootResult->OnClosed.BindUObject(this, &UGT_GameHudWidget::HandleLootResultClosed);
+		LootResult->SetVisibility(ESlateVisibility::Collapsed);
+		if (UOverlaySlot* LootSlot = Screen->AddChildToOverlay(LootResult))
+		{
+			LootSlot->SetHorizontalAlignment(HAlign_Fill);
+			LootSlot->SetVerticalAlignment(VAlign_Fill);
 		}
 	}
 }
@@ -581,14 +595,50 @@ void UGT_GameHudWidget::HandleMapOverlayClosed()
 	RefreshAll();
 }
 
+FReply UGT_GameHudWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
+{
+	// 焦点在弹窗/按钮上时 WASD 事件冒泡到这里, 转发给房间视图记账,
+	// 保证持键状态与物理按键一致(关弹窗后按住的键立刻续走, 不卡键)。
+	const FKey Key = InKeyEvent.GetKey();
+	if (RoomView && (Key == EKeys::W || Key == EKeys::A || Key == EKeys::S || Key == EKeys::D))
+	{
+		RoomView->SetHeldMovementKey(Key, true);
+		return FReply::Handled();
+	}
+	return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
+}
+
+FReply UGT_GameHudWidget::NativeOnKeyUp(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
+{
+	const FKey Key = InKeyEvent.GetKey();
+	if (RoomView && (Key == EKeys::W || Key == EKeys::A || Key == EKeys::S || Key == EKeys::D))
+	{
+		RoomView->SetHeldMovementKey(Key, false);
+		return FReply::Handled();
+	}
+	return Super::NativeOnKeyUp(InGeometry, InKeyEvent);
+}
+
 void UGT_GameHudWidget::OnSearch()
 {
 	UGT_DebugSubsystem* Debug = GetDebugSubsystem();
 	FGT_DebugRunSnapshot Snapshot;
-	if (Debug)
+	const bool bAccepted = Debug && Debug->DebugSearch(Snapshot);
+	RefreshAll();
+
+	// 搜索成功 -> 弹结果面板(对齐 Lua OpenLootResultPanel; 明细从内核缓存的结算读取)。
+	if (bAccepted && LootResult)
 	{
-		Debug->DebugSearch(Snapshot);
+		if (const UGT_RunContext* RunContext = GetRunContext())
+		{
+			LootResult->Open(RunContext->GetLastSearchOutcome());
+		}
 	}
+}
+
+void UGT_GameHudWidget::HandleLootResultClosed()
+{
+	// 确认入包: 整体刷新(背包/小地图/宝箱开闭状态), 焦点还给房间视图。
 	RefreshAll();
 }
 

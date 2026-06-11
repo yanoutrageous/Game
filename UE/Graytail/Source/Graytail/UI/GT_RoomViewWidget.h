@@ -29,6 +29,10 @@ public:
 	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
 	virtual bool NativeSupportsKeyboardFocus() const override { return true; }
 
+	// 记账 WASD 持键状态。焦点在弹窗/按钮上时由 HUD 把冒泡事件转发过来,
+	// 保证状态始终与物理按键一致(关弹窗后按住的键立刻续走, 不卡键不断手感)。
+	void SetHeldMovementKey(const FKey& Key, bool bDown);
+
 	// 房间状态变化后(开局/外部移动)由 HUD 调用, 重读当前格并重绘。
 	void SyncToCurrentCell(bool bCenterPlayer);
 

@@ -21,7 +21,7 @@ namespace
 	constexpr float GTRoomSize = 560.f;        // 房间画布边长(px)
 	constexpr float GTPlayerSize = 64.f;
 	constexpr float GTDoorSize = 72.f;
-	constexpr float GTMoveSpeed = 0.55f;       // 归一化坐标/秒, 对齐 Lua moveSpeed 300px 的手感
+	constexpr float GTMoveSpeed = 0.385f;      // 归一化坐标/秒(Lua moveSpeed 手感的 70%, 用户调速)
 	constexpr float GTDoorHalfWidth = 0.13f;   // 门对准判定半宽(归一化)
 	constexpr float GTWalkFrameTime = 0.18f;   // 走路两帧轮播间隔
 
@@ -370,10 +370,10 @@ void UGT_RoomViewWidget::UpdatePlayerImagePosition()
 FReply UGT_RoomViewWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
 {
 	const FKey Key = InKeyEvent.GetKey();
-	if (Key == EKeys::W) { HeldKeys[0] = true; return FReply::Handled(); }
-	if (Key == EKeys::A) { HeldKeys[1] = true; return FReply::Handled(); }
-	if (Key == EKeys::S) { HeldKeys[2] = true; return FReply::Handled(); }
-	if (Key == EKeys::D) { HeldKeys[3] = true; return FReply::Handled(); }
+	if (Key == EKeys::W) { SetHeldMovementKey(Key, true); return FReply::Handled(); }
+	if (Key == EKeys::A) { SetHeldMovementKey(Key, true); return FReply::Handled(); }
+	if (Key == EKeys::S) { SetHeldMovementKey(Key, true); return FReply::Handled(); }
+	if (Key == EKeys::D) { SetHeldMovementKey(Key, true); return FReply::Handled(); }
 	if (Key == EKeys::F)
 	{
 		// F = 搜索/开箱(对齐原版底部快捷键栏)。
@@ -405,11 +405,20 @@ FReply UGT_RoomViewWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, 
 FReply UGT_RoomViewWidget::NativeOnKeyUp(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
 {
 	const FKey Key = InKeyEvent.GetKey();
-	if (Key == EKeys::W) { HeldKeys[0] = false; return FReply::Handled(); }
-	if (Key == EKeys::A) { HeldKeys[1] = false; return FReply::Handled(); }
-	if (Key == EKeys::S) { HeldKeys[2] = false; return FReply::Handled(); }
-	if (Key == EKeys::D) { HeldKeys[3] = false; return FReply::Handled(); }
+	if (Key == EKeys::W || Key == EKeys::A || Key == EKeys::S || Key == EKeys::D)
+	{
+		SetHeldMovementKey(Key, false);
+		return FReply::Handled();
+	}
 	return Super::NativeOnKeyUp(InGeometry, InKeyEvent);
+}
+
+void UGT_RoomViewWidget::SetHeldMovementKey(const FKey& Key, bool bDown)
+{
+	if (Key == EKeys::W) { HeldKeys[0] = bDown; }
+	else if (Key == EKeys::A) { HeldKeys[1] = bDown; }
+	else if (Key == EKeys::S) { HeldKeys[2] = bDown; }
+	else if (Key == EKeys::D) { HeldKeys[3] = bDown; }
 }
 
 void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
@@ -417,6 +426,12 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 	Super::NativeTick(MyGeometry, InDeltaTime);
 
 	if (CurrentCellX < 0)
+	{
+		return;
+	}
+
+	// 焦点在弹窗/按钮上时暂停移动(持键状态仍经 HUD 冒泡转发保持准确, 关弹窗立刻续走)。
+	if (!HasKeyboardFocus())
 	{
 		return;
 	}

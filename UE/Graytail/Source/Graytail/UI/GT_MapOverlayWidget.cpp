@@ -397,6 +397,12 @@ FReply UGT_MapOverlayWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry
 	return FReply::Handled();
 }
 
+FReply UGT_MapOverlayWidget::NativeOnMouseButtonDoubleClick(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
+{
+	// 快速连点(插旗->秒取消)会被 Slate 判成双击事件, 当普通点击处理, 否则第二下"没反应"。
+	return NativeOnMouseButtonDown(InGeometry, InMouseEvent);
+}
+
 FReply UGT_MapOverlayWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
 {
 	const FKey Key = InKeyEvent.GetKey();

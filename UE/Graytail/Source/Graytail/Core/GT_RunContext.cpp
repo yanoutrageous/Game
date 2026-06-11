@@ -44,6 +44,7 @@ void UGT_RunContext::InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec)
 	CombatRuntimeState = FGT_CombatRuntimeState();
 	RunSummary = FGT_RunSummary();
 	RunInventory.Reset();
+	LastSearchOutcome = FGT_SearchOutcome();
 	PlayerCombatState = FGT_PlayerCombatState();
 	ProtocolState.Reset();
 	DefeatedCombatRooms.Reset();
@@ -91,6 +92,7 @@ void UGT_RunContext::ResetRun()
 	CombatRuntimeState = FGT_CombatRuntimeState();
 	RunSummary = FGT_RunSummary();
 	RunInventory.Reset();
+	LastSearchOutcome = FGT_SearchOutcome();
 	PlayerCombatState = FGT_PlayerCombatState();
 	ProtocolState.Reset();
 	DefeatedCombatRooms.Reset();
@@ -629,5 +631,6 @@ bool UGT_RunContext::SearchCurrentRoom(FGT_SearchOutcome& OutOutcome)
 	OutOutcome.bSearched = true;
 	OutOutcome.Status = FName(TEXT("searched"));
 	OutOutcome.Reward = Reward;
+	LastSearchOutcome = OutOutcome;
 	return true;
 }

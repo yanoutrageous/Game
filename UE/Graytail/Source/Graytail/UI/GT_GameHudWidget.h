@@ -15,6 +15,7 @@ class UGT_DebugSubsystem;
 class UGT_RunContext;
 class UGT_RoomViewWidget;
 class UGT_MapOverlayWidget;
+class UGT_LootResultWidget;
 
 // 主游戏界面(对齐 Lua 原版构图): 房间视图铺满全屏为背景,
 // 左侧信息面板/右上协议面板/底部快捷键栏全部悬浮其上。
@@ -28,6 +29,8 @@ public:
 	virtual TSharedRef<SWidget> RebuildWidget() override;
 	virtual void NativeConstruct() override;
 	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+	virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
+	virtual FReply NativeOnKeyUp(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 
 private:
 	void BuildWidgetTree();
@@ -50,9 +53,11 @@ private:
 
 	void OpenMapOverlay();
 	void HandleMapOverlayClosed();
+	void HandleLootResultClosed();
 
 	UPROPERTY(Transient) UGT_RoomViewWidget* RoomView = nullptr;
 	UPROPERTY(Transient) UGT_MapOverlayWidget* MapOverlay = nullptr;
+	UPROPERTY(Transient) UGT_LootResultWidget* LootResult = nullptr;
 	UPROPERTY(Transient) UUniformGridPanel* MiniMapGrid = nullptr;
 	UPROPERTY(Transient) UProgressBar* HpBar = nullptr;
 	UPROPERTY(Transient) UTextBlock* HpText = nullptr;

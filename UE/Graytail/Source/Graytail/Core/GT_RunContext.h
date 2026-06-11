@@ -220,9 +220,15 @@ public:
 	// 搜索玩家当前格: 判定 -> 确定性结奖 -> 入账并标记已搜。失败时 Outcome.Status 是原因。
 	bool SearchCurrentRoom(FGT_SearchOutcome& OutOutcome);
 
+	// 最近一次成功搜索的结算明细(开新局重置), 供 UI 结果弹窗读取。
+	const FGT_SearchOutcome& GetLastSearchOutcome() const { return LastSearchOutcome; }
+
 private:
 	// 新老开局路径共享的初始化逻辑: 生成地图、放置玩家、重置运行态。
 	void InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec);
+
+	UPROPERTY(Transient)
+	FGT_SearchOutcome LastSearchOutcome;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run", meta = (AllowPrivateAccess = "true"))
 	FGuid RunId;

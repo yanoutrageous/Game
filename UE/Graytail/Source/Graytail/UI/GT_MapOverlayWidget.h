@@ -46,6 +46,8 @@ private:
 
 	UPROPERTY(Transient) USizeBox* GridSizeBox = nullptr;
 	UPROPERTY(Transient) UUniformGridPanel* MapGrid = nullptr;
+	// 操作被拒时的红字提示(战斗中禁回传等), 打开时清空。
+	UPROPERTY(Transient) UTextBlock* StatusText = nullptr;
 
 	// UI 贴图资产缓存(key = /Game 包路径, 防 GC)。
 	UPROPERTY(Transient) TMap<FString, UTexture2D*> UiTextureCache;

@@ -2,9 +2,11 @@
 
 #include "CoreMinimal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
+#include "Core/GT_CommandBus.h"
+#include "Domains/Map/GT_MapTypes.h"
 #include "GT_RunSubsystem.generated.h"
 
-class UGT_CommandBus;
+class UGT_CommandProcessor;
 class UGT_ContentRegistry;
 class UGT_EffectSystem;
 class UGT_EventBus;
@@ -23,6 +25,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Run")
 	UGT_RunContext* StartNewRun(int32 Seed, int32 Width = 10, int32 Height = 10);
 
+	// 按难度档位开始一局 Standard 随机地图。与 StartNewRun 共享后续初始化。
+	UFUNCTION(BlueprintCallable, Category = "Graytail|Run")
+	UGT_RunContext* StartNewRunStandard(int32 Seed, EGT_Difficulty Difficulty);
+
+	UFUNCTION(BlueprintCallable, Category = "Graytail|Run")
+	bool SubmitCommand(const FGT_Command& Command);
+
 	UFUNCTION(BlueprintPure, Category = "Graytail|Run")
 	UGT_RunContext* GetCurrentRunContext() const;
 
@@ -38,11 +47,17 @@ public:
 	UGT_QueryFacade* GetQueryFacade() const;
 
 private:
+	// 两个 StartNewRun 变体共享的收尾: 初始化 QueryFacade/CommandProcessor 并广播 RunStarted。
+	void FinishStartRun();
+
 	UPROPERTY(Transient)
 	UGT_RunContext* CurrentRunContext = nullptr;
 
 	UPROPERTY(Transient)
 	UGT_CommandBus* CommandBus = nullptr;
+
+	UPROPERTY(Transient)
+	UGT_CommandProcessor* CommandProcessor = nullptr;
 
 	UPROPERTY(Transient)
 	UGT_EventBus* EventBus = nullptr;

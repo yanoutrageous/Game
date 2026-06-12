@@ -2,10 +2,11 @@
 
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
+#include "Core/GT_ActorTypes.h"
+#include "Core/GT_RunContext.h"
+#include "Domains/Map/GT_MapTypes.h"
 #include "UI/ViewModels/GT_MiniMapViewModel.h"
 #include "GT_QueryFacade.generated.h"
-
-class UGT_RunContext;
 
 UCLASS(BlueprintType)
 class GRAYTAIL_API UGT_QueryFacade : public UObject
@@ -34,8 +35,45 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Graytail|Query")
 	int32 GetMapHeight() const;
 
+	UFUNCTION(BlueprintPure, Category = "Graytail|Query")
+	EGT_RunState GetRunState() const;
+
+	UFUNCTION(BlueprintPure, Category = "Graytail|Query")
+	bool IsRunActive() const;
+
+	UFUNCTION(BlueprintPure, Category = "Graytail|Query")
+	bool IsRunFailed() const;
+
+	UFUNCTION(BlueprintPure, Category = "Graytail|Query")
+	bool IsRunSucceeded() const;
+
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Query")
 	void BuildMiniMapViewData(TArray<FGT_MiniMapCellViewData>& OutCells, int32& OutWidth, int32& OutHeight) const;
+
+	UFUNCTION(BlueprintPure, Category = "Graytail|Query")
+	FName GetPlayerActorId() const;
+
+	UFUNCTION(BlueprintPure, Category = "Graytail|Query")
+	bool TryGetPlayerPosition(int32& OutX, int32& OutY) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Graytail|Query")
+	bool GetActorStates(TArray<FGT_ActorRuntimeState>& OutActors) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Graytail|Query")
+	bool GetIntelCellViewData(int32 X, int32 Y, FGT_MiniMapCellViewData& OutCell) const;
+
+	UFUNCTION(BlueprintPure, Category = "Graytail|Query")
+	bool IsIntelCellExplored(int32 X, int32 Y) const;
+
+	UFUNCTION(BlueprintPure, Category = "Graytail|Query")
+	bool IsIntelCellVisible(int32 X, int32 Y) const;
+
+	bool GetTruthCellDebugOnly(int32 X, int32 Y, FGT_TruthCell& OutCell) const;
+	bool IsTruthMineDebugOnly(int32 X, int32 Y) const;
+	bool IsTruthExitDebugOnly(int32 X, int32 Y) const;
+	bool GetTruthAdjacentCoords4DebugOnly(int32 X, int32 Y, TArray<FIntPoint>& OutCoords) const;
+	bool GetTruthAdjacentCoords8DebugOnly(int32 X, int32 Y, TArray<FIntPoint>& OutCoords) const;
+	bool CountAdjacentMinesDebugOnly(int32 X, int32 Y, int32& OutMineCount) const;
 
 private:
 	UPROPERTY(Transient)

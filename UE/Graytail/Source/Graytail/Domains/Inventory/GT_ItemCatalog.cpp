@@ -1,0 +1,125 @@
+#include "Domains/Inventory/GT_ItemCatalog.h"
+
+#include "Data/GT_ItemDef.h"
+#include "UObject/UObjectGlobals.h"
+
+namespace
+{
+	// 物品定义资产(由 Content/Python/create_item_defs.py 生成)。
+	// 顺序即表顺序, 对齐 Lua RunInventory.ITEM_DEFS。
+	const TCHAR* GTItemDefAssetPaths[] = {
+		TEXT("/Game/Graytail/Items/Defs/broken_copper_wire"),
+		TEXT("/Game/Graytail/Items/Defs/dim_capacitor"),
+		TEXT("/Game/Graytail/Items/Defs/whisper_wick"),
+		TEXT("/Game/Graytail/Items/Defs/sealed_core_shard"),
+		TEXT("/Game/Graytail/Items/Defs/emergency_bandage"),
+		TEXT("/Game/Graytail/Items/Defs/static_lens"),
+		TEXT("/Game/Graytail/Items/Defs/blackbox_tag"),
+	};
+
+	FGT_ItemCatalogEntry MakeEntryFromAsset(const UGT_ItemDef& Asset)
+	{
+		FGT_ItemCatalogEntry Entry;
+		Entry.ItemId = Asset.ContentId;
+		Entry.DisplayName = Asset.DisplayName.ToString();
+		Entry.Kind = Asset.Kind;
+		Entry.Rarity = Asset.Rarity;
+		Entry.Value = Asset.Value;
+		Entry.EffectText = Asset.EffectText;
+		Entry.Description = Asset.Description.ToString();
+		return Entry;
+	}
+
+	TArray<FGT_ItemCatalogEntry> LoadItemDefsFromAssets()
+	{
+		TArray<FGT_ItemCatalogEntry> Entries;
+		for (const TCHAR* AssetPath : GTItemDefAssetPaths)
+		{
+			const FString ObjectPath = FString(AssetPath) + TEXT(".") + FPackageName::GetShortName(AssetPath);
+			if (const UGT_ItemDef* Asset = LoadObject<UGT_ItemDef>(nullptr, *ObjectPath))
+			{
+				Entries.Add(MakeEntryFromAsset(*Asset));
+			}
+			else
+			{
+				UE_LOG(LogTemp, Error, TEXT("GT_ItemCatalog: missing item def asset %s (run create_item_defs.py?)"), AssetPath);
+			}
+		}
+		return Entries;
+	}
+}
+
+namespace GT_ItemCatalog
+{
+	const TArray<FGT_ItemCatalogEntry>& GetAllItemDefs()
+	{
+		// 进程内只加载一次; 资产数据随后以值拷贝缓存, 不持有 UObject 引用(GC 安全)。
+		static const TArray<FGT_ItemCatalogEntry> ItemDefs = LoadItemDefsFromAssets();
+		return ItemDefs;
+	}
+
+	const FGT_ItemCatalogEntry* FindItemDef(FName ItemId)
+	{
+		if (ItemId.IsNone())
+		{
+			return nullptr;
+		}
+
+		return GetAllItemDefs().FindByPredicate([ItemId](const FGT_ItemCatalogEntry& Def)
+		{
+			return Def.ItemId == ItemId;
+		});
+	}
+
+	int32 GetItemValue(FName ItemId)
+	{
+		const FGT_ItemCatalogEntry* Def = FindItemDef(ItemId);
+		return Def ? Def->Value : 0;
+	}
+
+	FName GetQualityItemId(EGT_ItemQuality Quality)
+	{
+		// 对齐 Lua QUALITY_ITEMS 表。掉落档位 -> 物品是平衡性规则, 留在代码里。
+		switch (Quality)
+		{
+		case EGT_ItemQuality::Low:
+			return FName(TEXT("broken_copper_wire"));
+		case EGT_ItemQuality::Common:
+			return FName(TEXT("dim_capacitor"));
+		case EGT_ItemQuality::Rare:
+			return FName(TEXT("static_lens"));
+		case EGT_ItemQuality::Precious:
+			return FName(TEXT("whisper_wick"));
+		case EGT_ItemQuality::Abnormal:
+			return FName(TEXT("sealed_core_shard"));
+		default:
+			return NAME_None;
+		}
+	}
+
+	int32 GetCarriedItemsValue(const TArray<FGT_ItemStack>& Stacks)
+	{
+		int32 TotalValue = 0;
+		for (const FGT_ItemStack& Stack : Stacks)
+		{
+			TotalValue += GetItemValue(Stack.ItemId) * Stack.Count;
+		}
+		return TotalValue;
+	}
+
+	FString GetItemIconAssetPath(FName ItemId)
+	{
+		// 对齐 Lua UITheme 原版样式(2026-06-12 用户定): 局内回收物共用矿块图,
+		// 止血贴用部署绷带图, 其余消耗品用医疗包图。曾尝试挪用局外商店/装备图标做
+		// 逐物品区分, 但那批图本职是局外商店货架(Balance.shop), 等美术按 ITEM_DEFS
+		// 预留路径补齐 assets/items/<物品id>.png 后, 在这里换成逐物品映射即可。
+		if (ItemId == FName(TEXT("emergency_bandage")))
+		{
+			return TEXT("/Game/Graytail/UI/deploy/ui_icon_bandage");
+		}
+		const FGT_ItemCatalogEntry* Def = FindItemDef(ItemId);
+		return (Def && Def->Kind == EGT_ItemKind::Consumable)
+			? FString(TEXT("/Game/Graytail/Items/Consumable/item_consumable_medkit"))
+			: FString(TEXT("/Game/Graytail/Items/Recovered/item_recovered_ore"));
+	}
+}

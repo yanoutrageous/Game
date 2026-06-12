@@ -1,24 +1,109 @@
 #include "Core/GT_RunContext.h"
 
+#include "Core/GT_ProtocolState.h"
+#include "Domains/Events/GT_EventRules.h"
+#include "Domains/Inventory/GT_ItemCatalog.h"
+#include "Domains/Inventory/GT_LootRules.h"
+#include "Domains/Map/GT_MapGenerator.h"
+
+namespace
+{
+	const FName GTCombatResult_Success(TEXT("Combat_DebugResult_Success"));
+	const FName GTRunSummaryOutcome_Extracted(TEXT("Extracted"));
+}
+
 void UGT_RunContext::InitializeRun(int32 InSeed, int32 InWidth, int32 InHeight)
 {
-	RunId = FGuid::NewGuid();
-	Seed = InSeed;
-	MapWidth = InWidth > 0 ? InWidth : 10;
-	MapHeight = InHeight > 0 ? InHeight : 10;
+	// 老路径: 固定调试布局(供既有冒烟测试使用), 行为保持不变。
+	FGT_MapGenerationSpec MapSpec;
+	MapSpec.MapMode = EGT_MapMode::BasicDebug;
+	MapSpec.Seed = InSeed;
+	MapSpec.Width = InWidth;
+	MapSpec.Height = InHeight;
+	InitializeFromSpec(MapSpec);
+}
 
-	TruthMap.Initialize(MapWidth, MapHeight, Seed);
+void UGT_RunContext::InitializeRunStandard(int32 InSeed, EGT_Difficulty Difficulty)
+{
+	// 新路径: 按难度档位生成 Standard 随机地图。
+	InitializeFromSpec(UGT_MapGenerator::MakeSpecForDifficulty(Difficulty, InSeed));
+}
+
+void UGT_RunContext::InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec)
+{
+	FGT_MapGenerationResult MapResult;
+	UGT_MapGenerator::GenerateMap(MapSpec, MapResult);
+
+	RunId = FGuid::NewGuid();
+	RunState = EGT_RunState::Running;
+	RunEndReason = NAME_None;
+	MapMode = MapResult.MapMode;
+	Seed = MapResult.Seed;
+	MapWidth = MapResult.Width;
+	MapHeight = MapResult.Height;
+	TruthMap = MapResult.TruthMap;
 	PlayerIntelMap.Initialize(MapWidth, MapHeight, FName(TEXT("Player")));
+	CombatRuntimeState = FGT_CombatRuntimeState();
+	RunSummary = FGT_RunSummary();
+	RunInventory.Reset();
+	LastSearchOutcome = FGT_SearchOutcome();
+	LastEventOutcome = FGT_EventOutcome();
+	EventRoomStates.Reset();
+	PlayerCombatState = FGT_PlayerCombatState();
+	ProtocolState.Reset();
+	DefeatedCombatRooms.Reset();
+	PressureExploredCells.Reset();
+
+	PlayerActorId = FName(TEXT("Player"));
+
+	FGT_ActorRuntimeState PlayerState;
+	PlayerState.ActorId.Value = PlayerActorId;
+	PlayerState.ActorDefId = FName(TEXT("PlayerDefault"));
+	PlayerState.Team = EGT_ActorTeam::Player;
+	PlayerState.Faction = EGT_ActorFaction::Graytail;
+	PlayerState.X = 0;
+	PlayerState.Y = 0;
+	PlayerState.bAlive = true;
+
+	ActorStates.Reset();
+	ActorStates.Add(PlayerState);
+
+	MarkPlayerIntelCellExplored(PlayerState.X, PlayerState.Y);
+
+	// Standard 模式对齐 Lua 扫雷规则: 所在格自动亮出 8 邻域雷数。
+	if (MapMode == EGT_MapMode::Standard)
+	{
+		int32 SpawnAdjacentMines = 0;
+		if (TruthMap.CountAdjacentMines8(PlayerState.X, PlayerState.Y, SpawnAdjacentMines))
+		{
+			PlayerIntelMap.SetScannedNumber(PlayerState.X, PlayerState.Y, SpawnAdjacentMines);
+		}
+	}
 }
 
 void UGT_RunContext::ResetRun()
 {
 	RunId.Invalidate();
+	RunState = EGT_RunState::NotStarted;
+	RunEndReason = NAME_None;
 	Seed = 0;
 	MapWidth = 0;
 	MapHeight = 0;
 	TruthMap.Reset();
 	PlayerIntelMap.Reset();
+	ActorStates.Reset();
+	PlayerActorId = NAME_None;
+	CombatRuntimeState = FGT_CombatRuntimeState();
+	RunSummary = FGT_RunSummary();
+	RunInventory.Reset();
+	LastSearchOutcome = FGT_SearchOutcome();
+	LastEventOutcome = FGT_EventOutcome();
+	EventRoomStates.Reset();
+	PlayerCombatState = FGT_PlayerCombatState();
+	ProtocolState.Reset();
+	DefeatedCombatRooms.Reset();
+	PressureExploredCells.Reset();
+	MapMode = EGT_MapMode::Unknown;
 }
 
 FGuid UGT_RunContext::GetRunId() const
@@ -41,7 +126,7 @@ int32 UGT_RunContext::GetMapHeight() const
 	return MapHeight;
 }
 
-const FGT_TruthMap& UGT_RunContext::GetTruthMap() const
+const FGT_TruthMap& UGT_RunContext::GetTruthMapForDebugOnly() const
 {
 	return TruthMap;
 }
@@ -49,4 +134,933 @@ const FGT_TruthMap& UGT_RunContext::GetTruthMap() const
 const FGT_IntelMap& UGT_RunContext::GetPlayerIntelMap() const
 {
 	return PlayerIntelMap;
+}
+
+const TArray<FGT_ActorRuntimeState>& UGT_RunContext::GetActorStates() const
+{
+	return ActorStates;
+}
+
+FGT_ActorRuntimeState* UGT_RunContext::FindActorStateMutable(FName ActorId)
+{
+	if (ActorId.IsNone())
+	{
+		return nullptr;
+	}
+
+	return ActorStates.FindByPredicate([ActorId](const FGT_ActorRuntimeState& ActorState)
+	{
+		return ActorState.ActorId.ToName() == ActorId;
+	});
+}
+
+const FGT_ActorRuntimeState* UGT_RunContext::FindActorState(FName ActorId) const
+{
+	if (ActorId.IsNone())
+	{
+		return nullptr;
+	}
+
+	return ActorStates.FindByPredicate([ActorId](const FGT_ActorRuntimeState& ActorState)
+	{
+		return ActorState.ActorId.ToName() == ActorId;
+	});
+}
+
+FName UGT_RunContext::GetPlayerActorId() const
+{
+	return PlayerActorId;
+}
+
+bool UGT_RunContext::TryGetPlayerPosition(int32& OutX, int32& OutY) const
+{
+	const FGT_ActorRuntimeState* PlayerState = FindActorState(PlayerActorId);
+	if (!PlayerState)
+	{
+		OutX = 0;
+		OutY = 0;
+		return false;
+	}
+
+	OutX = PlayerState->X;
+	OutY = PlayerState->Y;
+	return true;
+}
+
+bool UGT_RunContext::IsValidMapCoord(int32 X, int32 Y) const
+{
+	return TruthMap.IsValidCoord(X, Y);
+}
+
+EGT_RunState UGT_RunContext::GetRunState() const
+{
+	return RunState;
+}
+
+bool UGT_RunContext::IsRunActive() const
+{
+	return RunState == EGT_RunState::Running;
+}
+
+bool UGT_RunContext::IsRunFailed() const
+{
+	return RunState == EGT_RunState::Failed;
+}
+
+bool UGT_RunContext::IsRunSucceeded() const
+{
+	return RunState == EGT_RunState::Succeeded;
+}
+
+bool UGT_RunContext::MarkRunFailed(FName Reason)
+{
+	if (RunState != EGT_RunState::Running)
+	{
+		return false;
+	}
+
+	RunState = EGT_RunState::Failed;
+	RunEndReason = Reason;
+	return true;
+}
+
+bool UGT_RunContext::MarkRunSucceeded(FName Reason)
+{
+	if (RunState != EGT_RunState::Running)
+	{
+		return false;
+	}
+
+	RunState = EGT_RunState::Succeeded;
+	RunEndReason = Reason;
+	return true;
+}
+
+bool UGT_RunContext::MarkPlayerIntelCellExplored(int32 X, int32 Y)
+{
+	return PlayerIntelMap.MarkExplored(X, Y);
+}
+
+bool UGT_RunContext::MarkPlayerIntelCellVisible(int32 X, int32 Y, bool bVisible)
+{
+	return PlayerIntelMap.MarkVisible(X, Y, bVisible);
+}
+
+bool UGT_RunContext::CountAdjacentMines8(int32 X, int32 Y, int32& OutMineCount) const
+{
+	return TruthMap.CountAdjacentMines8(X, Y, OutMineCount);
+}
+
+bool UGT_RunContext::SetPlayerIntelCellScannedNumber(int32 X, int32 Y, int32 InDisplayedNumber)
+{
+	return PlayerIntelMap.SetScannedNumber(X, Y, InDisplayedNumber);
+}
+
+bool UGT_RunContext::GetTruthCellSnapshot(int32 X, int32 Y, FGT_TruthCell& OutCell) const
+{
+	OutCell = FGT_TruthCell();
+
+	const FGT_TruthCell* TruthCell = TruthMap.GetCellConst(X, Y);
+	if (!TruthCell)
+	{
+		return false;
+	}
+
+	OutCell = *TruthCell;
+	return true;
+}
+
+bool UGT_RunContext::MarkTruthCellEntered(int32 X, int32 Y)
+{
+	return TruthMap.MarkCellEntered(X, Y);
+}
+
+bool UGT_RunContext::MarkTruthCellResolved(int32 X, int32 Y)
+{
+	return TruthMap.MarkCellResolved(X, Y);
+}
+
+bool UGT_RunContext::StartDummyCombat(int32 X, int32 Y, FName RoomContentId, FName RoomRuleId, int32 InitialDummyHp)
+{
+	if (!IsRunActive() || !IsValidMapCoord(X, Y))
+	{
+		return false;
+	}
+
+	if (CombatRuntimeState.CombatX == X
+		&& CombatRuntimeState.CombatY == Y
+		&& CombatRuntimeState.bCombatResolved)
+	{
+		return true;
+	}
+
+	// Standard 模式: 该战斗房已打过(真怪已死)就不再重开。
+	if (MapMode == EGT_MapMode::Standard && DefeatedCombatRooms.Contains(FIntPoint(X, Y)))
+	{
+		return true;
+	}
+
+	CombatRuntimeState.bCombatActive = true;
+	CombatRuntimeState.bCombatResolved = false;
+	CombatRuntimeState.DummyEnemyHp = FMath::Max(1, InitialDummyHp);
+	CombatRuntimeState.CombatX = X;
+	CombatRuntimeState.CombatY = Y;
+	CombatRuntimeState.RoomContentId = RoomContentId;
+	CombatRuntimeState.RoomRuleId = RoomRuleId;
+	CombatRuntimeState.LastCombatResultId = NAME_None;
+	CombatRuntimeState.bStandardEnemy = false;
+	CombatRuntimeState.EnemyName.Reset();
+	CombatRuntimeState.EnemyPower = 0;
+
+	// Standard 模式: 用确定性规则生成真怪(对齐 Combat.TrySpawnEnemy), 替换 1 血 dummy。
+	if (MapMode == EGT_MapMode::Standard)
+	{
+		int32 AdjacentMineCount = 0;
+		TruthMap.CountAdjacentMines8(X, Y, AdjacentMineCount);
+		CombatRuntimeState.bStandardEnemy = true;
+		GT_CombatRules::MakeEnemyForCell(Seed, X, Y, AdjacentMineCount, CombatRuntimeState.EnemyName, CombatRuntimeState.EnemyPower);
+	}
+	return true;
+}
+
+bool UGT_RunContext::AttackDummyCombat(FGT_CombatRuntimeState& OutState)
+{
+	OutState = CombatRuntimeState;
+	if (!IsRunActive() || !CombatRuntimeState.bCombatActive || CombatRuntimeState.DummyEnemyHp <= 0)
+	{
+		return false;
+	}
+
+	// Standard 模式: 一击整场结算(对齐 Combat.FightEnemy):
+	// 战力 >= 怪则无伤胜; 不够则扣差值血, 怪同样死。存活才拿奖励(金币+战力成长)。
+	if (CombatRuntimeState.bStandardEnemy)
+	{
+		const int32 Damage = FMath::Max(0, CombatRuntimeState.EnemyPower - PlayerCombatState.Power);
+		PlayerCombatState.ApplyDamage(Damage);
+
+		CombatRuntimeState.DummyEnemyHp = 0;
+		CombatRuntimeState.bCombatActive = false;
+		CombatRuntimeState.bCombatResolved = true;
+		CombatRuntimeState.LastCombatResultId = GTCombatResult_Success;
+		DefeatedCombatRooms.AddUnique(FIntPoint(CombatRuntimeState.CombatX, CombatRuntimeState.CombatY));
+
+		if (PlayerCombatState.IsAlive())
+		{
+			RunInventory.AddPendingGold(GT_CombatRules::KillRewardGold(CombatRuntimeState.EnemyPower));
+			const int32 PowerGain = FMath::Min(GT_CombatRules::PowerGainPerKill, GT_CombatRules::PowerGainCap - PlayerCombatState.MonsterPowerBonus);
+			if (PowerGain > 0)
+			{
+				PlayerCombatState.Power += PowerGain;
+				PlayerCombatState.MonsterPowerBonus += PowerGain;
+			}
+		}
+
+		OutState = CombatRuntimeState;
+		return true;
+	}
+
+	CombatRuntimeState.DummyEnemyHp = FMath::Max(0, CombatRuntimeState.DummyEnemyHp - 1);
+	if (CombatRuntimeState.DummyEnemyHp == 0)
+	{
+		CombatRuntimeState.bCombatActive = false;
+		CombatRuntimeState.bCombatResolved = true;
+		CombatRuntimeState.LastCombatResultId = GTCombatResult_Success;
+	}
+
+	OutState = CombatRuntimeState;
+	return true;
+}
+
+bool UGT_RunContext::ResolveDummyCombat(FName ResultId, FGT_CombatRuntimeState& OutState)
+{
+	OutState = CombatRuntimeState;
+	if (!IsRunActive())
+	{
+		return false;
+	}
+
+	if (!CombatRuntimeState.bCombatActive && !CombatRuntimeState.bCombatResolved)
+	{
+		return false;
+	}
+
+	CombatRuntimeState.bCombatActive = false;
+	CombatRuntimeState.bCombatResolved = true;
+	CombatRuntimeState.LastCombatResultId = ResultId;
+	if (ResultId == GTCombatResult_Success)
+	{
+		CombatRuntimeState.DummyEnemyHp = 0;
+	}
+
+	OutState = CombatRuntimeState;
+	return true;
+}
+
+bool UGT_RunContext::GetCombatStateSnapshot(FGT_CombatRuntimeState& OutState) const
+{
+	OutState = CombatRuntimeState;
+	return CombatRuntimeState.bCombatActive
+		|| CombatRuntimeState.bCombatResolved
+		|| CombatRuntimeState.CombatX != INDEX_NONE
+		|| CombatRuntimeState.CombatY != INDEX_NONE;
+}
+
+bool UGT_RunContext::GenerateExtractSummary(int32 TotalEventCount)
+{
+	if (!IsRunSucceeded())
+	{
+		return false;
+	}
+
+	int32 PlayerX = 0;
+	int32 PlayerY = 0;
+	if (!TryGetPlayerPosition(PlayerX, PlayerY))
+	{
+		return false;
+	}
+
+	RunSummary = FGT_RunSummary();
+	RunSummary.bSummaryAvailable = true;
+	RunSummary.Outcome = GTRunSummaryOutcome_Extracted;
+	RunSummary.bExtracted = true;
+	RunSummary.FinalPlayerX = PlayerX;
+	RunSummary.FinalPlayerY = PlayerY;
+	RunSummary.TotalEventCount = TotalEventCount;
+	RunSummary.Seed = Seed;
+	RunSummary.MapWidth = MapWidth;
+	RunSummary.MapHeight = MapHeight;
+	RunSummary.bCombatActive = CombatRuntimeState.bCombatActive;
+	RunSummary.bCombatResolved = CombatRuntimeState.bCombatResolved;
+	RunSummary.LastCombatResultId = CombatRuntimeState.LastCombatResultId;
+	return true;
+}
+
+bool UGT_RunContext::GetRunSummarySnapshot(FGT_RunSummary& OutSummary) const
+{
+	OutSummary = RunSummary;
+	return RunSummary.bSummaryAvailable;
+}
+
+const FGT_RunInventoryState& UGT_RunContext::GetRunInventory() const
+{
+	return RunInventory;
+}
+
+const FGT_PlayerCombatState& UGT_RunContext::GetPlayerCombatState() const
+{
+	return PlayerCombatState;
+}
+
+EGT_MapMode UGT_RunContext::GetMapMode() const
+{
+	return MapMode;
+}
+
+bool UGT_RunContext::IsPlayerAlive() const
+{
+	return PlayerCombatState.IsAlive();
+}
+
+void UGT_RunContext::ApplyMineHitToPlayer(int32& OutDamage, bool& bOutDead)
+{
+	// 对齐 Combat.TakeMineHit: 雷伤 30(装备减免后最低 5, 减免待装备阶段)。
+	OutDamage = FMath::Max(GT_CombatRules::MineDamageFloor, GT_CombatRules::MineDamage);
+	PlayerCombatState.ApplyDamage(OutDamage);
+	bOutDead = !PlayerCombatState.IsAlive();
+}
+
+bool UGT_RunContext::MarkExploredForPressure(int32 X, int32 Y)
+{
+	const FIntPoint Coord(X, Y);
+	if (PressureExploredCells.Contains(Coord))
+	{
+		return false;
+	}
+	PressureExploredCells.Add(Coord);
+	return true;
+}
+
+bool UGT_RunContext::IsExploredForPressure(int32 X, int32 Y) const
+{
+	return PressureExploredCells.Contains(FIntPoint(X, Y));
+}
+
+UGT_RunContext::FProtocolPressureResult UGT_RunContext::AddProtocolPressure(int32 Amount)
+{
+	FProtocolPressureResult Result;
+
+	if (!IsRunActive())
+	{
+		Result.Level = ProtocolState.Level;
+		Result.Pressure = ProtocolState.Pressure;
+		return Result;
+	}
+
+	Amount = FMath::Max(0, Amount);
+	ProtocolState.LastDelta = Amount;
+	ProtocolState.Pressure = FMath::Clamp(ProtocolState.Pressure + Amount, 0, ProtocolState.MaxPressure);
+
+	const int32 PrevLevel = ProtocolState.Level;
+	ProtocolState.Level = GT_ProtocolRules::ComputeLevel(ProtocolState.Pressure);
+	ProtocolState.bLevelChanged = ProtocolState.Level != PrevLevel;
+
+	Result.Level = ProtocolState.Level;
+	Result.Pressure = ProtocolState.Pressure;
+	Result.bLevelChanged = ProtocolState.bLevelChanged;
+
+	// 满压强制败北(对齐协议 1 时的"撤离是建议, 不撤离是选择"): 压力到顶 = 信号中断。
+	if (ProtocolState.Pressure >= ProtocolState.MaxPressure)
+	{
+		Result.bForcedFail = MarkRunFailed(FName(TEXT("Protocol")));
+	}
+
+	return Result;
+}
+
+const FGT_ProtocolState& UGT_RunContext::GetProtocolState() const
+{
+	return ProtocolState;
+}
+
+int32 UGT_RunContext::GetProtocolLevel() const
+{
+	return ProtocolState.Level;
+}
+
+int32 UGT_RunContext::GetProtocolPressure() const
+{
+	return ProtocolState.Pressure;
+}
+
+int32 UGT_RunContext::GetProtocolMaxPressure() const
+{
+	return ProtocolState.MaxPressure;
+}
+
+float UGT_RunContext::GetProtocolPressureRatio() const
+{
+	return ProtocolState.GetPressureRatio();
+}
+
+bool UGT_RunContext::EvaluateSearchAtPlayer(FName& OutReason, bool& bOutIsChest) const
+{
+	OutReason = NAME_None;
+	bOutIsChest = false;
+
+	int32 PlayerX = 0;
+	int32 PlayerY = 0;
+	if (!IsRunActive() || !TryGetPlayerPosition(PlayerX, PlayerY))
+	{
+		OutReason = FName(TEXT("not_ready"));
+		return false;
+	}
+
+	const FGT_TruthCell* Cell = TruthMap.GetCellConst(PlayerX, PlayerY);
+	if (!Cell)
+	{
+		OutReason = FName(TEXT("not_ready"));
+		return false;
+	}
+
+	// 检查顺序对齐 Lua GetSearchState: 雷格 -> 出生点 -> 撤离点 -> 怪物房 -> 事件房 -> 已搜过。
+	if (Cell->bHasMine)
+	{
+		OutReason = FName(TEXT("unsafe"));
+		return false;
+	}
+
+	// 出生点固定 (0, 0)(InitializeFromSpec 放置), 不可搜刮。
+	if (PlayerX == 0 && PlayerY == 0)
+	{
+		OutReason = FName(TEXT("spawn"));
+		return false;
+	}
+
+	if (Cell->bIsExit)
+	{
+		OutReason = FName(TEXT("exit"));
+		return false;
+	}
+
+	if (Cell->RoomBaseType == EGT_RoomBaseType::Combat)
+	{
+		OutReason = FName(TEXT("monster"));
+		return false;
+	}
+
+	if (Cell->RoomBaseType == EGT_RoomBaseType::Event)
+	{
+		OutReason = FName(TEXT("event"));
+		return false;
+	}
+
+	if (RunInventory.IsRoomSearched(PlayerX, PlayerY))
+	{
+		OutReason = FName(TEXT("searched"));
+		return false;
+	}
+
+	// 普通房和宝箱房均可搜一次; 掉落概率/品质见 GT_LootRules(普通房 65% 掉 1 件, 宝箱 1-2 件)。
+	bOutIsChest = Cell->RoomBaseType == EGT_RoomBaseType::Chest;
+	return true;
+}
+
+bool UGT_RunContext::SearchCurrentRoom(FGT_SearchOutcome& OutOutcome)
+{
+	OutOutcome = FGT_SearchOutcome();
+
+	FName Reason = NAME_None;
+	bool bIsChest = false;
+	if (!EvaluateSearchAtPlayer(Reason, bIsChest))
+	{
+		OutOutcome.Status = Reason;
+		return false;
+	}
+
+	int32 PlayerX = 0;
+	int32 PlayerY = 0;
+	TryGetPlayerPosition(PlayerX, PlayerY);
+
+	int32 AdjacentMineCount = 0;
+	TruthMap.CountAdjacentMines8(PlayerX, PlayerY, AdjacentMineCount);
+
+	// 入账顺序对齐 Lua SearchCurrentRoom: 标记已搜 -> 待结算金币 -> parts -> 物品堆叠。
+	const FGT_SearchReward Reward = GT_LootRules::ComputeSearchReward(Seed, PlayerX, PlayerY, AdjacentMineCount, bIsChest);
+	RunInventory.MarkRoomSearched(PlayerX, PlayerY);
+	RunInventory.AddPendingGold(Reward.Gold);
+	RunInventory.Parts += Reward.Parts;
+	for (const FGT_ItemStack& Stack : Reward.Items)
+	{
+		RunInventory.AddCarriedItem(Stack.ItemId, Stack.Count, Stack.Source);
+	}
+
+	OutOutcome.bSearched = true;
+	OutOutcome.Status = FName(TEXT("searched"));
+	OutOutcome.Reward = Reward;
+	LastSearchOutcome = OutOutcome;
+	return true;
+}
+
+namespace
+{
+	const FName GTEventOption_Leave(TEXT("leave"));
+	const FName GTEventOption_BetSmall(TEXT("bet_small"));
+	const FName GTEventOption_OfferHp(TEXT("offer_hp"));
+	const FName GTEventOption_Disarm(TEXT("disarm"));
+	const FName GTEventOption_NoItem(TEXT("no_item"));
+	const FString GTEventSellPrefix(TEXT("sell:"));
+	const FName GTEventItemSource(TEXT("event"));
+
+	// 组一个事件选项视图(对齐 Lua EventSystem.option)。
+	FGT_EventOptionView MakeEventOption(
+		FName OptionId,
+		const FString& Label,
+		const FString& Description,
+		const FString& Cost,
+		const FString& Reward,
+		const FString& Risk,
+		bool bEnabled,
+		const FString& DisabledReason)
+	{
+		FGT_EventOptionView Option;
+		Option.OptionId = OptionId;
+		Option.Label = Label;
+		Option.Description = Description;
+		Option.CostText = Cost;
+		Option.RewardText = Reward;
+		Option.RiskText = Risk;
+		Option.bEnabled = bEnabled;
+		Option.DisabledReason = DisabledReason;
+		return Option;
+	}
+}
+
+const FGT_EventRoomState* UGT_RunContext::FindEventRoomState(int32 X, int32 Y) const
+{
+	return EventRoomStates.FindByPredicate([X, Y](const FGT_EventRoomState& State)
+	{
+		return State.X == X && State.Y == Y;
+	});
+}
+
+FGT_EventRoomState& UGT_RunContext::FindOrAddEventRoomState(int32 X, int32 Y)
+{
+	FGT_EventRoomState* Found = EventRoomStates.FindByPredicate([X, Y](const FGT_EventRoomState& State)
+	{
+		return State.X == X && State.Y == Y;
+	});
+	if (Found)
+	{
+		return *Found;
+	}
+
+	FGT_EventRoomState& NewState = EventRoomStates.AddDefaulted_GetRef();
+	NewState.X = X;
+	NewState.Y = Y;
+	return NewState;
+}
+
+bool UGT_RunContext::GetEventMenuAtPlayer(FGT_EventMenuView& OutMenu) const
+{
+	OutMenu = FGT_EventMenuView();
+
+	int32 PlayerX = 0;
+	int32 PlayerY = 0;
+	if (!IsRunActive() || MapMode != EGT_MapMode::Standard || !TryGetPlayerPosition(PlayerX, PlayerY))
+	{
+		return false;
+	}
+
+	const FGT_TruthCell* Cell = TruthMap.GetCellConst(PlayerX, PlayerY);
+	if (!Cell || Cell->RoomBaseType != EGT_RoomBaseType::Event)
+	{
+		return false;
+	}
+
+	const EGT_EventKind Kind = GT_EventRules::GetEventKindAt(Seed, PlayerX, PlayerY);
+	const FGT_EventRoomState* State = FindEventRoomState(PlayerX, PlayerY);
+	const bool bCompleted = State && State->bCompleted;
+	const int32 AltarStep = State ? State->AltarStep : 0;
+
+	OutMenu.bAvailable = true;
+	OutMenu.Kind = Kind;
+	OutMenu.bCompleted = bCompleted;
+	OutMenu.Title = GT_EventRules::GetEventTitle(Kind);
+	OutMenu.Description = bCompleted ? GT_EventRules::GetEventDoneText(Kind) : GT_EventRules::GetEventEnterText(Kind);
+
+	// 选项构建对齐 Lua EventSystem.GetOptions。
+	if (bCompleted)
+	{
+		OutMenu.Options.Add(MakeEventOption(GTEventOption_Leave,
+			TEXT("关闭"), TEXT("事件已完成。"), TEXT("无"), TEXT("无"), TEXT("无"), true, FString()));
+		return true;
+	}
+
+	switch (Kind)
+	{
+	case EGT_EventKind::Trader:
+	{
+		for (const FGT_ItemStack& Stack : RunInventory.CarriedItems)
+		{
+			if (Stack.Count <= 0)
+			{
+				continue;
+			}
+			const FGT_ItemCatalogEntry* Def = GT_ItemCatalog::FindItemDef(Stack.ItemId);
+			const FString DisplayName = Def ? Def->DisplayName : Stack.ItemId.ToString();
+			const int32 BaseValue = Def ? Def->Value : 0;
+			const int32 Price = GT_EventRules::GetTraderSaleValue(BaseValue);
+			OutMenu.Options.Add(MakeEventOption(
+				FName(*(GTEventSellPrefix + Stack.ItemId.ToString())),
+				FString::Printf(TEXT("%s｜估值 %d｜出售价 %d"), *DisplayName, BaseValue, Price),
+				TEXT("本轮可出售 1 件异常回收物。出售收益将作为已锁定收益保留。"),
+				FString::Printf(TEXT("%s x1"), *DisplayName),
+				FString::Printf(TEXT("已锁定 +%d"), Price),
+				TEXT("该物品会从回收包移除"),
+				Price > 0,
+				TEXT("该物品无可结算价值")));
+		}
+		if (OutMenu.Options.IsEmpty())
+		{
+			OutMenu.Options.Add(MakeEventOption(GTEventOption_NoItem,
+				TEXT("异常回收物不足。你不能出售空气，至少今天不行。"),
+				TEXT("异常回收物不足。你不能出售空气，至少今天不行。"),
+				TEXT("无"), TEXT("无"), TEXT("无"), false,
+				TEXT("异常回收物不足。你不能出售空气，至少今天不行。")));
+		}
+		OutMenu.Options.Add(MakeEventOption(GTEventOption_Leave,
+			TEXT("结束交易"), TEXT("暂不交易。"), TEXT("无"), TEXT("无"), TEXT("无"), true, FString()));
+		break;
+	}
+	case EGT_EventKind::Dice:
+	{
+		const bool bCanBet = RunInventory.PendingGold >= GT_EventRules::Gambler::Bet;
+		OutMenu.Options.Add(MakeEventOption(GTEventOption_BetSmall,
+			TEXT("下注 20 待结算币"),
+			TEXT("下注 20 待结算币。1-4 亏损，5 小赢，6 大赢。收益不会立即入账。"),
+			FString::Printf(TEXT("待结算币 %d"), GT_EventRules::Gambler::Bet),
+			TEXT("5:+20 / 6:+60"),
+			TEXT("1-4:-20"),
+			bCanBet,
+			TEXT("待结算币不足。狐狸不会借，赌徒也不会。")));
+		OutMenu.Options.Add(MakeEventOption(GTEventOption_Leave,
+			TEXT("离开"), TEXT("不下注。"), TEXT("无"), TEXT("无"), TEXT("无"), true, FString()));
+		break;
+	}
+	case EGT_EventKind::Altar:
+	{
+		const int32 Step = AltarStep + 1;
+		if (Step > GT_EventRules::Altar::StepCount)
+		{
+			OutMenu.Options.Add(MakeEventOption(GTEventOption_Leave,
+				TEXT("关闭"), TEXT("祭坛已经沉默。"), TEXT("无"), TEXT("无"), TEXT("无"), true, FString()));
+			break;
+		}
+		const int32 Cost = GT_EventRules::Altar::HpCosts[Step - 1];
+		const int32 RewardGold = GT_EventRules::Altar::RewardGold[Step - 1];
+		const bool bCanOffer = PlayerCombatState.Hp > Cost;
+		OutMenu.Options.Add(MakeEventOption(GTEventOption_OfferHp,
+			FString::Printf(TEXT("献祭生命 %d"), Cost),
+			TEXT("生命消耗逐次增加，奖励也会递增。不会额外增加协议压力。"),
+			FString::Printf(TEXT("生命 %d"), Cost),
+			FString::Printf(TEXT("待结算币 +%d / 异常回收物 x1"), RewardGold),
+			TEXT("当前生命不足则不可献祭"),
+			bCanOffer,
+			TEXT("当前生命不足，祭坛拒收。")));
+		OutMenu.Options.Add(MakeEventOption(GTEventOption_Leave,
+			TEXT("停止献祭"), TEXT("暂不献祭。"), TEXT("无"), TEXT("无"), TEXT("无"), true, FString()));
+		break;
+	}
+	case EGT_EventKind::Trap:
+	{
+		OutMenu.Options.Add(MakeEventOption(GTEventOption_Disarm,
+			TEXT("处理机关"),
+			TEXT("使用战斗力进行一次检定。"),
+			TEXT("一次检定"),
+			FString::Printf(TEXT("成功: 待结算币 +%d / 回收物 x2"), GT_EventRules::Trap::SuccessGold),
+			FString::Printf(TEXT("失败: 生命 -%d / 协议压力 +%d"), GT_EventRules::Trap::FailHpLoss, GT_EventRules::Trap::FailPressure),
+			true,
+			FString()));
+		OutMenu.Options.Add(MakeEventOption(GTEventOption_Leave,
+			TEXT("离开"), TEXT("不处理机关。"), TEXT("无"), TEXT("无"), TEXT("无"), true, FString()));
+		break;
+	}
+	default:
+		break;
+	}
+
+	return true;
+}
+
+bool UGT_RunContext::ExecuteEventOptionAtPlayer(FName OptionId, FGT_EventOutcome& OutOutcome)
+{
+	OutOutcome = FGT_EventOutcome();
+
+	FGT_EventMenuView Menu;
+	if (!GetEventMenuAtPlayer(Menu))
+	{
+		OutOutcome.Message = TEXT("这里没有可交互的事件。");
+		LastEventOutcome = OutOutcome;
+		return false;
+	}
+
+	int32 PlayerX = 0;
+	int32 PlayerY = 0;
+	TryGetPlayerPosition(PlayerX, PlayerY);
+	OutOutcome.Kind = Menu.Kind;
+
+	// 空选项 = 默认项(对齐 Lua EventSystem.Execute), 供 gt.ChooseEventOption 无参调用。
+	if (OptionId.IsNone() && !Menu.Options.IsEmpty())
+	{
+		OptionId = Menu.Options[0].OptionId;
+	}
+	OutOutcome.OptionId = OptionId;
+
+	if (OptionId == GTEventOption_Leave)
+	{
+		OutOutcome.bOk = true;
+		OutOutcome.Message = TEXT("事件交互取消。");
+		OutOutcome.bClosePanel = true;
+		LastEventOutcome = OutOutcome;
+		return true;
+	}
+
+	if (Menu.bCompleted)
+	{
+		OutOutcome.Message = TEXT("此处事件已完成。");
+		LastEventOutcome = OutOutcome;
+		return false;
+	}
+
+	const FGT_EventOptionView* Selected = Menu.Options.FindByPredicate([OptionId](const FGT_EventOptionView& Option)
+	{
+		return Option.OptionId == OptionId;
+	});
+	if (!Selected)
+	{
+		OutOutcome.Message = TEXT("未知事件选项。");
+		LastEventOutcome = OutOutcome;
+		return false;
+	}
+	if (!Selected->bEnabled)
+	{
+		OutOutcome.Message = Selected->DisabledReason.IsEmpty() ? TEXT("条件不足。") : Selected->DisabledReason;
+		LastEventOutcome = OutOutcome;
+		return false;
+	}
+
+	FGT_EventRoomState& State = FindOrAddEventRoomState(PlayerX, PlayerY);
+
+	// 按品质奖励 1 件回收物(对齐 Lua AddRewardItemByQuality: 进背包堆叠且 parts +1)。
+	auto GrantQualityItem = [this, &OutOutcome](EGT_ItemQuality Quality)
+	{
+		const FName ItemId = GT_ItemCatalog::GetQualityItemId(Quality);
+		if (ItemId.IsNone())
+		{
+			return;
+		}
+		RunInventory.AddCarriedItem(ItemId, 1, GTEventItemSource);
+		RunInventory.Parts += 1;
+		FGT_ItemStack& Granted = OutOutcome.GrantedItems.AddDefaulted_GetRef();
+		Granted.ItemId = ItemId;
+		Granted.Count = 1;
+		Granted.Source = GTEventItemSource;
+	};
+
+	switch (Menu.Kind)
+	{
+	case EGT_EventKind::Trader:
+	{
+		// 选项 id 形如 "sell:<itemId>"。
+		const FString OptionText = OptionId.ToString();
+		if (!OptionText.StartsWith(GTEventSellPrefix))
+		{
+			OutOutcome.Message = TEXT("未知交易项。");
+			LastEventOutcome = OutOutcome;
+			return false;
+		}
+		const FName SellItemId(*OptionText.Mid(GTEventSellPrefix.Len()));
+		FGT_ItemStack* Stack = RunInventory.CarriedItems.FindByPredicate([SellItemId](const FGT_ItemStack& Existing)
+		{
+			return Existing.ItemId == SellItemId;
+		});
+		if (!Stack || Stack->Count <= 0)
+		{
+			OutOutcome.Message = TEXT("异常回收物不足。你不能出售空气，至少今天不行。");
+			LastEventOutcome = OutOutcome;
+			return false;
+		}
+
+		const int32 Price = GT_EventRules::GetTraderSaleValue(GT_ItemCatalog::GetItemValue(SellItemId));
+		RunInventory.AddSafeGold(Price);
+		// 对齐 Lua RemoveTradableItem: 物品 -1, parts 同步 -1。
+		Stack->Count -= 1;
+		if (Stack->Count <= 0)
+		{
+			RunInventory.CarriedItems.RemoveAll([SellItemId](const FGT_ItemStack& Existing)
+			{
+				return Existing.ItemId == SellItemId;
+			});
+		}
+		RunInventory.Parts = FMath::Max(0, RunInventory.Parts - 1);
+		State.bCompleted = true;
+
+		OutOutcome.bOk = true;
+		OutOutcome.SafeGoldDelta = Price;
+		OutOutcome.SoldItemId = SellItemId;
+		OutOutcome.bCompleted = true;
+		OutOutcome.bClosePanel = true;
+		OutOutcome.Message = FString::Printf(TEXT("交易完成。公司不会知道，大概。已锁定 +%d。"), Price);
+		break;
+	}
+	case EGT_EventKind::Dice:
+	{
+		if (RunInventory.PendingGold < GT_EventRules::Gambler::Bet)
+		{
+			OutOutcome.Message = TEXT("待结算币不足。狐狸不会借，赌徒也不会。");
+			LastEventOutcome = OutOutcome;
+			return false;
+		}
+		// 骰点掺入下注前的待结算币(对齐 Lua)。
+		const int32 Roll = GT_EventRules::RollDiceAt(Seed, PlayerX, PlayerY, RunInventory.PendingGold);
+		State.bCompleted = true;
+		OutOutcome.bOk = true;
+		OutOutcome.bCompleted = true;
+		OutOutcome.bClosePanel = true;
+		if (Roll <= GT_EventRules::Gambler::LoseMaxRoll)
+		{
+			RunInventory.AddPendingGold(-GT_EventRules::Gambler::Bet);
+			OutOutcome.PendingGoldDelta = -GT_EventRules::Gambler::Bet;
+			OutOutcome.Message = FString::Printf(TEXT("骰点 %d。下注失败，待结算 -20。"), Roll);
+		}
+		else if (Roll == GT_EventRules::Gambler::BigWinRoll)
+		{
+			RunInventory.AddPendingGold(GT_EventRules::Gambler::BigWinNet);
+			OutOutcome.PendingGoldDelta = GT_EventRules::Gambler::BigWinNet;
+			OutOutcome.Message = TEXT("骰点 6。大赢一把，待结算 +60。");
+		}
+		else
+		{
+			RunInventory.AddPendingGold(GT_EventRules::Gambler::SmallWinNet);
+			OutOutcome.PendingGoldDelta = GT_EventRules::Gambler::SmallWinNet;
+			OutOutcome.Message = TEXT("骰点 5。小赢一把，待结算 +20。");
+		}
+		break;
+	}
+	case EGT_EventKind::Altar:
+	{
+		const int32 Step = State.AltarStep + 1;
+		if (Step > GT_EventRules::Altar::StepCount)
+		{
+			State.bCompleted = true;
+			OutOutcome.Message = TEXT("祭坛已完成全部回应。");
+			LastEventOutcome = OutOutcome;
+			return false;
+		}
+		const int32 Cost = GT_EventRules::Altar::HpCosts[Step - 1];
+		if (PlayerCombatState.Hp <= Cost)
+		{
+			OutOutcome.Message = TEXT("当前生命不足，祭坛拒收。");
+			LastEventOutcome = OutOutcome;
+			return false;
+		}
+
+		State.AltarStep = Step;
+		// 检定保证 Hp > Cost, 献祭后至少剩 1 点, 不会致死。
+		PlayerCombatState.Hp -= Cost;
+		const int32 RewardGold = GT_EventRules::Altar::RewardGold[Step - 1];
+		RunInventory.AddPendingGold(RewardGold);
+		GrantQualityItem(GT_EventRules::Altar::RewardQuality[Step - 1]);
+
+		const bool bAltarDone = Step >= GT_EventRules::Altar::StepCount;
+		State.bCompleted = bAltarDone;
+		OutOutcome.bOk = true;
+		OutOutcome.HpDelta = -Cost;
+		OutOutcome.PendingGoldDelta = RewardGold;
+		OutOutcome.bCompleted = bAltarDone;
+		OutOutcome.bClosePanel = false;
+		OutOutcome.Message = FString::Printf(TEXT("祭坛响应：生命 -%d，待结算 +%d，异常回收物 +1。"), Cost, RewardGold);
+		break;
+	}
+	case EGT_EventKind::Trap:
+	{
+		State.bCompleted = true;
+		OutOutcome.bOk = true;
+		OutOutcome.bCompleted = true;
+		OutOutcome.bClosePanel = true;
+		const int32 EffectivePower = PlayerCombatState.Power + PlayerCombatState.MonsterPowerBonus;
+		if (EffectivePower >= GT_EventRules::Trap::PowerRequirement)
+		{
+			RunInventory.AddPendingGold(GT_EventRules::Trap::SuccessGold);
+			GrantQualityItem(EGT_ItemQuality::Common);
+			GrantQualityItem(EGT_ItemQuality::Low);
+			OutOutcome.PendingGoldDelta = GT_EventRules::Trap::SuccessGold;
+			OutOutcome.Message = FString::Printf(
+				TEXT("机关处理成功: 待结算币 +%d，回收物 +2。"), GT_EventRules::Trap::SuccessGold);
+		}
+		else
+		{
+			PlayerCombatState.ApplyDamage(GT_EventRules::Trap::FailHpLoss);
+			AddProtocolPressure(GT_EventRules::Trap::FailPressure);
+			OutOutcome.HpDelta = -GT_EventRules::Trap::FailHpLoss;
+			OutOutcome.PressureDelta = GT_EventRules::Trap::FailPressure;
+			OutOutcome.Message = FString::Printf(
+				TEXT("机关失控: 生命 -%d，协议压力 +%d。"), GT_EventRules::Trap::FailHpLoss, GT_EventRules::Trap::FailPressure);
+		}
+		break;
+	}
+	default:
+		OutOutcome.Message = TEXT("未知事件类型。");
+		LastEventOutcome = OutOutcome;
+		return false;
+	}
+
+	// 事件扣血可能致死(对齐 Lua: Combat.hp <= 0 -> 失败结算)。
+	if (!PlayerCombatState.IsAlive())
+	{
+		MarkRunFailed(FName(TEXT("Event")));
+	}
+
+	LastEventOutcome = OutOutcome;
+	return OutOutcome.bOk;
 }

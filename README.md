@@ -1,25 +1,144 @@
-# 灰尾回收
+# Game / Graytail
 
-扫雷、搜刮，然后尽量完整地撤离。
+Graytail is a minesweeper-style extraction game prototype. The repository now preserves the original Lua / UrhoX prototype and carries the Unreal Engine implementation under `UE/Graytail`.
 
-你是一名灰尾临时回收员，在封锁区中依靠区域扫描图判断雷险，搜刮异常回收物，清理或绕开异常体，并在五四三二一撤离协议恶化前找到撤离信标。
+## Current Active Branch
 
-## 当前 Demo 核心
+`feature/editor-playable-prototype`
 
-- 看数字：数字表示周围 8 个区域中的雷险数量。
-- 做判断：异常体、物资、事件和撤离信标不计入雷险数字。
-- 拿物资：搜索、物资箱、事件会获得待结算币或异常回收物。
-- 找信标：成功撤离后，待结算币入账，物资进入后勤仓库。
-- 控风险：失败时待结算币丢失，仅保留已锁定收益和有限物资。
+## Current Milestones
 
-## 核心文档
+| Milestone | Tag | Status |
+|---|---|---|
+| Lua / UrhoX Prototype Baseline | `lua-prototype-baseline` | Preserved |
+| UE Foundation | `ue-foundation-validated` | Validated |
+| Gameplay Logic MVP | `gameplay-logic-mvp` | Validated |
+| Editor Debug Entry Points | `editor-debug-entrypoints` | Validated |
+| Map / Room Rule Boundary Preparation | `map-room-rule-boundary` | Validated |
+| Editor Manual Play Validation | `editor-manual-play-validation` | Validated |
+| Room Content / Rule Dispatch | `room-content-rule-dispatch` | Validated |
+| Event / Combat Placeholder Interactions | `event-combat-placeholder-interactions` | Validated |
+| Editor Playable Prototype V1 | `editor-playable-prototype-v1` | Validated |
+| Prototype V1 Playability Polish | `prototype-v1-playability-polish` | Validated |
+| Room Content / Rule Registry Minimal | `room-content-rule-registry-minimal` | Validated |
+| Event Option / Combat Result Data Minimal | `event-option-combat-result-data-minimal` | Validated |
+| Minimal Combat Dummy State | `minimal-combat-dummy-state` | Validated |
+| Run Summary / Extract Summary Minimal | `run-extract-summary-minimal` | Validated |
 
-- `docs/game-design.md`
-- `docs/dev-plan.md`
+## Current Validated Scope
 
-## 核心逻辑
+- Lua / UrhoX prototype is preserved under `scripts/`, `assets/`, `.project/`, `.cli/`, and `game_material/`.
+- Unreal Engine project exists under `UE/Graytail`.
+- Gameplay Logic MVP is implemented.
+- Editor-facing debug manual entrypoints are implemented.
+- Map / Room Rule Boundary Preparation is implemented without expanding formal gameplay.
+- Editor Manual Play Validation console commands are implemented.
+- Room Content / Rule Dispatch placeholder rooms are wired into resolve and manual play observation paths.
+- Event / Combat placeholder interactions can be completed through console commands without formal gameplay systems.
+- Prototype V1 Playability Polish adds help, status, room detail, and one-shot demo console commands.
+- Room Content / Rule Registry Minimal adds lightweight C++ definitions for placeholder room content and rules.
+- Event Option / Combat Result Data Minimal adds lightweight C++ Event option and Combat result definitions.
+- `gt.ChooseEventOption` and `gt.ResolveCombat` validate through the registry before resolving placeholder rooms.
+- Minimal Combat Dummy State adds `gt.Attack`, starts dummy combat with HP 1, and resolves combat when dummy HP reaches 0.
+- Run Summary / Extract Summary Minimal adds `gt.Summary` and successful Extract summary output.
+- Runtime smoke is `163/163 pass`; the previous `151/151` behavior remains covered.
+- Latest repository tracking document: `docs/PROJECT_CONTENT_TRACKING.md`.
 
-- `scripts/systems/Minefield.lua`
-- `scripts/systems/ExtractionRun.lua`
-- `scripts/systems/RunInventory.lua`
-- `scripts/scenes/DungeonRoom.lua`
+## Validation Commands
+
+Build:
+
+```powershell
+& "D:\UE\UE_5.7\Engine\Binaries\ThirdParty\DotNet\8.0.412\win-x64\dotnet.exe" "D:\UE\UE_5.7\Engine\Binaries\DotNET\UnrealBuildTool\UnrealBuildTool.dll" GraytailEditor Win64 Development -Project="<repo>\UE\Graytail\Graytail.uproject" -WaitMutex -FromMsBuild
+```
+
+Smoke:
+
+```powershell
+& "D:\UE\UE_5.7\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "<repo>\UE\Graytail\Graytail.uproject" -run=GT_RuntimeSmokeRunner -unattended -nop4 -nosplash -NoShaderCompile -log
+```
+
+Expected smoke result:
+
+```text
+Overall=Pass
+Pass=163
+Fail=0
+Count=163
+```
+
+## Important Documents
+
+Start with `docs/DOCUMENT_INDEX.md`.
+
+Current status documents:
+
+- `docs/editor-playable-prototype-v2.md`
+- `docs/PROJECT_CONTENT_TRACKING.md`
+- `docs/EVENT_OPTION_COMBAT_RESULT_DATA_STATUS.md`
+- `docs/ROOM_CONTENT_RULE_REGISTRY_STATUS.md`
+- `docs/PROTOTYPE_V1_PLAYABILITY_POLISH_STATUS.md`
+- `docs/EVENT_COMBAT_PLACEHOLDER_INTERACTIONS_STATUS.md`
+- `docs/ROOM_CONTENT_RULE_DISPATCH_STATUS.md`
+- `docs/EDITOR_MANUAL_PLAY_VALIDATION_STATUS.md`
+- `docs/MAP_ROOM_RULE_BOUNDARY_STATUS.md`
+- `docs/EDITOR_PLAYABLE_PROTOTYPE_STATUS.md`
+- `docs/GAMEPLAY_LOGIC_MVP_STATUS.md`
+- `docs/UE_FOUNDATION_STATUS.md`
+
+Architecture and design references:
+
+- `docs/REFACTOR_ARCHITECTURE.md`
+- `docs/UE_REFACTOR_IMPLEMENTATION.md`
+- `docs/可行性判断.md`
+- `docs/难度判断.md`
+
+## Explicitly Not Implemented Yet
+
+- Player-facing UI / UMG
+- Blueprint assets
+- Input binding
+- Map rendering
+- Loot / inventory gameplay
+- Combat gameplay
+- Event room effects
+- Reward settlement
+- Save / Load disk flow
+- Effect interpreter
+- ModifierSystem
+- Random map generation
+- Formal Combat / Event room gameplay
+- Formal Event option selection
+- Formal Event option effect execution
+- Combat actor/enemy systems
+- Meta progression
+
+## Editor Manual Console Commands
+
+- `gt.StartRun [Seed] [Width Height]`
+- `gt.Help`
+- `gt.Commands`
+- `gt.Status`
+- `gt.Room`
+- `gt.Move X Y`
+- `gt.Scan X Y`
+- `gt.Extract`
+- `gt.Snapshot`
+- `gt.Minimap`
+- `gt.Events`
+- `gt.ChooseEventOption [OptionId]`
+- `gt.ResolveCombat [Result]`
+- `gt.Attack`
+- `gt.Summary`
+- `gt.RunDemo`
+
+Current placeholder data ids:
+
+- `gt.ChooseEventOption Event_DebugOption_Continue`
+- `gt.ChooseEventOption Event_DebugOption_Scout`
+- `gt.ResolveCombat Combat_DebugResult_Success`
+- `gt.ResolveCombat Combat_DebugResult_Retreat`
+
+## Next Suggested Stage
+
+Review and tag the Editor Playable Prototype V2 documentation milestone, then fast-forward `feature/editor-playable-prototype` to the documentation commit without adding gameplay, UI, asset, reward, inventory, or save/load systems.

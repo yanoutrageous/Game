@@ -1,0 +1,112 @@
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Blueprint/UserWidget.h"
+#include "GT_RoomViewWidget.generated.h"
+
+class UBorder;
+class UCanvasPanel;
+class UImage;
+class USizeBox;
+class UTextBlock;
+class UTexture2D;
+class UGT_DebugSubsystem;
+class UGT_RunContext;
+
+// 2D 房间视图(对齐 Lua DungeonRoom.lua / TapTap 版):
+// 一屏一个房间, 人物 WASD 实时行走, 对准四边的门走出边界 -> 发 Move 命令切相邻格。
+// 表现层薄壳: 只发命令/读状态, 移动合法性/踩雷/战斗全由内核裁决。
+UCLASS()
+class GRAYTAIL_API UGT_RoomViewWidget : public UUserWidget
+{
+	GENERATED_BODY()
+
+public:
+	virtual TSharedRef<SWidget> RebuildWidget() override;
+	virtual void NativeConstruct() override;
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
+	virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
+	virtual FReply NativeOnKeyUp(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
+	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+	virtual bool NativeSupportsKeyboardFocus() const override { return true; }
+
+	// 记账 WASD 持键状态。焦点在弹窗/按钮上时由 HUD 把冒泡事件转发过来,
+	// 保证状态始终与物理按键一致(关弹窗后按住的键立刻续走, 不卡键不断手感)。
+	void SetHeldMovementKey(const FKey& Key, bool bDown);
+
+	// 播放开箱金光 + 奖励飘字(对齐 Lua TriggerChestOpen/chestRewardBurst)。
+	void PlayChestRewardBurst(int32 Gold, int32 Parts);
+
+	// 房间状态变化后(开局/外部移动)由 HUD 调用, 重读当前格并重绘。
+	void SyncToCurrentCell(bool bCenterPlayer);
+
+	// WASD 过门移动成功后通知 HUD 刷新信息面板(不含房间视图自身)。
+	FSimpleDelegate OnRoomChanged;
+
+	// F 键搜索/开箱(对齐原版快捷键), 由 HUD 绑定到 OnSearch。
+	FSimpleDelegate OnSearchRequested;
+
+	// M 键打开全屏区域扫描图, 由 HUD 绑定到 OpenMapOverlay。
+	FSimpleDelegate OnMapRequested;
+
+	// E 键撤离(对齐原版底栏), 由 HUD 绑定到 OnExtract。
+	FSimpleDelegate OnExtractRequested;
+
+	// T 键处理事件(对齐原版 [T] 交互), 由 HUD 绑定到 OpenEventPanel。
+	FSimpleDelegate OnEventRequested;
+
+private:
+	void BuildWidgetTree();
+	UGT_DebugSubsystem* GetDebugSubsystem() const;
+	const UGT_RunContext* GetRunContext() const;
+	UTexture2D* LoadTextureAsset(const FString& AssetPath);
+	UTexture2D* GetWalkFrame(int32 DirX, int32 DirY, int32 FrameIndex);
+	UTexture2D* GetIdleFrame(int32 DirX, int32 DirY);
+	void TryCrossDoor(int32 DirX, int32 DirY);
+	void UpdatePlayerImagePosition();
+	void RefreshRoomDecor();
+	void UpdateChestBurstAnim(float DeltaTime);
+
+	UPROPERTY(Transient) UCanvasPanel* RoomCanvas = nullptr;
+	UPROPERTY(Transient) UBorder* FloorBorder = nullptr;
+	UPROPERTY(Transient) UImage* DoorImages[4] = {};
+	UPROPERTY(Transient) UImage* GlowOuter = nullptr;
+	UPROPERTY(Transient) UImage* GlowInner = nullptr;
+	UPROPERTY(Transient) UImage* ChestImage = nullptr;
+	UPROPERTY(Transient) UImage* GoldPileImage = nullptr;
+	UPROPERTY(Transient) UImage* PartsPileImage = nullptr;
+	UPROPERTY(Transient) UTextBlock* ChestCaption = nullptr;
+	// 事件房 NPC(对齐 Lua 原版简单图形): 圆身体+顶部标识+眼睛+名字+头顶 T 提示, 仅 Standard 事件房可见。
+	UPROPERTY(Transient) UImage* EventBodyImage = nullptr;
+	UPROPERTY(Transient) UImage* EventMarkerImage = nullptr;
+	UPROPERTY(Transient) UImage* EventEyeLeft = nullptr;
+	UPROPERTY(Transient) UImage* EventEyeRight = nullptr;
+	UPROPERTY(Transient) UTextBlock* EventNameLabel = nullptr;
+	UPROPERTY(Transient) UTextBlock* EventCaption = nullptr;
+	UPROPERTY(Transient) UImage* BurstGoldImage = nullptr;
+	UPROPERTY(Transient) UTextBlock* BurstGoldText = nullptr;
+	UPROPERTY(Transient) UImage* BurstPartsImage = nullptr;
+	UPROPERTY(Transient) UTextBlock* BurstPartsText = nullptr;
+	UPROPERTY(Transient) UImage* EnemyImage = nullptr;
+	UPROPERTY(Transient) UImage* PlayerImage = nullptr;
+
+	// 贴图资产缓存(防 GC): key = /Game 包路径。
+	UPROPERTY(Transient) TMap<FString, UTexture2D*> TextureCache;
+
+	// 房间内归一化坐标(0-1), 对齐 Lua playerPos。
+	FVector2D PlayerPos = FVector2D(0.5, 0.5);
+	FVector2D HeldInput = FVector2D::ZeroVector;
+	bool HeldKeys[4] = {};   // W A S D
+	float WalkAnimTime = 0.f;
+	int32 LastDirX = 0;
+	int32 LastDirY = 1;       // 默认朝下
+
+	// 开箱演出计时(对齐 Lua chestOpenTimer/chestRewardBurst)。
+	float ChestOpenTimer = 0.f;
+	float RewardBurstTimer = 0.f;
+	// 过门被内核拒绝(地图边界等)后的重试冷却: 冷却内按撞墙处理, 防止逐帧重试抽搐。
+	float CrossRetryCooldown = 0.f;
+	int32 BurstParts = 0;
+	int32 CurrentCellX = -1;
+	int32 CurrentCellY = -1;
+};

@@ -9,7 +9,31 @@ enum class EGT_RoomBaseType : uint8
 	Unknown UMETA(DisplayName = "Unknown"),
 	Normal UMETA(DisplayName = "Normal"),
 	Mine UMETA(DisplayName = "Mine"),
-	Exit UMETA(DisplayName = "Exit")
+	Exit UMETA(DisplayName = "Exit"),
+	Event UMETA(DisplayName = "Event"),
+	Combat UMETA(DisplayName = "Combat"),
+	Chest UMETA(DisplayName = "Chest")
+};
+
+UENUM(BlueprintType)
+enum class EGT_MapMode : uint8
+{
+	Unknown UMETA(DisplayName = "Unknown"),
+	BasicDebug UMETA(DisplayName = "Basic Debug"),
+	Standard UMETA(DisplayName = "Standard")
+};
+
+// 难度档位: 由 地图尺寸 × 撤离点数量 决定(撤离点越少越难)。对齐 docs/难度判断.md。
+UENUM(BlueprintType)
+enum class EGT_Difficulty : uint8
+{
+	Tutorial UMETA(DisplayName = "Tutorial (7x7, 2 exits)"),
+	Easy UMETA(DisplayName = "Easy (10x10, 3 exits)"),
+	Standard UMETA(DisplayName = "Standard (10x10, 2 exits)"),
+	Hard UMETA(DisplayName = "Hard (10x10, 1 exit)"),
+	Veteran UMETA(DisplayName = "Veteran (13x13, 4 exits)"),
+	Elite UMETA(DisplayName = "Elite (13x13, 2 exits)"),
+	Nightmare UMETA(DisplayName = "Nightmare (13x13, 1 exit)")
 };
 
 UENUM(BlueprintType)
@@ -52,11 +76,21 @@ struct GRAYTAIL_API FGT_TruthCell
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Map")
 	FName RoomDefId = NAME_None;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Map")
+	FName RoomContentId = NAME_None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Map")
+	FName RoomRuleId = NAME_None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Map")
+	FName RoomInstanceId = NAME_None;
+
 	FGT_TruthCell() = default;
 
 	FGT_TruthCell(int32 InX, int32 InY)
 		: X(InX)
 		, Y(InY)
+		, RoomBaseType(EGT_RoomBaseType::Normal)
 	{
 	}
 };
@@ -124,6 +158,188 @@ struct GRAYTAIL_API FGT_TruthMap
 	{
 		const int32 Index = ToIndex(X, Y);
 		return Cells.IsValidIndex(Index) ? &Cells[Index] : nullptr;
+	}
+
+	bool MarkCellEntered(int32 X, int32 Y)
+	{
+		FGT_TruthCell* Cell = GetCell(X, Y);
+		if (!Cell)
+		{
+			return false;
+		}
+
+		Cell->bTriggered = true;
+		return true;
+	}
+
+	bool MarkCellResolved(int32 X, int32 Y)
+	{
+		FGT_TruthCell* Cell = GetCell(X, Y);
+		if (!Cell)
+		{
+			return false;
+		}
+
+		Cell->bResolved = true;
+		return true;
+	}
+
+	bool IsCellResolved(int32 X, int32 Y) const
+	{
+		const FGT_TruthCell* Cell = GetCellConst(X, Y);
+		return Cell ? Cell->bResolved : false;
+	}
+
+	bool IsCellTriggered(int32 X, int32 Y) const
+	{
+		const FGT_TruthCell* Cell = GetCellConst(X, Y);
+		return Cell ? Cell->bTriggered : false;
+	}
+
+	bool SetRoomBaseType(int32 X, int32 Y, EGT_RoomBaseType InRoomBaseType)
+	{
+		FGT_TruthCell* Cell = GetCell(X, Y);
+		if (!Cell)
+		{
+			return false;
+		}
+
+		Cell->RoomBaseType = InRoomBaseType;
+		Cell->bHasMine = InRoomBaseType == EGT_RoomBaseType::Mine;
+		Cell->bIsExit = InRoomBaseType == EGT_RoomBaseType::Exit;
+		return true;
+	}
+
+	bool SetMine(int32 X, int32 Y, bool bInHasMine)
+	{
+		FGT_TruthCell* Cell = GetCell(X, Y);
+		if (!Cell)
+		{
+			return false;
+		}
+
+		Cell->bHasMine = bInHasMine;
+		if (bInHasMine)
+		{
+			Cell->bIsExit = false;
+			Cell->RoomBaseType = EGT_RoomBaseType::Mine;
+		}
+		else
+		{
+			Cell->RoomBaseType = EGT_RoomBaseType::Normal;
+		}
+		return true;
+	}
+
+	bool SetExit(int32 X, int32 Y, bool bInIsExit)
+	{
+		FGT_TruthCell* Cell = GetCell(X, Y);
+		if (!Cell)
+		{
+			return false;
+		}
+
+		Cell->bIsExit = bInIsExit;
+		if (bInIsExit)
+		{
+			Cell->bHasMine = false;
+			Cell->RoomBaseType = EGT_RoomBaseType::Exit;
+		}
+		else
+		{
+			Cell->RoomBaseType = EGT_RoomBaseType::Normal;
+		}
+		return true;
+	}
+
+	bool IsMine(int32 X, int32 Y) const
+	{
+		const FGT_TruthCell* Cell = GetCellConst(X, Y);
+		return Cell ? Cell->bHasMine : false;
+	}
+
+	bool IsExit(int32 X, int32 Y) const
+	{
+		const FGT_TruthCell* Cell = GetCellConst(X, Y);
+		return Cell ? Cell->bIsExit : false;
+	}
+
+	bool GetAdjacentCoords4(int32 X, int32 Y, TArray<FIntPoint>& OutCoords) const
+	{
+		OutCoords.Reset();
+		if (!IsValidCoord(X, Y))
+		{
+			return false;
+		}
+
+		static const FIntPoint Offsets[] = {
+			FIntPoint(1, 0),
+			FIntPoint(-1, 0),
+			FIntPoint(0, 1),
+			FIntPoint(0, -1)
+		};
+
+		for (const FIntPoint& Offset : Offsets)
+		{
+			const int32 AdjacentX = X + Offset.X;
+			const int32 AdjacentY = Y + Offset.Y;
+			if (IsValidCoord(AdjacentX, AdjacentY))
+			{
+				OutCoords.Add(FIntPoint(AdjacentX, AdjacentY));
+			}
+		}
+
+		return true;
+	}
+
+	bool GetAdjacentCoords8(int32 X, int32 Y, TArray<FIntPoint>& OutCoords) const
+	{
+		OutCoords.Reset();
+		if (!IsValidCoord(X, Y))
+		{
+			return false;
+		}
+
+		for (int32 DeltaY = -1; DeltaY <= 1; ++DeltaY)
+		{
+			for (int32 DeltaX = -1; DeltaX <= 1; ++DeltaX)
+			{
+				if (DeltaX == 0 && DeltaY == 0)
+				{
+					continue;
+				}
+
+				const int32 AdjacentX = X + DeltaX;
+				const int32 AdjacentY = Y + DeltaY;
+				if (IsValidCoord(AdjacentX, AdjacentY))
+				{
+					OutCoords.Add(FIntPoint(AdjacentX, AdjacentY));
+				}
+			}
+		}
+
+		return true;
+	}
+
+	bool CountAdjacentMines8(int32 X, int32 Y, int32& OutMineCount) const
+	{
+		OutMineCount = 0;
+
+		TArray<FIntPoint> AdjacentCoords;
+		if (!GetAdjacentCoords8(X, Y, AdjacentCoords))
+		{
+			return false;
+		}
+
+		for (const FIntPoint& Coord : AdjacentCoords)
+		{
+			if (IsMine(Coord.X, Coord.Y))
+			{
+				++OutMineCount;
+			}
+		}
+
+		return true;
 	}
 };
 
@@ -234,5 +450,48 @@ struct GRAYTAIL_API FGT_IntelMap
 	{
 		const int32 Index = ToIndex(X, Y);
 		return Cells.IsValidIndex(Index) ? &Cells[Index] : nullptr;
+	}
+
+	bool MarkVisible(int32 X, int32 Y, bool bInVisible)
+	{
+		FGT_IntelCell* Cell = GetCell(X, Y);
+		if (!Cell)
+		{
+			return false;
+		}
+
+		Cell->bVisible = bInVisible;
+		return true;
+	}
+
+	bool MarkExplored(int32 X, int32 Y)
+	{
+		FGT_IntelCell* Cell = GetCell(X, Y);
+		if (!Cell)
+		{
+			return false;
+		}
+
+		Cell->bVisible = true;
+		Cell->bExplored = true;
+		Cell->bScanned = false;
+		Cell->ReliabilityState = EGT_IntelReliabilityState::Accurate;
+		return true;
+	}
+
+	bool SetScannedNumber(int32 X, int32 Y, int32 InDisplayedNumber)
+	{
+		FGT_IntelCell* Cell = GetCell(X, Y);
+		if (!Cell)
+		{
+			return false;
+		}
+
+		Cell->bVisible = true;
+		Cell->bExplored = true;
+		Cell->bScanned = true;
+		Cell->DisplayedNumber = InDisplayedNumber;
+		Cell->ReliabilityState = EGT_IntelReliabilityState::Accurate;
+		return true;
 	}
 };

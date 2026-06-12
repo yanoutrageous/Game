@@ -18,6 +18,39 @@ struct GRAYTAIL_API FGT_GameEvent
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Event")
 	FName SourceSystem = NAME_None;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Event")
+	FName SourceActorId = NAME_None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Event")
+	FName TargetActorId = NAME_None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Event")
+	int32 X = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Event")
+	int32 Y = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Event")
+	FIntPoint RoomCoord = FIntPoint::ZeroValue;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Event")
+	FName ContentId = NAME_None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Event")
+	FName RuleId = NAME_None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Event")
+	int32 NumericValue = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Event")
+	int32 SequenceId = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Event")
+	FString PayloadText;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Event")
+	bool bSuccess = false;
+
 	FGT_GameEvent()
 		: EventId(FGuid::NewGuid())
 	{
@@ -43,6 +76,14 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Graytail|Event")
 	int32 GetEventCount() const;
+
+	UFUNCTION(BlueprintPure, Category = "Graytail|Event")
+	bool HasEventOfType(FName EventType) const;
+
+	UFUNCTION(BlueprintPure, Category = "Graytail|Event")
+	int32 CountEventsOfType(FName EventType) const;
+
+	void GetEventTypeCounts(TMap<FName, int32>& OutCounts) const;
 
 	const TArray<FGT_GameEvent>& GetEventHistory() const;
 

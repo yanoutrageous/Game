@@ -18,6 +18,18 @@ struct GRAYTAIL_API FGT_Command
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Command")
 	FName SourceActorId = NAME_None;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Command")
+	FName TargetActorId = NAME_None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Command")
+	int32 TargetX = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Command")
+	int32 TargetY = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Command")
+	FName PayloadId = NAME_None;
+
 	FGT_Command()
 		: CommandId(FGuid::NewGuid())
 	{

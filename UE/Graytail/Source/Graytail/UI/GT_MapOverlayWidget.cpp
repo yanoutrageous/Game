@@ -97,6 +97,18 @@ void UGT_MapOverlayWidget::BuildWidgetTree()
 		GridSlot->SetHorizontalAlignment(HAlign_Center);
 	}
 
+	// 操作被拒提示(战斗禁回传等), 默认隐藏占位(不顶动布局)。
+	StatusText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+	StatusText->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 13));
+	StatusText->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(255, 110, 100, 230))));
+	StatusText->SetJustification(ETextJustify::Center);
+	StatusText->SetVisibility(ESlateVisibility::Hidden);
+	if (UVerticalBoxSlot* StatusSlot = CenterBox->AddChildToVerticalBox(StatusText))
+	{
+		StatusSlot->SetPadding(FMargin(0.f, 10.f, 0.f, 0.f));
+		StatusSlot->SetHorizontalAlignment(HAlign_Center);
+	}
+
 	UTextBlock* Hint = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	Hint->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 13));
 	Hint->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(180, 200, 220, 200))));
@@ -104,7 +116,7 @@ void UGT_MapOverlayWidget::BuildWidgetTree()
 	Hint->SetText(FText::FromString(TEXT("左键: 未知格标记雷险/取消  |  已探索格回传  |  ESC/右键关闭")));
 	if (UVerticalBoxSlot* HintSlot = CenterBox->AddChildToVerticalBox(Hint))
 	{
-		HintSlot->SetPadding(FMargin(0.f, 10.f, 0.f, 0.f));
+		HintSlot->SetPadding(FMargin(0.f, 4.f, 0.f, 0.f));
 		HintSlot->SetHorizontalAlignment(HAlign_Center);
 	}
 }
@@ -133,6 +145,10 @@ UTexture2D* UGT_MapOverlayWidget::LoadUiTexture(const FString& AssetPath)
 
 void UGT_MapOverlayWidget::Open()
 {
+	if (StatusText)
+	{
+		StatusText->SetVisibility(ESlateVisibility::Hidden);
+	}
 	RefreshGrid();
 	SetVisibility(ESlateVisibility::Visible);
 	SetFocus();
@@ -391,8 +407,19 @@ FReply UGT_MapOverlayWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry
 	}
 	else if (Cell.bExplored && Cell.VisibleRoomIcon != FName(TEXT("Mine")))
 	{
-		// 已探索安全格: 回传并关图(OnClosed 里 HUD 会整体刷新 + 还焦点)。
+		// 战斗激活时禁止回传(对齐 game-design 11.3 交互限制)。
 		FGT_DebugRunSnapshot Snapshot;
+		if (Debug->GetDebugRunSnapshot(Snapshot) && Snapshot.bCombatActive)
+		{
+			if (StatusText)
+			{
+				StatusText->SetText(FText::FromString(TEXT("异常体活动中，无法回传")));
+				StatusText->SetVisibility(ESlateVisibility::HitTestInvisible);
+			}
+			return FReply::Handled();
+		}
+
+		// 已探索安全格: 回传并关图(OnClosed 里 HUD 会整体刷新 + 还焦点)。
 		Debug->DebugTeleport(CellX, CellY, Snapshot);
 		Close();
 	}

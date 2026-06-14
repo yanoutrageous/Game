@@ -109,4 +109,10 @@ private:
 	int32 BurstParts = 0;
 	int32 CurrentCellX = -1;
 	int32 CurrentCellY = -1;
+
+	// --- 怪物实时攻击逻辑变量 ---
+	float EnemyAttackCooldownTimer = 0.f; // 攻击间隔计时器
+	float EnemyShakeTimer = 0.f;          // 震动动画计时器
+	// 怪物的基准 UI 坐标 (对齐构造函数中的 0.35, 0.45 比例)
+	FVector2D EnemyBasePos = FVector2D(560.f * 0.35f - 40.f, 560.f * 0.45f - 40.f);
 };

@@ -694,6 +694,69 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 	// 开箱演出不受焦点影响(弹窗刚关/按钮持焦时也要继续播)。
 	UpdateChestBurstAnim(InDeltaTime);
 
+	// 新增：怪物实时范围攻击与抖动逻辑
+	
+	UGT_DebugSubsystem* Debug = GetDebugSubsystem();
+	FGT_DebugRunSnapshot Snapshot;
+	if (Debug && Debug->GetDebugRunSnapshot(Snapshot))
+	{
+		const bool bIsCombatRoom = Snapshot.bCombatActive && Snapshot.CurrentRoomBaseType == EGT_RoomBaseType::Combat;
+
+		if (bIsCombatRoom && EnemyImage->GetVisibility() == ESlateVisibility::HitTestInvisible)
+		{
+			// 1. 更新攻击冷却
+			if (EnemyAttackCooldownTimer > 0.f)
+			{
+				EnemyAttackCooldownTimer -= InDeltaTime;
+			}
+
+			// 2. 距离判定：计算玩家当前归一化坐标与怪物归一化坐标(0.35, 0.45)的距离
+			FVector2D EnemyNormalizedPos(0.35f, 0.45f);
+			float Distance = FVector2D::Distance(PlayerPos, EnemyNormalizedPos);
+			float AttackRadius = 0.2f; // 设定攻击判定半径（占房间尺寸的 20%）
+
+			// 如果进入范围且冷却完毕，触发攻击
+			if (Distance <= AttackRadius && EnemyAttackCooldownTimer <= 0.f)
+			{
+				EnemyAttackCooldownTimer = 2.0f; // 设置攻击间隔（例如 2 秒）
+				EnemyShakeTimer = 0.3f;          // 震动动画持续 0.3 秒
+
+				// 触发伤害（目前需求暂设为 0）
+				// TODO: 后续若需真扣血，可在此处调用 RunContext 或 CommandProcessor
+				UE_LOG(LogTemp, Warning, TEXT("怪物发动了范围攻击！造成了 0 点伤害！"));
+			}
+
+			// 3. 左右抖动动画渲染
+			if (EnemyShakeTimer > 0.f)
+			{
+				EnemyShakeTimer -= InDeltaTime;
+				// 利用正弦波生成左右位移：频率 60.f 决定抖动速度，振幅 8.f 决定左右摇摆的像素距离
+				float ShakeOffset = FMath::Sin(EnemyShakeTimer * 60.f) * 8.f;
+
+				if (UCanvasPanelSlot* EnemySlot = Cast<UCanvasPanelSlot>(EnemyImage->Slot))
+				{
+					EnemySlot->SetPosition(EnemyBasePos + FVector2D(ShakeOffset, 0.f));
+				}
+
+				// 动画结束时，确保怪物归位
+				if (EnemyShakeTimer <= 0.f)
+				{
+					if (UCanvasPanelSlot* EnemySlot = Cast<UCanvasPanelSlot>(EnemyImage->Slot))
+					{
+						EnemySlot->SetPosition(EnemyBasePos);
+					}
+				}
+			}
+		}
+		else
+		{
+			// 不在战斗房间或怪物被击杀时，重置状态
+			EnemyAttackCooldownTimer = 0.f;
+			EnemyShakeTimer = 0.f;
+		}
+	}
+	//
+
 	// 焦点在弹窗/按钮上时暂停移动(持键状态仍经 HUD 冒泡转发保持准确, 关弹窗立刻续走)。
 	if (!HasKeyboardFocus())
 	{
@@ -731,8 +794,8 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 		if (NewPos.Y > 1.f - EdgeMargin && InputY > 0.f && FMath::Abs(NewPos.X - 0.5f) <= GTDoorHalfWidth) { TryCrossDoor(0, 1); return; }
 		if (NewPos.X < EdgeMargin && InputX < 0.f && FMath::Abs(NewPos.Y - 0.5f) <= GTDoorHalfWidth) { TryCrossDoor(-1, 0); return; }
 		if (NewPos.X > 1.f - EdgeMargin && InputX > 0.f && FMath::Abs(NewPos.Y - 0.5f) <= GTDoorHalfWidth) { TryCrossDoor(1, 0); return; }
-	}
-
+	}	
+	
 	// 撞墙: 夹回房间内。
 	NewPos.X = FMath::Clamp(NewPos.X, EdgeMargin, 1.f - EdgeMargin);
 	NewPos.Y = FMath::Clamp(NewPos.Y, EdgeMargin, 1.f - EdgeMargin);

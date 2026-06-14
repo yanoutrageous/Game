@@ -61,8 +61,9 @@ void UGT_RunContext::InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec)
 	PlayerState.ActorDefId = FName(TEXT("PlayerDefault"));
 	PlayerState.Team = EGT_ActorTeam::Player;
 	PlayerState.Faction = EGT_ActorFaction::Graytail;
-	PlayerState.X = 0;
-	PlayerState.Y = 0;
+	// 出生点由生成器给出: BasicDebug 固定 (0,0), Standard 随机(对齐 Lua normal 模式)。
+	PlayerState.X = MapResult.SpawnCoord.X;
+	PlayerState.Y = MapResult.SpawnCoord.Y;
 	PlayerState.bAlive = true;
 
 	ActorStates.Reset();

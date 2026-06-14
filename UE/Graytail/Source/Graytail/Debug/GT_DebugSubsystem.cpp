@@ -1047,9 +1047,9 @@ void UGT_DebugSubsystem::BuildStandardMapPreviewLines(int32 Seed, int32 Width, i
 		{
 			const FGT_TruthCell* Cell = Map.GetCellConst(X, Y);
 			TCHAR Symbol = TEXT('?');
-			if (X == 0 && Y == 0)
+			if (X == Result.SpawnCoord.X && Y == Result.SpawnCoord.Y)
 			{
-				// 出生点固定在 (0,0), 与 ApplyStandardLayout 保持一致。
+				// 出生点随机(Standard 模式对齐 Lua), 位置由生成结果给出。
 				Symbol = TEXT('S');
 			}
 			else if (Cell && Cell->bIsExit)

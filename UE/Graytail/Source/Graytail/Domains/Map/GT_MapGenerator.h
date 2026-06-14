@@ -67,6 +67,11 @@ struct GRAYTAIL_API FGT_MapGenerationResult
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|MapGeneration")
 	int32 Height = 0;
 
+	// 出生点: BasicDebug 固定 (0,0)(163 测试夹具不动); Standard 全图均匀随机
+	// (对齐 Minefield.lua normal 模式 _ChooseRandomSpawn)。
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|MapGeneration")
+	FIntPoint SpawnCoord = FIntPoint::ZeroValue;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|MapGeneration")
 	FGT_TruthMap TruthMap;
 };
@@ -86,6 +91,6 @@ private:
 	// 固定的调试布局: 写死的雷/出口/事件/战斗房, 供既有冒烟测试与 gt.RunDemo 使用。
 	static void ApplyBasicDebugLayout(FGT_TruthMap& TruthMap);
 
-	// 真随机扫雷布局: 确定性 RNG 布雷, 出生点安全区保留。移植自 Minefield.lua。
-	static void ApplyStandardLayout(FGT_TruthMap& TruthMap, const FGT_MapGenerationSpec& Spec);
+	// 真随机扫雷布局: 确定性 RNG 随机出生点+布雷, 出生安全区保留。移植自 Minefield.lua。
+	static void ApplyStandardLayout(FGT_TruthMap& TruthMap, const FGT_MapGenerationSpec& Spec, FIntPoint& OutSpawnCoord);
 };

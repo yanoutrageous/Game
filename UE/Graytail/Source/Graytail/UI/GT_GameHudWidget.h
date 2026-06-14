@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "Domains/Map/GT_MapTypes.h"
 #include "GT_GameHudWidget.generated.h"
 
 class UBorder;
@@ -18,6 +19,7 @@ class UGT_RoomViewWidget;
 class UGT_MapOverlayWidget;
 class UGT_LootResultWidget;
 class UGT_EventPanelWidget;
+class UGT_MainMenuWidget;
 
 // 主游戏界面(对齐 Lua 原版构图): 房间视图铺满全屏为背景,
 // 左侧信息面板/右上协议面板/底部快捷键栏全部悬浮其上。
@@ -33,6 +35,7 @@ public:
 	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
 	virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 	virtual FReply NativeOnKeyUp(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
+	virtual FReply NativeOnFocusReceived(const FGeometry& InGeometry, const FFocusEvent& InFocusEvent) override;
 
 private:
 	void BuildWidgetTree();
@@ -57,6 +60,10 @@ private:
 	UFUNCTION() void OnSearch();
 	UFUNCTION() void OnExtract();
 	UFUNCTION() void OnNewRun();
+	UFUNCTION() void OnReturnToMenu();
+
+	// 主菜单回调: 选难度开局。
+	void HandleMenuStartRequested(EGT_Difficulty Difficulty);
 
 	void OpenMapOverlay();
 	void HandleMapOverlayClosed();
@@ -85,13 +92,17 @@ private:
 	UPROPERTY(Transient) UTextBlock* LogText = nullptr;
 	UPROPERTY(Transient) UTextBlock* ProtocolText = nullptr;
 
-	// 局终结算弹窗(死亡/撤离后弹出, 含重新出发按钮; NewRun 按钮已移除)。
+	// 局终结算弹窗(死亡/撤离后弹出, 含 重新出发/返回菜单 按钮)。
 	UPROPERTY(Transient) UWidget* RunEndRoot = nullptr;
 	UPROPERTY(Transient) UBorder* RunEndFrame = nullptr;
 	UPROPERTY(Transient) UTextBlock* RunEndTitle = nullptr;
 	UPROPERTY(Transient) UTextBlock* RunEndBody = nullptr;
 	UPROPERTY(Transient) UButton* RunEndButton = nullptr;
 	bool bRunEndShown = false;
+
+	// 主菜单(最顶层): 无局时显示, 选难度后开局; "重新出发"沿用上次选的难度。
+	UPROPERTY(Transient) UGT_MainMenuWidget* MainMenu = nullptr;
+	EGT_Difficulty LastDifficulty = EGT_Difficulty::Standard;
 
 	// UI 贴图资产缓存(key = /Game 包路径, 防 GC)。
 	UPROPERTY(Transient) TMap<FString, UTexture2D*> UiTextureCache;

@@ -5,6 +5,19 @@
 #include "Domains/Map/GT_MapTypes.h"
 #include "GT_MapGenerator.generated.h"
 
+// 手摆固定地图布局(对齐 Lua Tutorial.GetMapConfig 的 manualMap): 出生/雷/特殊房/撤离全部
+// 写死坐标(0-based, UE 约定), 用于新手教程这种需要稳定可教学的关卡。bEnabled=false 时走随机生成。
+struct FGT_ManualMapLayout
+{
+	bool bEnabled = false;
+	FIntPoint Spawn = FIntPoint::ZeroValue;
+	TArray<FIntPoint> Mines;
+	TArray<FIntPoint> MonsterRooms;   // Combat
+	TArray<FIntPoint> ChestRooms;     // Chest
+	TArray<FIntPoint> EventRooms;     // Event
+	TArray<FIntPoint> Exits;          // Exit
+};
+
 USTRUCT(BlueprintType)
 struct GRAYTAIL_API FGT_MapGenerationSpec
 {
@@ -45,6 +58,15 @@ struct GRAYTAIL_API FGT_MapGenerationSpec
 	// 随机(不可见)撤离房数量, 需探索发现。仅 Standard 模式使用。
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|MapGeneration", meta = (ClampMin = "0"))
 	int32 RandomExitCount = 2;
+
+	// 开局把所有撤离信标在情报图上标为可见(对齐 Lua 教程的固定可见撤离点)。
+	// 由 RunContext 在初始化时消费; 普通局留 false(撤离点靠探索发现)。
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|MapGeneration")
+	bool bRevealExitsAtStart = false;
+
+	// 手摆固定布局(教程关用)。bEnabled=true 时 Standard 生成走 ApplyManualLayout, 忽略上面的随机参数。
+	// 非 UPROPERTY: 仅 C++ 生成期输入, 不进反射/序列化。
+	FGT_ManualMapLayout ManualLayout;
 };
 
 USTRUCT(BlueprintType)
@@ -93,4 +115,7 @@ private:
 
 	// 真随机扫雷布局: 确定性 RNG 随机出生点+布雷, 出生安全区保留。移植自 Minefield.lua。
 	static void ApplyStandardLayout(FGT_TruthMap& TruthMap, const FGT_MapGenerationSpec& Spec, FIntPoint& OutSpawnCoord);
+
+	// 手摆固定布局: 严格按 Spec.ManualLayout 的坐标放置, 不做任何随机。出生点取布局指定值。
+	static void ApplyManualLayout(FGT_TruthMap& TruthMap, const FGT_MapGenerationSpec& Spec, FIntPoint& OutSpawnCoord);
 };

@@ -20,6 +20,7 @@
 #include "Core/GT_RunContext.h"
 #include "Core/GT_RunSubsystem.h"
 #include "Debug/GT_DebugSubsystem.h"
+#include "Domains/Events/GT_EventTypes.h"
 #include "Domains/Inventory/GT_ItemCatalog.h"
 #include "Engine/GameInstance.h"
 #include "Engine/Texture2D.h"
@@ -32,6 +33,8 @@
 #include "UI/GT_MainMenuWidget.h"
 #include "UI/GT_MapOverlayWidget.h"
 #include "UI/GT_RoomViewWidget.h"
+#include "UI/GT_TutorialContent.h"
+#include "UI/GT_TutorialPopupWidget.h"
 
 namespace
 {
@@ -124,7 +127,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	RoomView = CreateWidget<UGT_RoomViewWidget>(this, UGT_RoomViewWidget::StaticClass());
 	if (RoomView)
 	{
-		RoomView->OnRoomChanged.BindUObject(this, &UGT_GameHudWidget::RefreshPanels);
+		RoomView->OnRoomChanged.BindUObject(this, &UGT_GameHudWidget::HandleRoomChanged);
 		RoomView->OnSearchRequested.BindUObject(this, &UGT_GameHudWidget::OnSearch);
 		RoomView->OnMapRequested.BindUObject(this, &UGT_GameHudWidget::OpenMapOverlay);
 		RoomView->OnExtractRequested.BindUObject(this, &UGT_GameHudWidget::OnExtract);
@@ -185,9 +188,19 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	MapTitle->SetText(FText::FromString(TEXT("区域扫描图")));
 
 	MiniMapGrid = WidgetTree->ConstructWidget<UUniformGridPanel>(UUniformGridPanel::StaticClass());
-	MiniMapGrid->SetSlotPadding(FMargin(1.f));
-	if (UVerticalBoxSlot* GridSlot = Panel->AddChildToVerticalBox(MiniMapGrid))
+	MiniMapGrid->SetSlotPadding(FMargin(1.f));   // 格间细分隔线(随缩放放大)。
+	// 等比放大填满面板宽(对齐原版): ScaleBox(ScaleToFit) 把方形网格整体缩放, 列宽行高同步、格子保持正方;
+	// 外层 SizeBox 给一个 >= 内容宽的方形高度(300), 让 ScaleToFit 以宽度为准撑满到框边。
+	// (不能直接让 UniformGridPanel 在 Fill 容器里拉伸 —— 那样只拉宽列、格子变扁、还出空列。)
+	UScaleBox* MapScale = WidgetTree->ConstructWidget<UScaleBox>(UScaleBox::StaticClass());
+	MapScale->SetStretch(EStretch::ScaleToFit);
+	MapScale->SetContent(MiniMapGrid);
+	USizeBox* MapArea = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+	MapArea->SetHeightOverride(300.f);
+	MapArea->SetContent(MapScale);
+	if (UVerticalBoxSlot* GridSlot = Panel->AddChildToVerticalBox(MapArea))
 	{
+		GridSlot->SetHorizontalAlignment(HAlign_Fill);
 		GridSlot->SetPadding(FMargin(0.f, 6.f, 0.f, 0.f));
 	}
 
@@ -435,6 +448,18 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		{
 			MenuSlot->SetHorizontalAlignment(HAlign_Fill);
 			MenuSlot->SetVerticalAlignment(VAlign_Fill);
+		}
+	}
+
+	// 第 9 层(最顶): 新手教程教学弹窗(blocking 模态需盖住房间/底栏并抢焦点)。
+	TutorialPopup = CreateWidget<UGT_TutorialPopupWidget>(this, UGT_TutorialPopupWidget::StaticClass());
+	if (TutorialPopup)
+	{
+		TutorialPopup->OnConfirmed.BindUObject(this, &UGT_GameHudWidget::TutorialConfirm);
+		if (UOverlaySlot* TutorialSlot = Screen->AddChildToOverlay(TutorialPopup))
+		{
+			TutorialSlot->SetHorizontalAlignment(HAlign_Fill);
+			TutorialSlot->SetVerticalAlignment(VAlign_Fill);
 		}
 	}
 }
@@ -980,7 +1005,12 @@ void UGT_GameHudWidget::HandleMapOverlayClosed()
 FReply UGT_GameHudWidget::NativeOnFocusReceived(const FGeometry& InGeometry, const FFocusEvent& InFocusEvent)
 {
 	// HUD 根不持键盘焦点(gt.HUD 的 SetInputMode 会把焦点定到根):
-	// 菜单开着转交菜单(Enter/W/S 选难度), 否则转交房间视图(WASD)。
+	// blocking 教程弹窗在显示时优先持焦点(否则会被抢走导致模态失效可继续移动);
+	// 其次菜单开着转交菜单(Enter/W/S 选难度), 否则转交房间视图(WASD)。
+	if (TutorialPopup && TutorialPopup->IsBlockingActive())
+	{
+		return FReply::Handled().SetUserFocus(TutorialPopup->TakeWidget(), EFocusCause::SetDirectly);
+	}
 	if (MainMenu && MainMenu->IsOpen())
 	{
 		return FReply::Handled().SetUserFocus(MainMenu->TakeWidget(), EFocusCause::SetDirectly);
@@ -1137,6 +1167,13 @@ void UGT_GameHudWidget::OnNewRun()
 	{
 		RoomView->SetFocus();
 	}
+
+	// 教程局: 重置教学状态, 在出生格弹开场说明(blocking, 会接管焦点暂停移动直到确认)。
+	TutorialReset();
+	if (bTutorialActive)
+	{
+		TutorialEnterRoom(Snapshot.PlayerX, Snapshot.PlayerY);
+	}
 }
 
 void UGT_GameHudWidget::OnReturnToMenu()
@@ -1147,9 +1184,125 @@ void UGT_GameHudWidget::OnReturnToMenu()
 	{
 		RunEndRoot->SetVisibility(ESlateVisibility::Collapsed);
 	}
+	// 回菜单时收起残留教学弹窗并停用教程驱动(防提示条盖住菜单)。
+	bTutorialActive = false;
+	TutorialActivePopupId = NAME_None;
+	if (TutorialPopup)
+	{
+		TutorialPopup->Hide();
+	}
 	if (MainMenu)
 	{
 		MainMenu->Open();
+	}
+}
+
+void UGT_GameHudWidget::HandleRoomChanged()
+{
+	RefreshPanels();
+
+	if (!bTutorialActive)
+	{
+		return;
+	}
+	UGT_DebugSubsystem* Debug = GetDebugSubsystem();
+	FGT_DebugRunSnapshot Snapshot;
+	if (Debug && Debug->GetDebugRunSnapshot(Snapshot))
+	{
+		TutorialEnterRoom(Snapshot.PlayerX, Snapshot.PlayerY);
+	}
+}
+
+void UGT_GameHudWidget::TutorialReset()
+{
+	bTutorialActive = LastDifficulty == EGT_Difficulty::Tutorial;
+	TutorialCurrentRoom = FIntPoint(-1, -1);
+	TutorialActivePopupId = NAME_None;
+	TutorialShownOnce.Reset();
+	if (TutorialPopup)
+	{
+		TutorialPopup->Hide();
+	}
+}
+
+void UGT_GameHudWidget::TutorialEnterRoom(int32 X, int32 Y)
+{
+	if (!bTutorialActive || !TutorialPopup)
+	{
+		return;
+	}
+
+	const FIntPoint Key(X, Y);
+	if (Key == TutorialCurrentRoom)
+	{
+		return;   // 同格不重弹(对齐 Lua currentRoomKey 去重)。
+	}
+
+	// 离开旧房: 关掉 roomScoped(非blocking)提示条。blocking 弹窗占焦点时玩家无法移动,
+	// 不会走到这里换房, 故无需为其特判。
+	if (!TutorialActivePopupId.IsNone())
+	{
+		const FGT_TutorialPopup* Active = GT_TutorialContent::FindPopupById(TutorialActivePopupId);
+		if (Active && Active->bRoomScoped)
+		{
+			TutorialPopup->Hide();
+			TutorialActivePopupId = NAME_None;
+		}
+	}
+
+	TutorialCurrentRoom = Key;
+
+	const FGT_TutorialPopup* Popup = GT_TutorialContent::FindPopupForCell(X, Y);
+	if (!Popup)
+	{
+		return;
+	}
+
+	// 事件格: 占位映射统一是"狐狸旅商", 这里查当前格真实事件类型(旅商/赌徒/祭坛/机关),
+	// 把弹窗换成贴合该房间的描述(用户反馈: UI 写旅商但房间其实是赌徒)。
+	if (Popup->Id == FName(TEXT("event_rule")))
+	{
+		UGT_DebugSubsystem* Debug = GetDebugSubsystem();
+		FGT_EventMenuView EventMenu;
+		if (Debug && Debug->DebugGetEventMenu(EventMenu) && EventMenu.bAvailable)
+		{
+			if (const FGT_TutorialPopup* KindPopup = GT_TutorialContent::FindEventPopupForKind(EventMenu.Kind))
+			{
+				Popup = KindPopup;
+			}
+		}
+	}
+
+	if (Popup->bOnce && TutorialShownOnce.Contains(Popup->Id))
+	{
+		return;   // once 弹窗确认过就不再弹。
+	}
+
+	TutorialActivePopupId = Popup->Id;
+	TutorialPopup->ShowPopup(*Popup);   // blocking 形态内部会抢焦点暂停移动。
+}
+
+void UGT_GameHudWidget::TutorialConfirm()
+{
+	if (!TutorialPopup)
+	{
+		return;
+	}
+	if (!TutorialActivePopupId.IsNone())
+	{
+		const FGT_TutorialPopup* Active = GT_TutorialContent::FindPopupById(TutorialActivePopupId);
+		if (Active && Active->bOnce)
+		{
+			TutorialShownOnce.Add(Active->Id);
+		}
+	}
+	TutorialActivePopupId = NAME_None;
+	TutorialPopup->Hide();
+
+	// 还焦点给房间视图, 玩家可继续移动(对齐 Lua ConfirmPopup 解锁输入)。
+	if (RoomView)
+	{
+		RoomView->SetFocus();
 	}
 }
 

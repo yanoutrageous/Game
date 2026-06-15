@@ -63,7 +63,15 @@ bool UGT_MapGenerator::GenerateMap(const FGT_MapGenerationSpec& Spec, FGT_MapGen
 
 	if (RequestedMode == EGT_MapMode::Standard)
 	{
-		ApplyStandardLayout(OutResult.TruthMap, Spec, OutResult.SpawnCoord);
+		// 手摆固定布局(教程关)优先; 否则走真随机扫雷布局。
+		if (Spec.ManualLayout.bEnabled)
+		{
+			ApplyManualLayout(OutResult.TruthMap, Spec, OutResult.SpawnCoord);
+		}
+		else
+		{
+			ApplyStandardLayout(OutResult.TruthMap, Spec, OutResult.SpawnCoord);
+		}
 		OutResult.bSuccess = true;
 		return true;
 	}
@@ -168,6 +176,35 @@ void UGT_MapGenerator::ApplyStandardLayout(FGT_TruthMap& TruthMap, const FGT_Map
 	}
 }
 
+void UGT_MapGenerator::ApplyManualLayout(FGT_TruthMap& TruthMap, const FGT_MapGenerationSpec& Spec, FIntPoint& OutSpawnCoord)
+{
+	const FGT_ManualMapLayout& Layout = Spec.ManualLayout;
+	OutSpawnCoord = Layout.Spawn;
+
+	// 严格按坐标放置, 不做任何随机。各类房间互不重叠(布局自己保证)。
+	for (const FIntPoint& Coord : Layout.Mines)
+	{
+		TruthMap.SetMine(Coord.X, Coord.Y, true);
+	}
+	// 怪物房/事件房复用调试用的内容/规则 ID(与 ApplyStandardLayout 一致)。
+	for (const FIntPoint& Coord : Layout.MonsterRooms)
+	{
+		ConfigureRoomIdentity(TruthMap, Coord, EGT_RoomBaseType::Combat, GTRoomContent_CombatDebugDummy01, GTRoomRule_CombatStartOnly, GTRoomInstance_CombatDebugDummy01);
+	}
+	for (const FIntPoint& Coord : Layout.ChestRooms)
+	{
+		TruthMap.SetRoomBaseType(Coord.X, Coord.Y, EGT_RoomBaseType::Chest);
+	}
+	for (const FIntPoint& Coord : Layout.EventRooms)
+	{
+		ConfigureRoomIdentity(TruthMap, Coord, EGT_RoomBaseType::Event, GTRoomContent_EventDebugChoice01, GTRoomRule_EventPresentOnly, GTRoomInstance_EventDebugChoice01);
+	}
+	for (const FIntPoint& Coord : Layout.Exits)
+	{
+		TruthMap.SetExit(Coord.X, Coord.Y, true);
+	}
+}
+
 FGT_MapGenerationSpec UGT_MapGenerator::MakeSpecForDifficulty(EGT_Difficulty Difficulty, int32 Seed)
 {
 	FGT_MapGenerationSpec Spec;
@@ -185,7 +222,22 @@ FGT_MapGenerationSpec UGT_MapGenerator::MakeSpecForDifficulty(EGT_Difficulty Dif
 	switch (Difficulty)
 	{
 	case EGT_Difficulty::Tutorial:
-		Spec.Width = 7;  Spec.Height = 7;  Spec.RandomExitCount = 2; break;
+		// 新手教程 = 固定手摆 5×5 安全图(对齐 Lua Tutorial.GetMapConfig 的 manualMap, 坐标 1-based→0-based)。
+		// 沿反对角线: 出生→数字格→雷险→事件→怪物→宝箱→撤离, 配合教学弹窗逐格教学。
+		// seed 固定 777(对齐 Lua), 让怪物战力/掉落/事件可复现, 每次教程体验一致。
+		// 撤离点开局可见(bRevealExitsAtStart), 让新手一开始就知道目标在哪。
+		Spec.Width = 5; Spec.Height = 5;
+		Spec.Seed = 777;
+		Spec.RandomExitCount = 0;
+		Spec.bRevealExitsAtStart = true;
+		Spec.ManualLayout.bEnabled = true;
+		Spec.ManualLayout.Spawn = FIntPoint(0, 0);
+		Spec.ManualLayout.Mines = { {0,2}, {1,1}, {2,0}, {3,3} };
+		Spec.ManualLayout.EventRooms = { {0,3}, {1,2}, {2,1}, {3,0} };
+		Spec.ManualLayout.MonsterRooms = { {0,4}, {1,3}, {2,2}, {3,1}, {4,0} };
+		Spec.ManualLayout.ChestRooms = { {1,4}, {2,3}, {3,2}, {4,1} };
+		Spec.ManualLayout.Exits = { {4,4} };
+		break;
 	case EGT_Difficulty::Easy:
 		Spec.Width = 10; Spec.Height = 10; Spec.RandomExitCount = 3; break;
 	case EGT_Difficulty::Standard:

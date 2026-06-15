@@ -42,15 +42,16 @@ namespace
 	{
 		{ TEXT(""), TEXT("进入回收区域作业, 先选区域规模再选难度"),
 		  FAnchors(0.6993f, 0.3262f, 0.8866f, 0.4307f) },
-		{ TEXT(""), TEXT("新手教程: 尚未开放"),
+		{ TEXT(""), TEXT("新手教程: 固定 5×5 安全演练区, 跟着提示学会避雷与撤离"),
 		  FAnchors(0.6825f, 0.4662f, 0.8728f, 0.5667f) },
 		{ TEXT(""), TEXT("装备/天赋: 部署终端尚未开放(局外系统)"),
 		  FAnchors(0.6730f, 0.6017f, 0.8574f, 0.7045f) },
 		{ TEXT(""), TEXT("设置: 尚未开放"),
 		  FAnchors(0.6620f, 0.7371f, 0.8454f, 0.8093f) },
 	};
-	// 主页里"出发探索"之外的入口都尚未开放(装备/天赋 = 局外组部署终端预留位)。
+	// 主页入口: 出发探索(0) / 新手教程(1) 已开放; 装备天赋(2) / 设置(3) = 局外组部署终端预留位, 尚未开放。
 	constexpr int32 GTMainOption_Depart = 0;
+	constexpr int32 GTMainOption_Tutorial = 1;
 
 	// 每块板独立的错切默认值 (横X=上下边错开, 纵Y=左右高低), F10 校准实测。
 	const FVector2D GTMainShearDefaults[] =
@@ -562,6 +563,12 @@ void UGT_MainMenuWidget::ConfirmSelection()
 		{
 			// 将来部署界面(局外组)插在出发流程里, 位置由团队定。
 			ShowPage(EPage::Size);
+			return;
+		}
+		if (SelectedIndex == GTMainOption_Tutorial)
+		{
+			// 新手教程: 跳过区域/难度选择, 直接开固定 5×5 教学局(Tutorial 档自带手摆布局)。
+			OnStartRequested.ExecuteIfBound(EGT_Difficulty::Tutorial);
 			return;
 		}
 		// 其余入口未开放: 提示行变暖红反馈。

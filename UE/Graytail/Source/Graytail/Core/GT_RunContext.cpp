@@ -85,6 +85,22 @@ void UGT_RunContext::InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec)
 		// 让 Q 键消耗品当下可玩可测; 将来由 loadout 带入数量替代。
 		RunInventory.AddCarriedItem(FName(TEXT("emergency_bandage")), 2, FName(TEXT("loadout")));
 	}
+
+	// 教程: 开局把撤离信标在情报图上标为可见(对齐 Lua 固定可见撤离点), 让新手一开始就知道目标在哪。
+	// 大图 GetDebugMiniMapViewData 见 bVisible 即从真值填 "Exit" 图标, 自动画黄框, 无需额外渲染改动。
+	if (MapSpec.bRevealExitsAtStart)
+	{
+		for (int32 CellY = 0; CellY < MapHeight; ++CellY)
+		{
+			for (int32 CellX = 0; CellX < MapWidth; ++CellX)
+			{
+				if (TruthMap.IsExit(CellX, CellY))
+				{
+					PlayerIntelMap.MarkVisible(CellX, CellY, true);
+				}
+			}
+		}
+	}
 }
 
 void UGT_RunContext::ResetRun()

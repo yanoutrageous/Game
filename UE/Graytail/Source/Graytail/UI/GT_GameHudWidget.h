@@ -20,6 +20,7 @@ class UGT_MapOverlayWidget;
 class UGT_LootResultWidget;
 class UGT_EventPanelWidget;
 class UGT_MainMenuWidget;
+class UGT_TutorialPopupWidget;
 
 // 主游戏界面(对齐 Lua 原版构图): 房间视图铺满全屏为背景,
 // 左侧信息面板/右上协议面板/底部快捷键栏全部悬浮其上。
@@ -65,6 +66,15 @@ private:
 	// 主菜单回调: 选难度开局。
 	void HandleMenuStartRequested(EGT_Difficulty Difficulty);
 
+	// 过门换房后的统一回调: 刷新信息面板 + 驱动新手教程弹窗(若在教程局)。
+	void HandleRoomChanged();
+
+	// ---- 新手教程教学弹窗驱动(对齐 Lua Tutorial: 坐标→弹窗, blocking 锁操作, once 去重) ----
+	// 纯表现层: 不动内核, 只按玩家所在格弹文案。仅 LastDifficulty==Tutorial 的局生效。
+	void TutorialReset();                       // 开局重置: 按当前难度决定是否激活, 清已展示集合。
+	void TutorialEnterRoom(int32 X, int32 Y);   // 进入新房: 关旧提示, 弹该格教学弹窗。
+	void TutorialConfirm();                      // blocking 弹窗确认: 记 once、关弹窗、还焦点给房间。
+
 	void OpenMapOverlay();
 	void HandleMapOverlayClosed();
 	void HandleLootResultClosed();
@@ -105,6 +115,13 @@ private:
 	// 主菜单(最顶层): 无局时显示, 选难度后开局; "重新出发"沿用上次选的难度。
 	UPROPERTY(Transient) UGT_MainMenuWidget* MainMenu = nullptr;
 	EGT_Difficulty LastDifficulty = EGT_Difficulty::Standard;
+
+	// 新手教程教学弹窗(最顶层): blocking 模态抢焦点暂停移动, 非blocking 顶部提示条。
+	UPROPERTY(Transient) UGT_TutorialPopupWidget* TutorialPopup = nullptr;
+	bool bTutorialActive = false;                 // 本局是否教程局(LastDifficulty==Tutorial)。
+	FIntPoint TutorialCurrentRoom = FIntPoint(-1, -1);  // 当前所在教程格(去重, 同格不重弹)。
+	FName TutorialActivePopupId = NAME_None;       // 正在显示的弹窗 Id(NAME_None=无)。
+	TSet<FName> TutorialShownOnce;                 // once 弹窗已展示集合(确认后记入, 不再弹)。
 
 	// UI 贴图资产缓存(key = /Game 包路径, 防 GC)。
 	UPROPERTY(Transient) TMap<FString, UTexture2D*> UiTextureCache;

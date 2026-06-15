@@ -109,10 +109,21 @@ namespace GT_ItemCatalog
 
 	FString GetItemIconAssetPath(FName ItemId)
 	{
-		// 对齐 Lua UITheme 原版样式(2026-06-12 用户定): 局内回收物共用矿块图,
-		// 止血贴用部署绷带图, 其余消耗品用医疗包图。曾尝试挪用局外商店/装备图标做
-		// 逐物品区分, 但那批图本职是局外商店货架(Balance.shop), 等美术按 ITEM_DEFS
-		// 预留路径补齐 assets/items/<物品id>.png 后, 在这里换成逐物品映射即可。
+		// 逐物品图标(2026-06-15 接入局外组美术, 写实画风, assets/item_recovered/<id>.png
+		// 经 _import_item_icons.py 导成 uasset)。覆盖原"全部回收物共用矿块图"的占位。
+		static const TMap<FName, const TCHAR*> IconById = {
+			{ FName(TEXT("broken_copper_wire")), TEXT("/Game/Graytail/Items/Recovered/broken_copper_wire") },
+			{ FName(TEXT("dim_capacitor")),      TEXT("/Game/Graytail/Items/Recovered/dim_capacitor") },
+			{ FName(TEXT("whisper_wick")),       TEXT("/Game/Graytail/Items/Recovered/whisper_wick") },
+			{ FName(TEXT("sealed_core_shard")),  TEXT("/Game/Graytail/Items/Recovered/sealed_core_shard") },
+			{ FName(TEXT("static_lens")),        TEXT("/Game/Graytail/Items/Recovered/static_lens") },
+			{ FName(TEXT("blackbox_tag")),       TEXT("/Game/Graytail/Items/Recovered/blackbox_tag") },
+		};
+		if (const TCHAR* const* Found = IconById.Find(ItemId))
+		{
+			return *Found;
+		}
+		// 止血贴沿用部署绷带图; 未单独配图的物品退回共用占位(消耗品=医疗包 / 其余=矿块)。
 		if (ItemId == FName(TEXT("emergency_bandage")))
 		{
 			return TEXT("/Game/Graytail/UI/deploy/ui_icon_bandage");

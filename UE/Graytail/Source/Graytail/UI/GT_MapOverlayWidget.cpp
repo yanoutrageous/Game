@@ -5,6 +5,8 @@
 #include "Components/Image.h"
 #include "Components/Overlay.h"
 #include "Components/OverlaySlot.h"
+#include "Components/ScaleBox.h"
+#include "Components/ScaleBoxSlot.h"
 #include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
 #include "Components/UniformGridPanel.h"
@@ -70,12 +72,13 @@ void UGT_MapOverlayWidget::BuildWidgetTree()
 		MaskSlot->SetVerticalAlignment(VAlign_Fill);
 	}
 
-	// 居中竖排: 标题 / 格子图 / 底部提示。
+	// 居中竖排: 标题 / 格子图 / 底部提示。整列铺满屏幕, 让格子区拿到确定的可用空间,
+	// ScaleBox 才能按可用空间等比缩放(防止大图被小视口非等比压扁)。
 	UVerticalBox* CenterBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	if (UOverlaySlot* CenterSlot = Root->AddChildToOverlay(CenterBox))
 	{
-		CenterSlot->SetHorizontalAlignment(HAlign_Center);
-		CenterSlot->SetVerticalAlignment(VAlign_Center);
+		CenterSlot->SetHorizontalAlignment(HAlign_Fill);
+		CenterSlot->SetVerticalAlignment(VAlign_Fill);
 	}
 
 	UTextBlock* Title = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
@@ -89,12 +92,19 @@ void UGT_MapOverlayWidget::BuildWidgetTree()
 		TitleSlot->SetHorizontalAlignment(HAlign_Center);
 	}
 
+	// GridSizeBox 固定 (列×54)×(行×54) 正方形比例; 外包 ScaleBox(ScaleToFit) 等比缩放,
+	// 任意视口下都不变形(13×13 大图在小视口里整体缩小, cell 始终正方形)。
 	GridSizeBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
 	MapGrid = WidgetTree->ConstructWidget<UUniformGridPanel>(UUniformGridPanel::StaticClass());
 	GridSizeBox->SetContent(MapGrid);
-	if (UVerticalBoxSlot* GridSlot = CenterBox->AddChildToVerticalBox(GridSizeBox))
+	UScaleBox* GridScale = WidgetTree->ConstructWidget<UScaleBox>(UScaleBox::StaticClass());
+	GridScale->SetStretch(EStretch::ScaleToFit);
+	GridScale->SetContent(GridSizeBox);
+	if (UVerticalBoxSlot* GridSlot = CenterBox->AddChildToVerticalBox(GridScale))
 	{
-		GridSlot->SetHorizontalAlignment(HAlign_Center);
+		GridSlot->SetHorizontalAlignment(HAlign_Fill);
+		GridSlot->SetVerticalAlignment(VAlign_Fill);
+		GridSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
 	}
 
 	// 操作被拒提示(战斗禁回传等), 默认隐藏占位(不顶动布局)。

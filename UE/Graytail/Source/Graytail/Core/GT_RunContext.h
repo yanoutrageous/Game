@@ -224,6 +224,14 @@ public:
 	// 最近一次成功搜索的结算明细(开新局重置), 供 UI 结果弹窗读取。
 	const FGT_SearchOutcome& GetLastSearchOutcome() const { return LastSearchOutcome; }
 
+	// 使用玩家背包里的消耗品(对齐 Lua RunInventory.UseConsumable)。
+	// 止血贴: 回血 min(25, MaxHp-Hp), 满血/无库存/非消耗品时失败并给出 Status。
+	// 必须经 Command 管线(UseConsumable 命令)调到这里, 不直接给 UI 调。
+	bool UseConsumableAtPlayer(FName ItemId, FGT_ConsumableOutcome& OutOutcome);
+
+	// 最近一次消耗品使用结果, 供 UI 提示(回血量/失败原因)。
+	const FGT_ConsumableOutcome& GetLastConsumableOutcome() const { return LastConsumableOutcome; }
+
 	// 事件房真实规则(旅商/赌徒/祭坛/机关, 仅 Standard 模式; BasicDebug 走注册表占位路径)。
 	// 菜单为只读查询; 执行必须经 Command 管线(ChooseEventOption 命令)调到这里。
 	bool GetEventMenuAtPlayer(FGT_EventMenuView& OutMenu) const;
@@ -248,6 +256,9 @@ private:
 
 	UPROPERTY(Transient)
 	FGT_EventOutcome LastEventOutcome;
+
+	UPROPERTY(Transient)
+	FGT_ConsumableOutcome LastConsumableOutcome;
 
 	// 事件房运行态(Standard 模式: 完成标记/祭坛档数), 开局重置。
 	UPROPERTY(Transient)

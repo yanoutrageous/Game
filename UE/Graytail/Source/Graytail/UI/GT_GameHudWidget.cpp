@@ -29,6 +29,7 @@
 #include "Styling/CoreStyle.h"
 #include "UI/GT_EventPanelWidget.h"
 #include "UI/GT_LootResultWidget.h"
+#include "UI/GT_MainMenuWidget.h"
 #include "UI/GT_MapOverlayWidget.h"
 #include "UI/GT_RoomViewWidget.h"
 
@@ -43,11 +44,11 @@ namespace
 		case EGT_RunState::Running:
 			return TEXT("正常作业");
 		case EGT_RunState::Failed:
-			return TEXT("信号中断 - NewRun 重开");
+			return TEXT("信号中断");
 		case EGT_RunState::Succeeded:
 			return TEXT("撤离成功!");
 		default:
-			return TEXT("未开局 - 点 NewRun");
+			return TEXT("未开局 - 主菜单选择难度");
 		}
 	}
 }
@@ -66,11 +67,11 @@ void UGT_GameHudWidget::NativeConstruct()
 	Super::NativeConstruct();
 	RefreshAll();
 
-	// NewRun 按钮已移除: HUD 打开时若还没有局, 直接自动开一局。
+	// 无局时先进主菜单选难度(替代原来的自动开局), 已有局(如 gt.StartStd 后再 gt.HUD)直接进游戏。
 	const UGT_RunContext* RunContext = GetRunContext();
-	if (!RunContext || RunContext->GetRunState() == EGT_RunState::NotStarted)
+	if ((!RunContext || RunContext->GetRunState() == EGT_RunState::NotStarted) && MainMenu)
 	{
-		OnNewRun();
+		MainMenu->Open();
 	}
 }
 
@@ -128,6 +129,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		RoomView->OnMapRequested.BindUObject(this, &UGT_GameHudWidget::OpenMapOverlay);
 		RoomView->OnExtractRequested.BindUObject(this, &UGT_GameHudWidget::OnExtract);
 		RoomView->OnEventRequested.BindUObject(this, &UGT_GameHudWidget::OpenEventPanel);
+		RoomView->OnConsumableRequested.BindUObject(this, &UGT_GameHudWidget::OnUseConsumable);
 
 		UScaleBox* RoomScale = WidgetTree->ConstructWidget<UScaleBox>(UScaleBox::StaticClass());
 		RoomScale->SetStretch(EStretch::ScaleToFit);
@@ -303,7 +305,11 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_m"), TEXT("M"), TEXT("扫描图"));
 	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_f"), TEXT("F"), TEXT("搜索/攻击"));
 	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_e"), TEXT("E"), TEXT("撤离"));
-	if (UVerticalBoxSlot* HotbarSlot = CenterCol->AddChildToVerticalBox(MakeSkinnedPanel(Hotbar, TEXT("/Game/Graytail/UI/hud/ui_bottom_bar"))))
+	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_t"), TEXT("T"), TEXT("事件"));
+	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_q"), TEXT("Q"), TEXT("止血"));
+	// 底栏背景用无分隔的连续金属条(ui_bar_blank_dark): 原版 ui_bottom_bar 是死画的 4 格,
+	// 与 6 个键位项数量不匹配会错位, 换成连续条让键帽均分对齐。
+	if (UVerticalBoxSlot* HotbarSlot = CenterCol->AddChildToVerticalBox(MakeSkinnedPanel(Hotbar, TEXT("/Game/Graytail/UI/common/ui_bar_blank_dark"))))
 	{
 		HotbarSlot->SetHorizontalAlignment(HAlign_Center);
 		HotbarSlot->SetPadding(FMargin(0.f, 0.f, 0.f, 8.f));
@@ -402,12 +408,33 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		RunEndButton = MakeButton(ButtonRow, TEXT("重新出发"));
 		RunEndButton->OnClicked.AddDynamic(this, &UGT_GameHudWidget::OnNewRun);
 
+		// 返回菜单: 重选难度(打通 菜单→局内→局终→菜单 循环)。
+		UButton* MenuButton = MakeButton(ButtonRow, TEXT("返回菜单"));
+		if (UHorizontalBoxSlot* MenuButtonSlot = Cast<UHorizontalBoxSlot>(MenuButton->Slot))
+		{
+			MenuButtonSlot->SetPadding(FMargin(12.f, 0.f, 0.f, 0.f));
+		}
+		MenuButton->OnClicked.AddDynamic(this, &UGT_GameHudWidget::OnReturnToMenu);
+
 		RunEndRoot = EndRoot;
 		RunEndRoot->SetVisibility(ESlateVisibility::Collapsed);
 		if (UOverlaySlot* EndSlot = Screen->AddChildToOverlay(EndRoot))
 		{
 			EndSlot->SetHorizontalAlignment(HAlign_Fill);
 			EndSlot->SetVerticalAlignment(VAlign_Fill);
+		}
+	}
+
+	// 第 8 层(最顶): 主菜单(整图背景全覆盖)。无局时由 NativeConstruct 打开。
+	MainMenu = CreateWidget<UGT_MainMenuWidget>(this, UGT_MainMenuWidget::StaticClass());
+	if (MainMenu)
+	{
+		MainMenu->OnStartRequested.BindUObject(this, &UGT_GameHudWidget::HandleMenuStartRequested);
+		MainMenu->SetVisibility(ESlateVisibility::Collapsed);
+		if (UOverlaySlot* MenuSlot = Screen->AddChildToOverlay(MainMenu))
+		{
+			MenuSlot->SetHorizontalAlignment(HAlign_Fill);
+			MenuSlot->SetVerticalAlignment(VAlign_Fill);
 		}
 	}
 }
@@ -950,6 +977,21 @@ void UGT_GameHudWidget::HandleMapOverlayClosed()
 	RefreshAll();
 }
 
+FReply UGT_GameHudWidget::NativeOnFocusReceived(const FGeometry& InGeometry, const FFocusEvent& InFocusEvent)
+{
+	// HUD 根不持键盘焦点(gt.HUD 的 SetInputMode 会把焦点定到根):
+	// 菜单开着转交菜单(Enter/W/S 选难度), 否则转交房间视图(WASD)。
+	if (MainMenu && MainMenu->IsOpen())
+	{
+		return FReply::Handled().SetUserFocus(MainMenu->TakeWidget(), EFocusCause::SetDirectly);
+	}
+	if (RoomView)
+	{
+		return FReply::Handled().SetUserFocus(RoomView->TakeWidget(), EFocusCause::SetDirectly);
+	}
+	return Super::NativeOnFocusReceived(InGeometry, InFocusEvent);
+}
+
 FReply UGT_GameHudWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
 {
 	// 焦点在弹窗/按钮上时 WASD 事件冒泡到这里, 转发给房间视图记账,
@@ -1049,6 +1091,25 @@ void UGT_GameHudWidget::OnExtract()
 	RefreshAll();
 }
 
+void UGT_GameHudWidget::OnUseConsumable()
+{
+	// Q = 止血(默认应急止血贴)。满血/无库存由内核拒绝, 这里只发命令并刷新。
+	UGT_DebugSubsystem* Debug = GetDebugSubsystem();
+	if (!Debug)
+	{
+		return;
+	}
+	FGT_DebugRunSnapshot Snapshot;
+	const bool bUsed = Debug->DebugUseConsumable(FName(TEXT("emergency_bandage")), Snapshot);
+	RefreshAll();
+
+	// 用成功(回血)才播绿光反馈; 满血/无库存被拒不播。
+	if (bUsed && RoomView)
+	{
+		RoomView->PlayHealGlow();
+	}
+}
+
 void UGT_GameHudWidget::OnNewRun()
 {
 	UGT_DebugSubsystem* Debug = GetDebugSubsystem();
@@ -1056,7 +1117,8 @@ void UGT_GameHudWidget::OnNewRun()
 	if (Debug)
 	{
 		// 每局随机种子(对齐原版); 局内随机仍由该种子完全确定, 复现指定地图用 gt.StartStd。
-		Debug->DebugStartStandardRun(FMath::RandRange(1, MAX_int32 - 1), EGT_Difficulty::Standard, Snapshot);
+		// 难度 = 主菜单最近一次选择("重新出发"沿用同难度)。
+		Debug->DebugStartStandardRun(FMath::RandRange(1, MAX_int32 - 1), LastDifficulty, Snapshot);
 	}
 	if (MapOverlay)
 	{
@@ -1075,4 +1137,29 @@ void UGT_GameHudWidget::OnNewRun()
 	{
 		RoomView->SetFocus();
 	}
+}
+
+void UGT_GameHudWidget::OnReturnToMenu()
+{
+	// 只做导航: 收起局终弹窗回主菜单重选难度。bRunEndShown 保持 true,
+	// 防止 RefreshRunEndPanel 在局态仍为 Failed/Succeeded 时把弹窗又弹回来。
+	if (RunEndRoot)
+	{
+		RunEndRoot->SetVisibility(ESlateVisibility::Collapsed);
+	}
+	if (MainMenu)
+	{
+		MainMenu->Open();
+	}
+}
+
+void UGT_GameHudWidget::HandleMenuStartRequested(EGT_Difficulty Difficulty)
+{
+	// 难度确认后直接开局; 将来部署界面(局外组)插在这一步之前, 由团队定。
+	LastDifficulty = Difficulty;
+	if (MainMenu)
+	{
+		MainMenu->Close();
+	}
+	OnNewRun();
 }

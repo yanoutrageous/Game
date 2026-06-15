@@ -37,6 +37,10 @@ public:
 	// 播放开箱金光 + 奖励飘字(对齐 Lua TriggerChestOpen/chestRewardBurst)。
 	void PlayChestRewardBurst(int32 Gold, int32 Parts);
 
+	// 止血绿光(玩家脚下绿圆扩散淡出) / 踩雷红光(全房间红闪)。纯表现层反馈。
+	void PlayHealGlow();
+	void PlayMineFlash();
+
 	// 房间状态变化后(开局/外部移动)由 HUD 调用, 重读当前格并重绘。
 	void SyncToCurrentCell(bool bCenterPlayer);
 
@@ -55,6 +59,9 @@ public:
 	// T 键处理事件(对齐原版 [T] 交互), 由 HUD 绑定到 OpenEventPanel。
 	FSimpleDelegate OnEventRequested;
 
+	// Q 键使用消耗品/止血(对齐原版底栏), 由 HUD 绑定到 OnUseConsumable。
+	FSimpleDelegate OnConsumableRequested;
+
 private:
 	void BuildWidgetTree();
 	UGT_DebugSubsystem* GetDebugSubsystem() const;
@@ -72,6 +79,9 @@ private:
 	UPROPERTY(Transient) UImage* DoorImages[4] = {};
 	UPROPERTY(Transient) UImage* GlowOuter = nullptr;
 	UPROPERTY(Transient) UImage* GlowInner = nullptr;
+	// 止血绿色光子(玩家上层放射上升淡出) / 踩雷红光(全房间最上层)。
+	UPROPERTY(Transient) UImage* HealParticles[8] = {};
+	UPROPERTY(Transient) UImage* MineFlash = nullptr;
 	UPROPERTY(Transient) UImage* ChestImage = nullptr;
 	UPROPERTY(Transient) UImage* GoldPileImage = nullptr;
 	UPROPERTY(Transient) UImage* PartsPileImage = nullptr;
@@ -104,6 +114,13 @@ private:
 	// 开箱演出计时(对齐 Lua chestOpenTimer/chestRewardBurst)。
 	float ChestOpenTimer = 0.f;
 	float RewardBurstTimer = 0.f;
+	// 止血绿光 / 踩雷红光 演出计时。
+	float HealGlowTimer = 0.f;
+	float MineFlashTimer = 0.f;
+	// 绿光子每颗的随机参数(PlayHealGlow 时生成): 环绕角度 / 半径 / 相位。
+	float HealParticleAngle[8] = {};
+	float HealParticleRadius[8] = {};
+	float HealParticlePhase[8] = {};
 	// 过门被内核拒绝(地图边界等)后的重试冷却: 冷却内按撞墙处理, 防止逐帧重试抽搐。
 	float CrossRetryCooldown = 0.f;
 	int32 BurstParts = 0;

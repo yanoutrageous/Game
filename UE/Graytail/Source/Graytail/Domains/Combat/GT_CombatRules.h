@@ -36,6 +36,15 @@ struct GRAYTAIL_API FGT_PlayerCombatState
 		Hp = FMath::Clamp(Hp - Damage, 0, MaxHp);
 		return Before - Hp;
 	}
+
+	// 回血(负数无效), 血量夹在 [0, MaxHp]。返回实际回血量(对齐 Lua 止血贴 applyHpDelta)。
+	int32 Heal(int32 Amount)
+	{
+		Amount = FMath::Max(0, Amount);
+		const int32 Before = Hp;
+		Hp = FMath::Clamp(Hp + Amount, 0, MaxHp);
+		return Hp - Before;
+	}
 };
 
 // 战斗规则层数值与纯函数(对齐 Combat.lua + Balance.lua)。

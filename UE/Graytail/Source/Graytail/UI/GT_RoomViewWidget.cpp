@@ -28,6 +28,8 @@ namespace
 	constexpr float GTWalkFrameTime = 0.18f;   // 走路两帧轮播间隔
 	constexpr float GTChestOpenDuration = 1.4f;    // 开箱金光时长(对齐 Lua CHEST_OPEN_DURATION)
 	constexpr float GTChestRewardDuration = 2.0f;  // 奖励飘字时长(对齐 Lua CHEST_REWARD_DURATION)
+	constexpr float GTHealGlowDuration = 1.0f;     // 止血绿色光子上升时长
+	constexpr float GTMineFlashDuration = 0.6f;    // 踩雷红闪时长
 
 	const FLinearColor GTFloor_Normal(0.16f, 0.17f, 0.20f, 1.f);
 	const FLinearColor GTFloor_Mine(0.45f, 0.12f, 0.10f, 1.f);
@@ -249,6 +251,39 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 	if (UCanvasPanelSlot* PlayerSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(PlayerImage)))
 	{
 		PlayerSlot->SetSize(FVector2D(GTPlayerSize, GTPlayerSize));
+	}
+
+	// 止血绿色光子: 8 个小绿圆从玩家身上放射上升淡出(玩家上层, 红光之下)。
+	for (int32 ParticleIndex = 0; ParticleIndex < 8; ++ParticleIndex)
+	{
+		UImage* Particle = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+		Particle->SetVisibility(ESlateVisibility::Collapsed);
+		FSlateBrush DotBrush;
+		DotBrush.DrawAs = ESlateBrushDrawType::RoundedBox;
+		DotBrush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+		DotBrush.OutlineSettings.CornerRadii = FVector4(6.f, 6.f, 6.f, 6.f);
+		DotBrush.TintColor = FSlateColor(FLinearColor(FColor(130, 255, 160)));
+		Particle->SetBrush(DotBrush);
+		if (UCanvasPanelSlot* ParticleSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(Particle)))
+		{
+			ParticleSlot->SetSize(FVector2D(11.f, 11.f));
+		}
+		HealParticles[ParticleIndex] = Particle;
+	}
+
+	// 踩雷红光: 盖满整个房间的红色覆盖层(最上层), 闪烁淡出。
+	MineFlash = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+	MineFlash->SetVisibility(ESlateVisibility::Collapsed);
+	{
+		FSlateBrush RedBrush;
+		RedBrush.DrawAs = ESlateBrushDrawType::Image;
+		RedBrush.TintColor = FSlateColor(FLinearColor(FColor(220, 40, 30)));
+		MineFlash->SetBrush(RedBrush);
+	}
+	if (UCanvasPanelSlot* FlashSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(MineFlash)))
+	{
+		FlashSlot->SetPosition(FVector2D::ZeroVector);
+		FlashSlot->SetSize(FVector2D(GTRoomSize, GTRoomSize));
 	}
 }
 
@@ -556,6 +591,15 @@ FReply UGT_RoomViewWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FK
 		}
 		return FReply::Handled();
 	}
+	if (Key == EKeys::Q)
+	{
+		// Q = 使用消耗品/止血(对齐原版底栏; 默认应急止血贴, 满血/无库存由内核拒绝)。
+		if (OnConsumableRequested.IsBound())
+		{
+			OnConsumableRequested.Execute();
+		}
+		return FReply::Handled();
+	}
 	return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
 }
 
@@ -680,6 +724,72 @@ void UGT_RoomViewWidget::UpdateChestBurstAnim(float DeltaTime)
 		BurstPartsImage->SetVisibility(PartsVisibility);
 		BurstPartsText->SetVisibility(PartsVisibility);
 	}
+
+	// 止血绿色光子: 8 个小绿点环绕玩家漂浮(随机角度/半径/相位), 实时跟随玩家位置,
+	// 缓慢绕转 + 半径呼吸 + 上下浮动, 淡入淡出。包住人物周围而非只在上方。
+	if (HealGlowTimer > 0.f)
+	{
+		HealGlowTimer = FMath::Max(0.f, HealGlowTimer - DeltaTime);
+		const float Progress = 1.f - HealGlowTimer / GTHealGlowDuration; // 0 -> 1
+		const float FadeIn = FMath::Clamp(Progress / 0.15f, 0.f, 1.f);
+		const float FadeOut = Progress < 0.6f ? 1.f : FMath::Max(0.f, (1.f - Progress) / 0.4f);
+		const float Alpha = 0.9f * FadeIn * FadeOut;
+		const FVector2D PlayerCenter = PlayerPos * GTRoomSize; // 每帧重算 = 跟随玩家移动
+		const float Spin = Progress * 1.8f;                     // 整体缓慢绕转
+		const bool bActive = HealGlowTimer > 0.f;
+		for (int32 ParticleIndex = 0; ParticleIndex < 8; ++ParticleIndex)
+		{
+			UImage* Particle = HealParticles[ParticleIndex];
+			if (!Particle)
+			{
+				continue;
+			}
+			const float Phase = HealParticlePhase[ParticleIndex];
+			const float Angle = HealParticleAngle[ParticleIndex] + Spin;
+			// 半径呼吸 + 随 progress 轻微外扩; 上下浮动错落; 大小 5-8px 随相位变。
+			const float Radius = HealParticleRadius[ParticleIndex] * (0.85f + 0.15f * FMath::Sin(Phase + Progress * PI * 2.f)) + 5.f * Progress;
+			const float Bob = FMath::Sin(Phase + Progress * PI * 3.f) * 3.f;
+			const float Size = 5.f + 3.f * FMath::Abs(FMath::Sin(Phase * 1.7f));
+			const float CenterX = PlayerCenter.X + FMath::Cos(Angle) * Radius;
+			const float CenterY = PlayerCenter.Y - 8.f + FMath::Sin(Angle) * Radius + Bob;
+			Particle->SetRenderOpacity(Alpha);
+			if (UCanvasPanelSlot* ParticleSlot = Cast<UCanvasPanelSlot>(Particle->Slot))
+			{
+				ParticleSlot->SetPosition(FVector2D(CenterX - Size * 0.5f, CenterY - Size * 0.5f));
+				ParticleSlot->SetSize(FVector2D(Size, Size));
+			}
+			Particle->SetVisibility(bActive ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+		}
+	}
+
+	// 踩雷红光: 全房间红覆盖, sin 脉冲闪 3 下 + 整体淡出。
+	if (MineFlashTimer > 0.f && MineFlash)
+	{
+		MineFlashTimer = FMath::Max(0.f, MineFlashTimer - DeltaTime);
+		const float Frac = MineFlashTimer / GTMineFlashDuration; // 1 -> 0
+		const float Pulse = FMath::Abs(FMath::Sin(Frac * PI * 3.f));
+		MineFlash->SetRenderOpacity(0.5f * Frac * Pulse);
+		MineFlash->SetVisibility(MineFlashTimer > 0.f ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	}
+}
+
+void UGT_RoomViewWidget::PlayHealGlow()
+{
+	HealGlowTimer = GTHealGlowDuration;
+	// 每颗光子随机环绕参数(纯表现, 用 FRand 即可): 角度铺满一圈, 半径 14-32 包住人物。
+	for (int32 ParticleIndex = 0; ParticleIndex < 8; ++ParticleIndex)
+	{
+		HealParticleAngle[ParticleIndex] = FMath::FRand() * 2.f * PI;
+		HealParticleRadius[ParticleIndex] = 14.f + FMath::FRand() * 18.f;
+		HealParticlePhase[ParticleIndex] = FMath::FRand() * 2.f * PI;
+	}
+	UpdateChestBurstAnim(0.f);
+}
+
+void UGT_RoomViewWidget::PlayMineFlash()
+{
+	MineFlashTimer = GTMineFlashDuration;
+	UpdateChestBurstAnim(0.f);
 }
 
 void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
@@ -772,6 +882,12 @@ void UGT_RoomViewWidget::TryCrossDoor(int32 DirX, int32 DirY)
 	PlayerPos = FVector2D(0.5 - DirX * 0.42, 0.5 - DirY * 0.42);
 	RefreshRoomDecor();
 	UpdatePlayerImagePosition();
+
+	// 进入雷格 = 踩雷, 红光闪烁反馈(内核已扣血, 这里只做表现)。
+	if (Snapshot.CurrentRoomBaseType == EGT_RoomBaseType::Mine)
+	{
+		PlayMineFlash();
+	}
 
 	// 通知 HUD 整体刷新(状态行/小地图)。
 	if (OnRoomChanged.IsBound())

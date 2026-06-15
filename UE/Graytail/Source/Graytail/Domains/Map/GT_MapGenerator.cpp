@@ -63,7 +63,7 @@ bool UGT_MapGenerator::GenerateMap(const FGT_MapGenerationSpec& Spec, FGT_MapGen
 
 	if (RequestedMode == EGT_MapMode::Standard)
 	{
-		ApplyStandardLayout(OutResult.TruthMap, Spec);
+		ApplyStandardLayout(OutResult.TruthMap, Spec, OutResult.SpawnCoord);
 		OutResult.bSuccess = true;
 		return true;
 	}
@@ -79,14 +79,19 @@ void UGT_MapGenerator::ApplyBasicDebugLayout(FGT_TruthMap& TruthMap)
 	ConfigureRoomIdentity(TruthMap, GTDebugCombatRoomCoord, EGT_RoomBaseType::Combat, GTRoomContent_CombatDebugDummy01, GTRoomRule_CombatStartOnly, GTRoomInstance_CombatDebugDummy01);
 }
 
-void UGT_MapGenerator::ApplyStandardLayout(FGT_TruthMap& TruthMap, const FGT_MapGenerationSpec& Spec)
+void UGT_MapGenerator::ApplyStandardLayout(FGT_TruthMap& TruthMap, const FGT_MapGenerationSpec& Spec, FIntPoint& OutSpawnCoord)
 {
 	const int32 MapWidth = TruthMap.Width;
 	const int32 MapHeight = TruthMap.Height;
 	const int32 TotalCellCount = MapWidth * MapHeight;
 
-	// 出生点固定 (0,0)。撤离点不再固定在角落, 改为全部随机分布(策划: 不可见撤离点)。
-	const FIntPoint SpawnCoord(0, 0);
+	// 出生点全图均匀随机(对齐 Minefield.lua normal 模式 _ChooseRandomSpawn:
+	// 同一个 RNG 先取 x 再取 y, 然后才布雷, 调用顺序与 Lua 一致)。
+	// 撤离点不固定在角落, 全部随机分布(策划: 不可见撤离点)。
+	// 注: 策划案还想要"玩家自选出生点"(未拍板的设计决策②), 接入点就在这里。
+	FGT_Random Random(Spec.Seed);
+	const FIntPoint SpawnCoord(Random.RangeInt(0, MapWidth - 1), Random.RangeInt(0, MapHeight - 1));
+	OutSpawnCoord = SpawnCoord;
 
 	// 标记出生点安全区(该半径内不布雷)。
 	TSet<int32> ReservedIndices;
@@ -118,8 +123,7 @@ void UGT_MapGenerator::ApplyStandardLayout(FGT_TruthMap& TruthMap, const FGT_Map
 		}
 	}
 
-	// 洗牌后取前 N 个候选格作为雷, N 由雷密度决定。
-	FGT_Random Random(Spec.Seed);
+	// 洗牌后取前 N 个候选格作为雷, N 由雷密度决定(沿用上面定出生点的同一 RNG, 序列连续)。
 	Random.Shuffle(Candidates);
 
 	int32 MineCount = FMath::RoundToInt(TotalCellCount * Spec.MineDensity);

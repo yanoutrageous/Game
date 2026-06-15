@@ -466,6 +466,29 @@ namespace
 		}
 	}
 
+	void HandleUseItem(const TArray<FString>& Args, UWorld* World)
+	{
+		FString FailureReason;
+		UGT_DebugSubsystem* DebugSubsystem = FindDebugSubsystem(World, FailureReason);
+		if (!DebugSubsystem)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("gt.UseItem failed: %s"), *FailureReason);
+			return;
+		}
+
+		// 可选 itemId 参数, 缺省 = 应急止血贴(底栏 Q 的默认动作)。
+		const FName ItemId = Args.IsEmpty() ? FName(TEXT("emergency_bandage")) : FName(*Args[0]);
+
+		FGT_DebugRunSnapshot Snapshot;
+		const bool bAccepted = DebugSubsystem->DebugUseConsumable(ItemId, Snapshot);
+		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.UseItem %s: %s"), bAccepted ? TEXT("accepted") : TEXT("rejected"), *Snapshot.Summary);
+
+		// 使用后打印背包(看血量/剩余数量变化)。
+		FString InventoryText;
+		DebugSubsystem->GetDebugInventoryText(InventoryText);
+		UE_LOG(LogGraytailManualPlay, Display, TEXT("%s"), *InventoryText);
+	}
+
 	void HandleBag(const TArray<FString>& Args, UWorld* World)
 	{
 		FString FailureReason;
@@ -893,6 +916,11 @@ namespace
 		TEXT("gt.Search"),
 		TEXT("Searches the current room for gold and loot. Usage: gt.Search"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleSearch));
+
+	FAutoConsoleCommandWithWorldAndArgs GTUseItemCommand(
+		TEXT("gt.UseItem"),
+		TEXT("Uses a carried consumable (emergency_bandage heals min(25, missing HP)). Usage: gt.UseItem [ItemId]"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleUseItem));
 
 	FAutoConsoleCommandWithWorldAndArgs GTBagCommand(
 		TEXT("gt.Bag"),

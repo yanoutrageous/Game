@@ -48,6 +48,7 @@ void UGT_RunContext::InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec)
 	RunInventory.Reset();
 	LastSearchOutcome = FGT_SearchOutcome();
 	LastEventOutcome = FGT_EventOutcome();
+	LastConsumableOutcome = FGT_ConsumableOutcome();
 	EventRoomStates.Reset();
 	PlayerCombatState = FGT_PlayerCombatState();
 	ProtocolState.Reset();
@@ -61,8 +62,9 @@ void UGT_RunContext::InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec)
 	PlayerState.ActorDefId = FName(TEXT("PlayerDefault"));
 	PlayerState.Team = EGT_ActorTeam::Player;
 	PlayerState.Faction = EGT_ActorFaction::Graytail;
-	PlayerState.X = 0;
-	PlayerState.Y = 0;
+	// 出生点由生成器给出: BasicDebug 固定 (0,0), Standard 随机(对齐 Lua normal 模式)。
+	PlayerState.X = MapResult.SpawnCoord.X;
+	PlayerState.Y = MapResult.SpawnCoord.Y;
 	PlayerState.bAlive = true;
 
 	ActorStates.Reset();
@@ -78,6 +80,10 @@ void UGT_RunContext::InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec)
 		{
 			PlayerIntelMap.SetScannedNumber(PlayerState.X, PlayerState.Y, SpawnAdjacentMines);
 		}
+
+		// 开局占位携带应急止血贴: 部署界面(局外组 loadout)接入前的临时来源,
+		// 让 Q 键消耗品当下可玩可测; 将来由 loadout 带入数量替代。
+		RunInventory.AddCarriedItem(FName(TEXT("emergency_bandage")), 2, FName(TEXT("loadout")));
 	}
 }
 
@@ -98,6 +104,7 @@ void UGT_RunContext::ResetRun()
 	RunInventory.Reset();
 	LastSearchOutcome = FGT_SearchOutcome();
 	LastEventOutcome = FGT_EventOutcome();
+	LastConsumableOutcome = FGT_ConsumableOutcome();
 	EventRoomStates.Reset();
 	PlayerCombatState = FGT_PlayerCombatState();
 	ProtocolState.Reset();
@@ -639,6 +646,60 @@ bool UGT_RunContext::SearchCurrentRoom(FGT_SearchOutcome& OutOutcome)
 	OutOutcome.Reward = Reward;
 	LastSearchOutcome = OutOutcome;
 	return true;
+}
+
+bool UGT_RunContext::UseConsumableAtPlayer(FName ItemId, FGT_ConsumableOutcome& OutOutcome)
+{
+	OutOutcome = FGT_ConsumableOutcome();
+	OutOutcome.ItemId = ItemId;
+
+	if (!IsRunActive())
+	{
+		OutOutcome.Status = FName(TEXT("not_ready"));
+		LastConsumableOutcome = OutOutcome;
+		return false;
+	}
+
+	// 必须是消耗品类(对齐 Lua: def.type ~= "consumable" 拒绝)。
+	const FGT_ItemCatalogEntry* Def = GT_ItemCatalog::FindItemDef(ItemId);
+	if (!Def || Def->Kind != EGT_ItemKind::Consumable)
+	{
+		OutOutcome.Status = FName(TEXT("not_consumable"));
+		LastConsumableOutcome = OutOutcome;
+		return false;
+	}
+
+	if (RunInventory.GetItemCount(ItemId) <= 0)
+	{
+		OutOutcome.Status = FName(TEXT("not_enough"));
+		LastConsumableOutcome = OutOutcome;
+		return false;
+	}
+
+	// 应急止血贴: 回血 min(25, MaxHp-Hp), 满血拒绝(对齐 Lua RunInventory.UseConsumable)。
+	if (ItemId == FName(TEXT("emergency_bandage")))
+	{
+		if (PlayerCombatState.Hp >= PlayerCombatState.MaxHp)
+		{
+			OutOutcome.Status = FName(TEXT("hp_full"));
+			LastConsumableOutcome = OutOutcome;
+			return false;
+		}
+
+		constexpr int32 BandageHeal = 25; // Lua RunInventory.UseConsumable 硬编码值。
+		const int32 HealTarget = FMath::Min(BandageHeal, PlayerCombatState.MaxHp - PlayerCombatState.Hp);
+		OutOutcome.HealAmount = PlayerCombatState.Heal(HealTarget);
+		RunInventory.RemoveCarriedItem(ItemId, 1);
+		OutOutcome.bUsed = true;
+		OutOutcome.Status = FName(TEXT("used"));
+		OutOutcome.RemainingCount = RunInventory.GetItemCount(ItemId);
+		LastConsumableOutcome = OutOutcome;
+		return true;
+	}
+
+	OutOutcome.Status = FName(TEXT("not_implemented"));
+	LastConsumableOutcome = OutOutcome;
+	return false;
 }
 
 namespace

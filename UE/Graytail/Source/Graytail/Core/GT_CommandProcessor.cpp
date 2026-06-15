@@ -14,10 +14,12 @@ namespace
 	const FName GTCommandType_ChooseEventOption(TEXT("ChooseEventOption"));
 	const FName GTCommandType_ResolveCombat(TEXT("ResolveCombat"));
 	const FName GTCommandType_Attack(TEXT("Attack"));
+	const FName GTCommandType_UseConsumable(TEXT("UseConsumable"));
 	const FName GTEventType_ActorMoved(TEXT("ActorMoved"));
 	const FName GTEventType_EventOptionChosen(TEXT("EventOptionChosen"));
 	const FName GTEventType_CellScanned(TEXT("CellScanned"));
 	const FName GTEventType_RoomSearched(TEXT("RoomSearched"));
+	const FName GTEventType_ConsumableUsed(TEXT("ConsumableUsed"));
 	const FName GTEventType_CommandFailed(TEXT("CommandFailed"));
 	const FName GTEventType_RunFailed(TEXT("RunFailed"));
 	const FName GTEventType_RunSucceeded(TEXT("RunSucceeded"));
@@ -91,6 +93,11 @@ bool UGT_CommandProcessor::ProcessCommand(const FGT_Command& Command)
 	if (Command.CommandType == GTCommandType_Attack)
 	{
 		return ProcessAttackCommand(Command);
+	}
+
+	if (Command.CommandType == GTCommandType_UseConsumable)
+	{
+		return ProcessUseConsumableCommand(Command);
 	}
 
 	PublishCommandEvent(GTEventType_CommandFailed, Command.SourceActorId, Command.TargetActorId, Command.TargetX, Command.TargetY, false);
@@ -283,6 +290,62 @@ bool UGT_CommandProcessor::ProcessSearchCommand(const FGT_Command& Command)
 	if (IsValid(EventBus))
 	{
 		EventBus->PublishEvent(SearchedEvent);
+	}
+	return true;
+}
+
+bool UGT_CommandProcessor::ProcessUseConsumableCommand(const FGT_Command& Command)
+{
+	const FName EventTargetActorId = Command.TargetActorId.IsNone() && IsValid(RunContext)
+		? RunContext->GetPlayerActorId()
+		: Command.TargetActorId;
+
+	int32 PlayerX = 0;
+	int32 PlayerY = 0;
+	if (IsValid(RunContext))
+	{
+		RunContext->TryGetPlayerPosition(PlayerX, PlayerY);
+	}
+
+	// PayloadId 为空 = 底栏 Q 的默认动作(应急止血贴)。
+	const FName ItemId = Command.PayloadId.IsNone() ? FName(TEXT("emergency_bandage")) : Command.PayloadId;
+
+	FGT_ConsumableOutcome Outcome;
+	if (!IsValid(RunContext) || !RunContext->UseConsumableAtPlayer(ItemId, Outcome))
+	{
+		// 失败原因(hp_full/not_enough/not_consumable...)放进 RuleId, 供 UI 区分提示。
+		FGT_GameEvent FailedEvent;
+		FailedEvent.EventType = GTEventType_CommandFailed;
+		FailedEvent.SourceSystem = GTSourceSystem_CommandProcessor;
+		FailedEvent.SourceActorId = Command.SourceActorId.IsNone() ? EventTargetActorId : Command.SourceActorId;
+		FailedEvent.TargetActorId = EventTargetActorId;
+		FailedEvent.X = PlayerX;
+		FailedEvent.Y = PlayerY;
+		FailedEvent.RoomCoord = FIntPoint(PlayerX, PlayerY);
+		FailedEvent.RuleId = Outcome.Status;
+		FailedEvent.bSuccess = false;
+		if (IsValid(EventBus))
+		{
+			EventBus->PublishEvent(FailedEvent);
+		}
+		return false;
+	}
+
+	// 成功事件: NumericValue 带回血量, RuleId 带物品 id。
+	FGT_GameEvent UsedEvent;
+	UsedEvent.EventType = GTEventType_ConsumableUsed;
+	UsedEvent.SourceSystem = GTSourceSystem_CommandProcessor;
+	UsedEvent.SourceActorId = Command.SourceActorId.IsNone() ? EventTargetActorId : Command.SourceActorId;
+	UsedEvent.TargetActorId = EventTargetActorId;
+	UsedEvent.X = PlayerX;
+	UsedEvent.Y = PlayerY;
+	UsedEvent.RoomCoord = FIntPoint(PlayerX, PlayerY);
+	UsedEvent.NumericValue = Outcome.HealAmount;
+	UsedEvent.RuleId = Outcome.ItemId;
+	UsedEvent.bSuccess = true;
+	if (IsValid(EventBus))
+	{
+		EventBus->PublishEvent(UsedEvent);
 	}
 	return true;
 }

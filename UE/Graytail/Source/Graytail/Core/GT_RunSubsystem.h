@@ -55,6 +55,9 @@ private:
 	// 两个 StartNewRun 变体共享的收尾: 初始化 QueryFacade/CommandProcessor 并广播 RunStarted。
 	void FinishStartRun();
 
+	// 开局把局外 loadout/加成应用到当前 RunContext(S3, 仅 Standard 局)。
+	void ApplyMetaLoadoutToRun();
+
 	// 本局是否已结算(防重复事件触发多次结算; StartNewRun* 时重置)。
 	bool bRunSettled = false;
 

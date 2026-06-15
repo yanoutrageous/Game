@@ -8,6 +8,7 @@
 #include "Domains/Inventory/GT_InventoryTypes.h"
 #include "Domains/Combat/GT_CombatRules.h"
 #include "Domains/Events/GT_EventTypes.h"
+#include "Domains/Meta/GT_MetaTypes.h"
 #include "GT_RunContext.generated.h"
 
 struct FGT_MapGenerationSpec;
@@ -185,6 +186,10 @@ public:
 	// 踩雷扣血(Standard 模式规则, 对齐 Combat.TakeMineHit)。返回实际伤害与是否致死。
 	void ApplyMineHitToPlayer(int32& OutDamage, bool& bOutDead);
 
+	// 开局应用局外 loadout(S3): 设属性加成 + 存规则层加成 + 灌带入消耗品。
+	// 仅 Standard 局由 RunSubsystem 在初始化后调用(RunContext 不依赖 MetaProgress 子系统, 只收纯数据)。
+	void ApplyMetaLoadout(const FGT_EquipBonus& Equip, const FGT_TalentEffects& Talents, const TMap<FName, int32>& Consumables);
+
 	// 协议压力系统(对齐 Protocol.lua): 压力随行动上升, 触发阈值时等级下降, 满压强制败北。
 	// 返回值包含 level/pressure/changed/bForcedFail(压力满时触发败北)。
 	// 已探索格子不会重复加压(对齐 Lua 里只在首次探索未知房时加压)。
@@ -305,6 +310,11 @@ private:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat", meta = (AllowPrivateAccess = "true"))
 	FGT_PlayerCombatState PlayerCombatState;
+
+	// S3: 局外 loadout 在本局生效的加成(开局由 ApplyMetaLoadout 灌入; InitializeFromSpec/ResetRun 重置)。
+	int32 LoadoutMineDmgReduce = 0;
+	bool bLoadoutMineImmunityAvailable = false;
+	int32 LoadoutSearchBonusPercent = 0;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Protocol", meta = (AllowPrivateAccess = "true"))
 	FGT_ProtocolState ProtocolState;

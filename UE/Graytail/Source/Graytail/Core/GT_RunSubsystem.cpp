@@ -60,6 +60,7 @@ UGT_RunContext* UGT_RunSubsystem::StartNewRunStandard(int32 Seed, EGT_Difficulty
 	CurrentRunContext = NewObject<UGT_RunContext>(this);
 	bRunSettled = false;
 	CurrentRunContext->InitializeRunStandard(Seed, Difficulty);
+	ApplyMetaLoadoutToRun();
 	FinishStartRun();
 	return CurrentRunContext;
 }
@@ -128,6 +129,27 @@ void UGT_RunSubsystem::EndCurrentRun()
 	{
 		CommandProcessor->Initialize(nullptr, EventBus, ContentRegistry);
 	}
+}
+
+void UGT_RunSubsystem::ApplyMetaLoadoutToRun()
+{
+	// 仅 Standard 局应用(BasicDebug/163 夹具不动)。
+	if (!CurrentRunContext || CurrentRunContext->GetMapMode() != EGT_MapMode::Standard)
+	{
+		return;
+	}
+
+	UGameInstance* GameInstance = GetGameInstance();
+	UGT_MetaProgressSubsystem* Meta = GameInstance ? GameInstance->GetSubsystem<UGT_MetaProgressSubsystem>() : nullptr;
+	if (!Meta)
+	{
+		return;
+	}
+
+	const FGT_EquipBonus Equip = Meta->GetEquipBonus();
+	const FGT_TalentEffects Talents = Meta->GetTalentEffects();
+	TMap<FName, int32> Consumables = Meta->ConsumeLoadoutForRun();   // 扣库存, 返回本局携带量
+	CurrentRunContext->ApplyMetaLoadout(Equip, Talents, Consumables);
 }
 
 void UGT_RunSubsystem::HandleRunEvent(FGT_GameEvent Event)

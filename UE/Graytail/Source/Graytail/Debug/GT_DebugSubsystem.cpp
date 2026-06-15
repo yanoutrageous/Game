@@ -20,6 +20,7 @@ namespace
 	const FName GTDebugCommandType_ChooseEventOption(TEXT("ChooseEventOption"));
 	const FName GTDebugCommandType_ResolveCombat(TEXT("ResolveCombat"));
 	const FName GTDebugCommandType_Attack(TEXT("Attack"));
+	const FName GTDebugCommandType_UseConsumable(TEXT("UseConsumable"));
 	const FName GTDebugActorId_Player(TEXT("Player"));
 	const FName GTEventOption_DefaultContinue(TEXT("Event_DebugOption_Continue"));
 	const FName GTDebugEventType_EventResolved(TEXT("EventResolved"));
@@ -371,6 +372,30 @@ bool UGT_DebugSubsystem::DebugChooseEventOption(FName OptionId, FGT_DebugRunSnap
 	return bAccepted;
 }
 
+bool UGT_DebugSubsystem::DebugUseConsumable(FName ItemId, FGT_DebugRunSnapshot& OutSnapshot)
+{
+	int32 PlayerX = 0;
+	int32 PlayerY = 0;
+
+	const UGT_RunSubsystem* RunSubsystem = GetRunSubsystem();
+	const UGT_QueryFacade* QueryFacade = RunSubsystem ? RunSubsystem->GetQueryFacade() : nullptr;
+	if (QueryFacade)
+	{
+		QueryFacade->TryGetPlayerPosition(PlayerX, PlayerY);
+	}
+
+	// PayloadId 为空时命令层默认成应急止血贴。
+	const bool bAccepted = SubmitDebugCommand(GTDebugCommandType_UseConsumable, PlayerX, PlayerY, OutSnapshot, ItemId);
+	if (!bAccepted && !OutSnapshot.Summary.Equals(TEXT("No active run")))
+	{
+		OutSnapshot.Summary = FString::Printf(
+			TEXT("UseConsumable rejected (hp full / none carried / not a consumable). ItemId=%s. %s"),
+			ItemId.IsNone() ? TEXT("emergency_bandage") : *ItemId.ToString(),
+			*OutSnapshot.Summary);
+	}
+	return bAccepted;
+}
+
 bool UGT_DebugSubsystem::DebugGetEventMenu(FGT_EventMenuView& OutMenu) const
 {
 	OutMenu = FGT_EventMenuView();
@@ -667,6 +692,7 @@ void UGT_DebugSubsystem::GetDebugCommandHelpLines(TArray<FString>& OutLines) con
 	OutLines.Add(TEXT("  gt.Move X Y - Move to an adjacent coordinate through the command path."));
 	OutLines.Add(TEXT("  gt.Scan X Y - Scan a cell through the command path."));
 	OutLines.Add(TEXT("  gt.Search - Search the current room for gold and loot (once per room)."));
+	OutLines.Add(TEXT("  gt.UseItem [ItemId] - Use a carried consumable (default emergency_bandage)."));
 	OutLines.Add(TEXT("  gt.Teleport X Y - DEBUG godmode: move player directly, no mine/room triggers."));
 	OutLines.Add(TEXT("  gt.Bag - Show run inventory: gold, parts, carried items, searched rooms."));
 	OutLines.Add(TEXT("  gt.Extract - Attempt extraction at the current cell."));

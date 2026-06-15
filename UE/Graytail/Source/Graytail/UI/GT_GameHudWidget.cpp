@@ -129,6 +129,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		RoomView->OnMapRequested.BindUObject(this, &UGT_GameHudWidget::OpenMapOverlay);
 		RoomView->OnExtractRequested.BindUObject(this, &UGT_GameHudWidget::OnExtract);
 		RoomView->OnEventRequested.BindUObject(this, &UGT_GameHudWidget::OpenEventPanel);
+		RoomView->OnConsumableRequested.BindUObject(this, &UGT_GameHudWidget::OnUseConsumable);
 
 		UScaleBox* RoomScale = WidgetTree->ConstructWidget<UScaleBox>(UScaleBox::StaticClass());
 		RoomScale->SetStretch(EStretch::ScaleToFit);
@@ -304,7 +305,11 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_m"), TEXT("M"), TEXT("扫描图"));
 	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_f"), TEXT("F"), TEXT("搜索/攻击"));
 	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_e"), TEXT("E"), TEXT("撤离"));
-	if (UVerticalBoxSlot* HotbarSlot = CenterCol->AddChildToVerticalBox(MakeSkinnedPanel(Hotbar, TEXT("/Game/Graytail/UI/hud/ui_bottom_bar"))))
+	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_t"), TEXT("T"), TEXT("事件"));
+	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_q"), TEXT("Q"), TEXT("止血"));
+	// 底栏背景用无分隔的连续金属条(ui_bar_blank_dark): 原版 ui_bottom_bar 是死画的 4 格,
+	// 与 6 个键位项数量不匹配会错位, 换成连续条让键帽均分对齐。
+	if (UVerticalBoxSlot* HotbarSlot = CenterCol->AddChildToVerticalBox(MakeSkinnedPanel(Hotbar, TEXT("/Game/Graytail/UI/common/ui_bar_blank_dark"))))
 	{
 		HotbarSlot->SetHorizontalAlignment(HAlign_Center);
 		HotbarSlot->SetPadding(FMargin(0.f, 0.f, 0.f, 8.f));
@@ -1084,6 +1089,25 @@ void UGT_GameHudWidget::OnExtract()
 		Debug->DebugExtract(Snapshot);
 	}
 	RefreshAll();
+}
+
+void UGT_GameHudWidget::OnUseConsumable()
+{
+	// Q = 止血(默认应急止血贴)。满血/无库存由内核拒绝, 这里只发命令并刷新。
+	UGT_DebugSubsystem* Debug = GetDebugSubsystem();
+	if (!Debug)
+	{
+		return;
+	}
+	FGT_DebugRunSnapshot Snapshot;
+	const bool bUsed = Debug->DebugUseConsumable(FName(TEXT("emergency_bandage")), Snapshot);
+	RefreshAll();
+
+	// 用成功(回血)才播绿光反馈; 满血/无库存被拒不播。
+	if (bUsed && RoomView)
+	{
+		RoomView->PlayHealGlow();
+	}
 }
 
 void UGT_GameHudWidget::OnNewRun()

@@ -109,6 +109,31 @@ struct GRAYTAIL_API FGT_SearchOutcome
 	FGT_SearchReward Reward;
 };
 
+// 使用消耗品的结果(成功或失败原因), 供命令层与 UI 展示。
+USTRUCT(BlueprintType)
+struct GRAYTAIL_API FGT_ConsumableOutcome
+{
+	GENERATED_BODY()
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Inventory")
+	bool bUsed = false;
+
+	// used / not_ready / not_consumable / not_enough / hp_full / not_implemented,
+	// 对齐 Lua RunInventory.UseConsumable 的返回原因。
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Inventory")
+	FName Status = NAME_None;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Inventory")
+	FName ItemId = NAME_None;
+
+	// 本次回血量(止血贴), 其它消耗品按效果填。
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Inventory")
+	int32 HealAmount = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Inventory")
+	int32 RemainingCount = 0;
+};
+
 // 一局的背包状态(对齐 Lua RunInventory 的可变状态部分)。
 // 挂在 UGT_RunContext 上, 一局一份, ResetRun 时整体重建。
 // 金币双轨: PendingGold 待结算(死亡丢失), SafeGold 已锁定(死亡保留)。
@@ -196,6 +221,42 @@ struct GRAYTAIL_API FGT_RunInventoryState
 			Total += Stack.Count;
 		}
 		return Total;
+	}
+
+	// 背包里某物品的持有数(0 = 没有)。
+	int32 GetItemCount(FName ItemId) const
+	{
+		for (const FGT_ItemStack& Stack : CarriedItems)
+		{
+			if (Stack.ItemId == ItemId)
+			{
+				return Stack.Count;
+			}
+		}
+		return 0;
+	}
+
+	// 移除 Count 个指定物品, 减到 0 删掉该堆。返回实际移除数量(对齐 Lua UseConsumable 的 count-1)。
+	int32 RemoveCarriedItem(FName ItemId, int32 Count)
+	{
+		if (ItemId.IsNone() || Count < 1)
+		{
+			return 0;
+		}
+		for (int32 Index = 0; Index < CarriedItems.Num(); ++Index)
+		{
+			if (CarriedItems[Index].ItemId == ItemId)
+			{
+				const int32 Removed = FMath::Min(Count, CarriedItems[Index].Count);
+				CarriedItems[Index].Count -= Removed;
+				if (CarriedItems[Index].Count <= 0)
+				{
+					CarriedItems.RemoveAt(Index);
+				}
+				return Removed;
+			}
+		}
+		return 0;
 	}
 
 	// 不在物品堆里的零散零件数(parts 与堆叠数的差), 对齐 Lua GetLooseParts。

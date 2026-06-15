@@ -70,6 +70,8 @@ private:
 	void HandleLootResultClosed();
 	void OpenEventPanel();
 	void HandleEventPanelClosed();
+	// Q 键使用消耗品(默认止血贴): 发命令走真规则, 刷新血条/背包。
+	void OnUseConsumable();
 
 	UPROPERTY(Transient) UGT_RoomViewWidget* RoomView = nullptr;
 	UPROPERTY(Transient) UGT_MapOverlayWidget* MapOverlay = nullptr;

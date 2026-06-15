@@ -58,6 +58,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
 	bool DebugAttack(FGT_DebugRunSnapshot& OutSnapshot);
 
+	// 使用玩家背包里的消耗品(默认应急止血贴)。经命令管线走真规则。
+	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
+	bool DebugUseConsumable(FName ItemId, FGT_DebugRunSnapshot& OutSnapshot);
+
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
 	bool GetDebugRunSnapshot(FGT_DebugRunSnapshot& OutSnapshot) const;
 

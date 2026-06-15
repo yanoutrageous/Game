@@ -244,6 +244,27 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 		EnemySlot->SetSize(FVector2D(80.f, 80.f));
 	}
 
+	// ==========================================
+	// 1. 创建预警瞄准线 (半透明红色细长条)
+	EnemyWarningLine = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+	EnemyWarningLine->SetVisibility(ESlateVisibility::Collapsed);
+	EnemyWarningLine->SetBrushTintColor(FSlateColor(FLinearColor(1.0f, 0.1f, 0.1f, 0.4f))); // 半透明红色
+	EnemyWarningLine->SetRenderTransformPivot(FVector2D(0.f, 0.5f)); // 轴心设为左侧中心，方便做旋转
+	if (UCanvasPanelSlot* LineSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(EnemyWarningLine)))
+	{
+		LineSlot->SetSize(FVector2D(800.f, 4.f)); // 长度800保证贯穿房间，宽度4像素
+	}
+
+	// 2. 创建子弹 (实心红点)
+	EnemyProjectileImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+	EnemyProjectileImage->SetVisibility(ESlateVisibility::Collapsed);
+	EnemyProjectileImage->SetBrushTintColor(FSlateColor(FLinearColor(1.0f, 0.2f, 0.2f, 1.f))); // 亮红色
+	if (UCanvasPanelSlot* ProjSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(EnemyProjectileImage)))
+	{
+		ProjSlot->SetSize(FVector2D(16.f, 16.f));
+	}
+	// ==========================================
+
 	// 玩家(走路贴图)。
 	PlayerImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
 	if (UCanvasPanelSlot* PlayerSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(PlayerImage)))
@@ -694,8 +715,9 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 	// 开箱演出不受焦点影响(弹窗刚关/按钮持焦时也要继续播)。
 	UpdateChestBurstAnim(InDeltaTime);
 
-	// 新增：怪物实时范围攻击与抖动逻辑
-	
+	// ==========================================
+		// 怪物远近战混合 AI 逻辑
+		// ==========================================
 	UGT_DebugSubsystem* Debug = GetDebugSubsystem();
 	FGT_DebugRunSnapshot Snapshot;
 	if (Debug && Debug->GetDebugRunSnapshot(Snapshot))
@@ -704,58 +726,117 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 
 		if (bIsCombatRoom && EnemyImage->GetVisibility() == ESlateVisibility::HitTestInvisible)
 		{
-			// 1. 更新攻击冷却
-			if (EnemyAttackCooldownTimer > 0.f)
-			{
-				EnemyAttackCooldownTimer -= InDeltaTime;
-			}
-
-			// 2. 距离判定：计算玩家当前归一化坐标与怪物归一化坐标(0.35, 0.45)的距离
 			FVector2D EnemyNormalizedPos(0.35f, 0.45f);
 			float Distance = FVector2D::Distance(PlayerPos, EnemyNormalizedPos);
-			float AttackRadius = 0.2f; // 设定攻击判定半径（占房间尺寸的 20%）
+			float MeleeRadius = 0.2f; // 近战触发半径
 
-			// 如果进入范围且冷却完毕，触发攻击
-			if (Distance <= AttackRadius && EnemyAttackCooldownTimer <= 0.f)
+			// 状态 1：冷却倒计时与攻击抉择
+			// 只有在没发射子弹，且没在瞄准时，才进行冷却和下一轮攻击的判定
+			if (!bProjectileActive && EnemyAimTimer <= 0.f)
 			{
-				EnemyAttackCooldownTimer = 2.0f; // 设置攻击间隔（例如 2 秒）
-				EnemyShakeTimer = 0.3f;          // 震动动画持续 0.3 秒
-
-				// 触发伤害（目前需求暂设为 0）
-				// TODO: 后续若需真扣血，可在此处调用 RunContext 或 CommandProcessor
-				UE_LOG(LogTemp, Warning, TEXT("怪物发动了范围攻击！造成了 0 点伤害！"));
+				if (EnemyAttackCooldownTimer > 0.f)
+				{
+					EnemyAttackCooldownTimer -= InDeltaTime;
+				}
+				else
+				{
+					// 冷却完毕！根据距离决定用哪种攻击
+					if (Distance <= MeleeRadius)
+					{
+						// 【近战攻击】直接触发
+						EnemyAttackCooldownTimer = 2.0f; // 重置冷却
+						EnemyShakeTimer = 0.3f;          // 触发近战冲撞动画
+						UE_LOG(LogTemp, Warning, TEXT("怪物发动了【近战攻击】！造成 0 点伤害！"));
+					}
+					else
+					{
+						// 【远程攻击】进入瞄准状态
+						EnemyAimTimer = 1.0f; // 出现红线，瞄准持续 1 秒
+						EnemyWarningLine->SetVisibility(ESlateVisibility::HitTestInvisible);
+					}
+				}
 			}
 
-			// 3. 左右抖动动画渲染
+			// 状态 2：远程预警瞄准中
+			if (EnemyAimTimer > 0.f)
+			{
+				EnemyAimTimer -= InDeltaTime;
+
+				// 锁定玩家当前方向并更新红线
+				AimDirection = (PlayerPos - EnemyNormalizedPos).GetSafeNormal();
+				if (UCanvasPanelSlot* LineSlot = Cast<UCanvasPanelSlot>(EnemyWarningLine->Slot))
+				{
+					LineSlot->SetPosition(FVector2D(EnemyNormalizedPos.X * 560.f, EnemyNormalizedPos.Y * 560.f) - FVector2D(0.f, 2.f));
+				}
+				float AngleDegrees = FMath::RadiansToDegrees(FMath::Atan2(AimDirection.Y, AimDirection.X));
+				EnemyWarningLine->SetRenderTransform(FWidgetTransform(FVector2D::ZeroVector, FVector2D(1.f, 1.f), FVector2D::ZeroVector, AngleDegrees));
+
+				// 瞄准结束 -> 开火
+				if (EnemyAimTimer <= 0.f)
+				{
+					EnemyWarningLine->SetVisibility(ESlateVisibility::Collapsed); // 隐藏红线
+					bProjectileActive = true;                                     // 激活子弹
+					ProjectilePos = EnemyNormalizedPos;                           // 子弹起点
+					EnemyProjectileImage->SetVisibility(ESlateVisibility::HitTestInvisible);
+
+					EnemyShakeTimer = 0.3f;          // 触发开火后坐力动画
+					EnemyAttackCooldownTimer = 2.0f; // 重置下一轮攻击间隔
+					UE_LOG(LogTemp, Warning, TEXT("怪物开火！"));
+				}
+			}
+
+			// 状态 3：子弹飞行与碰撞检测
+			if (bProjectileActive)
+			{
+				ProjectilePos += AimDirection * ProjectileSpeed * InDeltaTime;
+
+				if (UCanvasPanelSlot* ProjSlot = Cast<UCanvasPanelSlot>(EnemyProjectileImage->Slot))
+				{
+					ProjSlot->SetPosition(FVector2D(ProjectilePos.X * 560.f - 8.f, ProjectilePos.Y * 560.f - 8.f));
+				}
+
+				if (FVector2D::Distance(ProjectilePos, PlayerPos) < 0.06f)
+				{
+					bProjectileActive = false;
+					EnemyProjectileImage->SetVisibility(ESlateVisibility::Collapsed);
+					UE_LOG(LogTemp, Warning, TEXT("砰！被【子弹命中】！造成 0 点伤害！"));
+				}
+				else if (ProjectilePos.X < 0.f || ProjectilePos.X > 1.f || ProjectilePos.Y < 0.f || ProjectilePos.Y > 1.f)
+				{
+					bProjectileActive = false;
+					EnemyProjectileImage->SetVisibility(ESlateVisibility::Collapsed);
+				}
+			}
+
+			// 状态 4：通用的抖动动画 (近战冲撞 / 远程后坐力 共享此表现)
 			if (EnemyShakeTimer > 0.f)
 			{
 				EnemyShakeTimer -= InDeltaTime;
-				// 利用正弦波生成左右位移：频率 60.f 决定抖动速度，振幅 8.f 决定左右摇摆的像素距离
 				float ShakeOffset = FMath::Sin(EnemyShakeTimer * 60.f) * 8.f;
-
 				if (UCanvasPanelSlot* EnemySlot = Cast<UCanvasPanelSlot>(EnemyImage->Slot))
 				{
 					EnemySlot->SetPosition(EnemyBasePos + FVector2D(ShakeOffset, 0.f));
 				}
-
-				// 动画结束时，确保怪物归位
 				if (EnemyShakeTimer <= 0.f)
 				{
 					if (UCanvasPanelSlot* EnemySlot = Cast<UCanvasPanelSlot>(EnemyImage->Slot))
-					{
 						EnemySlot->SetPosition(EnemyBasePos);
-					}
 				}
 			}
 		}
 		else
 		{
-			// 不在战斗房间或怪物被击杀时，重置状态
+			// 清理逻辑
 			EnemyAttackCooldownTimer = 0.f;
+			EnemyAimTimer = 0.f;
 			EnemyShakeTimer = 0.f;
+			bProjectileActive = false;
+			if (EnemyWarningLine) EnemyWarningLine->SetVisibility(ESlateVisibility::Collapsed);
+			if (EnemyProjectileImage) EnemyProjectileImage->SetVisibility(ESlateVisibility::Collapsed);
 		}
 	}
-	//
+	// ==========================================
+	
 
 	// 焦点在弹窗/按钮上时暂停移动(持键状态仍经 HUD 冒泡转发保持准确, 关弹窗立刻续走)。
 	if (!HasKeyboardFocus())

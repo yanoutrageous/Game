@@ -8,6 +8,7 @@ class UTextBlock;
 class UScrollBox;
 class UVerticalBox;
 class UHorizontalBox;
+class UWrapBox;
 class UBorder;
 class UButton;
 class UTexture2D;
@@ -56,11 +57,14 @@ private:
 	UTexture2D* IconForEquip(FName Id) const;
 	UTexture2D* IconForConsumable(FName Id) const;
 
-	// 往内容列表加一行(图标 + 名称/效果 + 右侧价或状态 + 是否可点/是否高亮)。
-	void AddItemRow(int32 Index, UTexture2D* Icon, const FString& Name, const FString& Effect,
-		const FString& Right, bool bEnabled, bool bHighlight);
+	// 往内容网格加一张物品卡(图标 + 名称 + 类型 + 效果描述 + 拥有/价格行 + 动作按钮)。
+	void AddItemCard(int32 Index, UTexture2D* Icon, const FString& Name, const FString& TypeLine,
+		const FString& Effect, const FString& InfoLine, const FString& ActionLabel,
+		bool bActionEnabled, bool bHighlight);
 	UButton* MakeFooterButton(UHorizontalBox* Row, const FString& Label, const FString& AssetPath);
-	UButton* MakeNavButton(UHorizontalBox* Row, const FString& Label);
+	UButton* MakeNavButton(UHorizontalBox* Row, const FString& Label, const FString& TexPath);
+	// 把贴图设成 Border 的 9-slice 背景刷(MarginFrac = 边框占比, 0 则整图拉伸)。
+	void Apply9Slice(UBorder* Target, const FString& TexPath, float MarginFrac);
 
 	UFUNCTION() void OnNavRequisition();
 	UFUNCTION() void OnNavLoadout();
@@ -74,7 +78,7 @@ private:
 	UPROPERTY(Transient) UTextBlock* GoldText = nullptr;
 	UPROPERTY(Transient) UTextBlock* TitleText = nullptr;
 	UPROPERTY(Transient) UScrollBox* ContentScroll = nullptr;
-	UPROPERTY(Transient) UVerticalBox* ContentList = nullptr;
+	UPROPERTY(Transient) UWrapBox* ContentWrap = nullptr;
 	UPROPERTY(Transient) UVerticalBox* SummaryBox = nullptr;
 	UPROPERTY(Transient) UTextBlock* HintText = nullptr;
 

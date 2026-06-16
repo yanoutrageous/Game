@@ -12,6 +12,8 @@
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
+#include "Components/WrapBox.h"
+#include "Components/WrapBoxSlot.h"
 #include "Engine/GameInstance.h"
 #include "Engine/Texture2D.h"
 #include "Engine/World.h"
@@ -24,23 +26,23 @@
 
 namespace
 {
-	const FLinearColor GTColGold(0.85f, 0.72f, 0.34f);
-	const FLinearColor GTColWhite(0.92f, 0.92f, 0.92f);
-	const FLinearColor GTColDim(0.60f, 0.60f, 0.62f);
-	const FLinearColor GTColGreen(0.50f, 0.88f, 0.52f);
-	const FLinearColor GTColRed(0.90f, 0.42f, 0.40f);
+	const FLinearColor GTColGold(0.86f, 0.73f, 0.36f);
+	const FLinearColor GTColWhite(0.93f, 0.93f, 0.93f);
+	const FLinearColor GTColDim(0.62f, 0.63f, 0.66f);
+	const FLinearColor GTColGreen(0.52f, 0.90f, 0.55f);
+	const FLinearColor GTColCardBg(0.11f, 0.12f, 0.15f, 0.96f);
+	const FLinearColor GTColCardEquipped(0.10f, 0.19f, 0.13f, 0.97f);
 
 	FSlateFontInfo GTFont(int32 Size)
 	{
 		return FCoreStyle::GetDefaultFontStyle("Regular", Size);
 	}
 
-	// 装备效果短文案(从目录字段拼, 每件装备恰好一项)。
 	FString EquipEffectText(const FGT_EquipDef& Def)
 	{
 		if (Def.BonusHP > 0) { return FString::Printf(TEXT("最大生命 +%d"), Def.BonusHP); }
 		if (Def.BonusPower > 0) { return FString::Printf(TEXT("战斗力 +%d"), Def.BonusPower); }
-		if (Def.bMineImmunity) { return TEXT("首次踩雷免疫"); }
+		if (Def.bMineImmunity) { return TEXT("首次踩雷免疫伤害"); }
 		if (Def.MineDmgReduce > 0) { return FString::Printf(TEXT("雷险伤害 -%d"), Def.MineDmgReduce); }
 		if (Def.bShowExitHint) { return TEXT("撤离信标方向提示"); }
 		if (Def.SearchBonus > 0) { return FString::Printf(TEXT("搜索奖励 +%d%%"), Def.SearchBonus); }
@@ -89,7 +91,7 @@ UTexture2D* UGT_DeployTerminalWidget::IconForEquip(FName Id) const
 	if (Id == FName(TEXT("backpack"))) { return Self->LoadUiTex(TEXT("/Game/Graytail/UI/deploy/ui_icon_backpack")); }
 	if (Id == FName(TEXT("compass")))  { return Self->LoadUiTex(TEXT("/Game/Graytail/UI/deploy/ui_icon_compass")); }
 	if (Id == FName(TEXT("medkit")))   { return Self->LoadUiTex(TEXT("/Game/Graytail/Items/Consumable/item_consumable_medkit")); }
-	// whetstone / insulated_gloves 暂无专属图(待补), 返回空只显文字。
+	// whetstone / insulated_gloves 暂无专属图(待补 AI 生成)。
 	return nullptr;
 }
 
@@ -103,17 +105,55 @@ UTexture2D* UGT_DeployTerminalWidget::IconForConsumable(FName Id) const
 	return nullptr;
 }
 
-UButton* UGT_DeployTerminalWidget::MakeNavButton(UHorizontalBox* Row, const FString& Label)
+void UGT_DeployTerminalWidget::Apply9Slice(UBorder* Target, const FString& TexPath, float MarginFrac)
+{
+	if (!Target) { return; }
+	UTexture2D* Tex = LoadUiTex(TexPath);
+	if (!Tex)
+	{
+		Target->SetBrushColor(FLinearColor(0.09f, 0.10f, 0.13f, 0.96f));
+		return;
+	}
+	FSlateBrush Brush;
+	Brush.SetResourceObject(Tex);
+	Brush.ImageSize = FVector2D(Tex->GetSizeX(), Tex->GetSizeY());
+	Brush.DrawAs = (MarginFrac > 0.f) ? ESlateBrushDrawType::Box : ESlateBrushDrawType::Image;
+	Brush.Margin = FMargin(MarginFrac);
+	Target->SetBrush(Brush);
+}
+
+UButton* UGT_DeployTerminalWidget::MakeNavButton(UHorizontalBox* Row, const FString& Label, const FString& TexPath)
 {
 	UButton* Btn = WidgetTree->ConstructWidget<UButton>();
-	UTextBlock* Txt = WidgetTree->ConstructWidget<UTextBlock>();
-	Txt->SetText(FText::FromString(Label));
-	Txt->SetFont(GTFont(15));
-	Txt->SetColorAndOpacity(FSlateColor(GTColWhite));
-	Btn->SetContent(Txt);
+	UTexture2D* Tex = LoadUiTex(TexPath);
+	if (Tex)
+	{
+		// 用导航贴图(标签已烤在图里), 归一到 44 高。
+		const float TexW = FMath::Max(1, Tex->GetSizeX());
+		const float TexH = FMath::Max(1, Tex->GetSizeY());
+		const FVector2D Size(TexW * (44.f / TexH), 44.f);
+		FButtonStyle Style = Btn->GetStyle();
+		FSlateBrush B;
+		B.SetResourceObject(Tex);
+		B.ImageSize = Size;
+		B.DrawAs = ESlateBrushDrawType::Image;
+		Style.Normal = B;
+		Style.Hovered = B;
+		Style.Pressed = B;
+		Btn->SetStyle(Style);
+	}
+	else
+	{
+		UTextBlock* Txt = WidgetTree->ConstructWidget<UTextBlock>();
+		Txt->SetText(FText::FromString(Label));
+		Txt->SetFont(GTFont(15));
+		Txt->SetColorAndOpacity(FSlateColor(GTColWhite));
+		Btn->SetContent(Txt);
+	}
 	if (UHorizontalBoxSlot* HSlot = Row->AddChildToHorizontalBox(Btn))
 	{
-		HSlot->SetPadding(FMargin(2.f, 0.f));
+		HSlot->SetPadding(FMargin(3.f, 0.f));
+		HSlot->SetVerticalAlignment(VAlign_Center);
 	}
 	return Btn;
 }
@@ -123,30 +163,37 @@ UButton* UGT_DeployTerminalWidget::MakeFooterButton(UHorizontalBox* Row, const F
 	UButton* Btn = WidgetTree->ConstructWidget<UButton>();
 	if (UTexture2D* Tex = LoadUiTex(AssetPath))
 	{
+		const float TexW = FMath::Max(1, Tex->GetSizeX());
+		const float TexH = FMath::Max(1, Tex->GetSizeY());
+		const FVector2D Size(TexW * (52.f / TexH), 52.f);
 		FButtonStyle Style = Btn->GetStyle();
-		Style.Normal.SetResourceObject(Tex);
-		Style.Hovered.SetResourceObject(Tex);
-		Style.Pressed.SetResourceObject(Tex);
+		FSlateBrush B;
+		B.SetResourceObject(Tex);
+		B.ImageSize = Size;
+		B.DrawAs = ESlateBrushDrawType::Image;
+		Style.Normal = B;
+		Style.Hovered = B;
+		Style.Pressed = B;
 		Btn->SetStyle(Style);
 	}
 	UTextBlock* Txt = WidgetTree->ConstructWidget<UTextBlock>();
 	Txt->SetText(FText::FromString(Label));
-	Txt->SetFont(GTFont(18));
+	Txt->SetFont(GTFont(19));
 	Txt->SetColorAndOpacity(FSlateColor(GTColGold));
 	Btn->SetContent(Txt);
 	if (UHorizontalBoxSlot* HSlot = Row->AddChildToHorizontalBox(Btn))
 	{
 		HSlot->SetPadding(FMargin(6.f, 0.f));
+		HSlot->SetVerticalAlignment(VAlign_Center);
 	}
 	return Btn;
 }
 
 void UGT_DeployTerminalWidget::BuildWidgetTree()
 {
-	// 根 = 暗底 Border 罩满(P1 用纯色终端底, 视觉打磨待 PIE 反馈)。
 	UBorder* Root = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("DeployRoot"));
-	Root->SetBrushColor(FLinearColor(0.05f, 0.06f, 0.08f, 0.98f));
-	Root->SetPadding(FMargin(36.f, 28.f));
+	Root->SetBrushColor(FLinearColor(0.04f, 0.05f, 0.07f, 0.99f));
+	Root->SetPadding(FMargin(40.f, 30.f));
 	WidgetTree->RootWidget = Root;
 
 	UVerticalBox* Main = WidgetTree->ConstructWidget<UVerticalBox>();
@@ -154,63 +201,72 @@ void UGT_DeployTerminalWidget::BuildWidgetTree()
 
 	// --- 顶栏: 标题 + 弹簧 + 金币 ---
 	UHorizontalBox* TopBar = WidgetTree->ConstructWidget<UHorizontalBox>();
-	if (UVerticalBoxSlot* S = Main->AddChildToVerticalBox(TopBar)) { S->SetPadding(FMargin(0, 0, 0, 12)); }
+	if (UVerticalBoxSlot* S = Main->AddChildToVerticalBox(TopBar)) { S->SetPadding(FMargin(0, 0, 0, 14)); }
 	TitleText = WidgetTree->ConstructWidget<UTextBlock>();
 	TitleText->SetText(FText::FromString(TEXT("灰尾回收 · 部署终端")));
-	TitleText->SetFont(GTFont(24));
+	TitleText->SetFont(GTFont(26));
 	TitleText->SetColorAndOpacity(FSlateColor(GTColGold));
-	TopBar->AddChildToHorizontalBox(TitleText);
+	if (UHorizontalBoxSlot* S = TopBar->AddChildToHorizontalBox(TitleText)) { S->SetVerticalAlignment(VAlign_Center); }
 	USpacer* TopSpacer = WidgetTree->ConstructWidget<USpacer>();
 	if (UHorizontalBoxSlot* S = TopBar->AddChildToHorizontalBox(TopSpacer)) { S->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); }
 	if (UTexture2D* GoldIcon = LoadUiTex(TEXT("/Game/Graytail/UI/common/ui_icon_account_gold")))
 	{
 		UImage* Img = WidgetTree->ConstructWidget<UImage>();
 		Img->SetBrushFromTexture(GoldIcon);
-		Img->SetDesiredSizeOverride(FVector2D(26.f, 26.f));
-		if (UHorizontalBoxSlot* S = TopBar->AddChildToHorizontalBox(Img)) { S->SetVerticalAlignment(VAlign_Center); S->SetPadding(FMargin(0, 0, 6, 0)); }
+		Img->SetDesiredSizeOverride(FVector2D(28.f, 28.f));
+		if (UHorizontalBoxSlot* S = TopBar->AddChildToHorizontalBox(Img)) { S->SetVerticalAlignment(VAlign_Center); S->SetPadding(FMargin(0, 0, 7, 0)); }
 	}
 	GoldText = WidgetTree->ConstructWidget<UTextBlock>();
-	GoldText->SetFont(GTFont(20));
+	GoldText->SetFont(GTFont(22));
 	GoldText->SetColorAndOpacity(FSlateColor(GTColGold));
 	if (UHorizontalBoxSlot* S = TopBar->AddChildToHorizontalBox(GoldText)) { S->SetVerticalAlignment(VAlign_Center); }
 
-	// --- 导航栏 ---
+	// --- 导航栏(贴图按钮, 标签烤在图里) ---
 	UHorizontalBox* Nav = WidgetTree->ConstructWidget<UHorizontalBox>();
-	if (UVerticalBoxSlot* S = Main->AddChildToVerticalBox(Nav)) { S->SetPadding(FMargin(0, 0, 0, 6)); }
-	MakeNavButton(Nav, TEXT("申领"))->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavRequisition);
-	MakeNavButton(Nav, TEXT("作业装备"))->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavLoadout);
-	MakeNavButton(Nav, TEXT("仓库"))->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavWarehouse);
-	MakeNavButton(Nav, TEXT("天赋"))->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavTalent);
-	MakeNavButton(Nav, TEXT("抢救记录"))->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavRecovery);
+	if (UVerticalBoxSlot* S = Main->AddChildToVerticalBox(Nav)) { S->SetPadding(FMargin(0, 0, 0, 10)); }
+	MakeNavButton(Nav, TEXT("申领"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_requisition"))
+		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavRequisition);
+	MakeNavButton(Nav, TEXT("作业装备"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_loadout"))
+		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavLoadout);
+	MakeNavButton(Nav, TEXT("仓库"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_warehouse"))
+		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavWarehouse);
+	MakeNavButton(Nav, TEXT("天赋"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_talent_selected"))
+		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavTalent);
+	MakeNavButton(Nav, TEXT("抢救记录"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_recovery"))
+		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavRecovery);
 
 	HintText = WidgetTree->ConstructWidget<UTextBlock>();
-	HintText->SetFont(GTFont(13));
+	HintText->SetFont(GTFont(14));
 	HintText->SetColorAndOpacity(FSlateColor(GTColDim));
 	if (UVerticalBoxSlot* S = Main->AddChildToVerticalBox(HintText)) { S->SetPadding(FMargin(2, 0, 0, 8)); }
 
-	// --- 主体: 内容滚动列表(填充) + 右侧摘要(固定宽) ---
+	// --- 主体: 带框内容区(卡片网格滚动) + 右侧带框摘要 ---
 	UHorizontalBox* Body = WidgetTree->ConstructWidget<UHorizontalBox>();
 	if (UVerticalBoxSlot* S = Main->AddChildToVerticalBox(Body)) { S->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); }
 
+	UBorder* ContentFrame = WidgetTree->ConstructWidget<UBorder>();
+	Apply9Slice(ContentFrame, TEXT("/Game/Graytail/UI/deploy/ui_panel_deploy_main_blank"), 0.30f);
+	ContentFrame->SetPadding(FMargin(16.f));
+	if (UHorizontalBoxSlot* S = Body->AddChildToHorizontalBox(ContentFrame)) { S->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); S->SetPadding(FMargin(0, 0, 14, 0)); }
 	ContentScroll = WidgetTree->ConstructWidget<UScrollBox>();
-	if (UHorizontalBoxSlot* S = Body->AddChildToHorizontalBox(ContentScroll)) { S->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); S->SetPadding(FMargin(0, 0, 12, 0)); }
-	ContentList = WidgetTree->ConstructWidget<UVerticalBox>();
-	ContentScroll->AddChild(ContentList);
+	ContentFrame->SetContent(ContentScroll);
+	ContentWrap = WidgetTree->ConstructWidget<UWrapBox>();
+	ContentScroll->AddChild(ContentWrap);
 
 	USizeBox* SummarySize = WidgetTree->ConstructWidget<USizeBox>();
-	SummarySize->SetWidthOverride(280.f);
+	SummarySize->SetWidthOverride(300.f);
 	Body->AddChildToHorizontalBox(SummarySize);
-	UBorder* SummaryBorder = WidgetTree->ConstructWidget<UBorder>();
-	SummaryBorder->SetBrushColor(FLinearColor(0.10f, 0.11f, 0.14f, 0.95f));
-	SummaryBorder->SetPadding(FMargin(14.f));
-	SummarySize->SetContent(SummaryBorder);
+	UBorder* SummaryFrame = WidgetTree->ConstructWidget<UBorder>();
+	Apply9Slice(SummaryFrame, TEXT("/Game/Graytail/UI/deploy/ui_panel_deploy_summary_blank"), 0.30f);
+	SummaryFrame->SetPadding(FMargin(18.f));
+	SummarySize->SetContent(SummaryFrame);
 	SummaryBox = WidgetTree->ConstructWidget<UVerticalBox>();
-	SummaryBorder->SetContent(SummaryBox);
+	SummaryFrame->SetContent(SummaryBox);
 
 	// --- 底栏: 返回 + 弹簧 + 出发探索 ---
 	UHorizontalBox* Footer = WidgetTree->ConstructWidget<UHorizontalBox>();
-	if (UVerticalBoxSlot* S = Main->AddChildToVerticalBox(Footer)) { S->SetPadding(FMargin(0, 12, 0, 0)); }
-	MakeFooterButton(Footer, TEXT("返回"), TEXT("/Game/Graytail/UI/deploy/ui_button_back_main"))
+	if (UVerticalBoxSlot* S = Main->AddChildToVerticalBox(Footer)) { S->SetPadding(FMargin(0, 14, 0, 0)); }
+	MakeFooterButton(Footer, TEXT("返回主界面"), TEXT("/Game/Graytail/UI/deploy/ui_button_back_main"))
 		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnBackClicked);
 	USpacer* FootSpacer = WidgetTree->ConstructWidget<USpacer>();
 	if (UHorizontalBoxSlot* S = Footer->AddChildToHorizontalBox(FootSpacer)) { S->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); }
@@ -218,59 +274,83 @@ void UGT_DeployTerminalWidget::BuildWidgetTree()
 		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnDepartClicked);
 }
 
-void UGT_DeployTerminalWidget::AddItemRow(int32 Index, UTexture2D* Icon, const FString& Name, const FString& Effect,
-	const FString& Right, bool bEnabled, bool bHighlight)
+void UGT_DeployTerminalWidget::AddItemCard(int32 Index, UTexture2D* Icon, const FString& Name, const FString& TypeLine,
+	const FString& Effect, const FString& InfoLine, const FString& ActionLabel, bool bActionEnabled, bool bHighlight)
 {
-	if (!ContentList) { return; }
+	if (!ContentWrap) { return; }
 
-	UGT_IndexedButton* Btn = WidgetTree->ConstructWidget<UGT_IndexedButton>();
-	Btn->Index = Index;
-	Btn->SetIsEnabled(bEnabled);
-	Btn->OnIndexClicked.AddDynamic(this, &UGT_DeployTerminalWidget::HandleRowClicked);
+	USizeBox* CardSize = WidgetTree->ConstructWidget<USizeBox>();
+	CardSize->SetWidthOverride(338.f);
+	CardSize->SetHeightOverride(150.f);
+	if (UWrapBoxSlot* WSlot = ContentWrap->AddChildToWrapBox(CardSize)) { WSlot->SetPadding(FMargin(6.f)); }
 
-	UHorizontalBox* RowBox = WidgetTree->ConstructWidget<UHorizontalBox>();
-	Btn->SetContent(RowBox);
+	UBorder* Card = WidgetTree->ConstructWidget<UBorder>();
+	Card->SetBrushColor(bHighlight ? GTColCardEquipped : GTColCardBg);
+	Card->SetPadding(FMargin(12.f));
+	CardSize->SetContent(Card);
 
-	// 图标(无图则留白占位)
+	UVerticalBox* Col = WidgetTree->ConstructWidget<UVerticalBox>();
+	Card->SetContent(Col);
+
+	// 头部: 图标 + (名称 / 类型)
+	UHorizontalBox* Head = WidgetTree->ConstructWidget<UHorizontalBox>();
+	Col->AddChildToVerticalBox(Head);
 	USizeBox* IconBox = WidgetTree->ConstructWidget<USizeBox>();
-	IconBox->SetWidthOverride(40.f);
-	IconBox->SetHeightOverride(40.f);
+	IconBox->SetWidthOverride(44.f);
+	IconBox->SetHeightOverride(44.f);
 	if (Icon)
 	{
 		UImage* Img = WidgetTree->ConstructWidget<UImage>();
 		Img->SetBrushFromTexture(Icon);
 		IconBox->SetContent(Img);
 	}
-	if (UHorizontalBoxSlot* S = RowBox->AddChildToHorizontalBox(IconBox)) { S->SetVerticalAlignment(VAlign_Center); S->SetPadding(FMargin(0, 0, 10, 0)); }
-
-	// 名称 + 效果
+	if (UHorizontalBoxSlot* S = Head->AddChildToHorizontalBox(IconBox)) { S->SetVerticalAlignment(VAlign_Center); S->SetPadding(FMargin(0, 0, 10, 0)); }
 	UVerticalBox* NameCol = WidgetTree->ConstructWidget<UVerticalBox>();
+	if (UHorizontalBoxSlot* S = Head->AddChildToHorizontalBox(NameCol)) { S->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); S->SetVerticalAlignment(VAlign_Center); }
 	UTextBlock* NameTxt = WidgetTree->ConstructWidget<UTextBlock>();
-	NameTxt->SetText(FText::FromString(bHighlight ? (TEXT("● ") + Name) : Name));
-	NameTxt->SetFont(GTFont(17));
+	NameTxt->SetText(FText::FromString(Name));
+	NameTxt->SetFont(GTFont(19));
 	NameTxt->SetColorAndOpacity(FSlateColor(bHighlight ? GTColGreen : GTColWhite));
 	NameCol->AddChildToVerticalBox(NameTxt);
+	UTextBlock* TypeTxt = WidgetTree->ConstructWidget<UTextBlock>();
+	TypeTxt->SetText(FText::FromString(TypeLine));
+	TypeTxt->SetFont(GTFont(12));
+	TypeTxt->SetColorAndOpacity(FSlateColor(GTColDim));
+	NameCol->AddChildToVerticalBox(TypeTxt);
+
+	// 效果描述
 	UTextBlock* EffTxt = WidgetTree->ConstructWidget<UTextBlock>();
 	EffTxt->SetText(FText::FromString(Effect));
-	EffTxt->SetFont(GTFont(12));
-	EffTxt->SetColorAndOpacity(FSlateColor(GTColDim));
-	NameCol->AddChildToVerticalBox(EffTxt);
-	if (UHorizontalBoxSlot* S = RowBox->AddChildToHorizontalBox(NameCol)) { S->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); S->SetVerticalAlignment(VAlign_Center); }
+	EffTxt->SetFont(GTFont(14));
+	EffTxt->SetColorAndOpacity(FSlateColor(GTColWhite));
+	EffTxt->SetAutoWrapText(true);
+	if (UVerticalBoxSlot* S = Col->AddChildToVerticalBox(EffTxt)) { S->SetPadding(FMargin(0, 8, 0, 0)); }
 
-	// 右侧价/状态
-	UTextBlock* RightTxt = WidgetTree->ConstructWidget<UTextBlock>();
-	RightTxt->SetText(FText::FromString(Right));
-	RightTxt->SetFont(GTFont(16));
-	RightTxt->SetColorAndOpacity(FSlateColor(bEnabled ? GTColGold : GTColDim));
-	if (UHorizontalBoxSlot* S = RowBox->AddChildToHorizontalBox(RightTxt)) { S->SetVerticalAlignment(VAlign_Center); S->SetPadding(FMargin(10, 0, 6, 0)); }
+	// 底部: 拥有/价格行 + 动作按钮
+	UHorizontalBox* Foot = WidgetTree->ConstructWidget<UHorizontalBox>();
+	if (UVerticalBoxSlot* S = Col->AddChildToVerticalBox(Foot)) { S->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); S->SetVerticalAlignment(VAlign_Bottom); }
+	UTextBlock* InfoTxt = WidgetTree->ConstructWidget<UTextBlock>();
+	InfoTxt->SetText(FText::FromString(InfoLine));
+	InfoTxt->SetFont(GTFont(13));
+	InfoTxt->SetColorAndOpacity(FSlateColor(GTColDim));
+	if (UHorizontalBoxSlot* S = Foot->AddChildToHorizontalBox(InfoTxt)) { S->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); S->SetVerticalAlignment(VAlign_Center); }
 
-	if (UVerticalBoxSlot* S = ContentList->AddChildToVerticalBox(Btn)) { S->SetPadding(FMargin(0, 3)); }
+	UGT_IndexedButton* ActBtn = WidgetTree->ConstructWidget<UGT_IndexedButton>();
+	ActBtn->Index = Index;
+	ActBtn->SetIsEnabled(bActionEnabled);
+	ActBtn->OnIndexClicked.AddDynamic(this, &UGT_DeployTerminalWidget::HandleRowClicked);
+	UTextBlock* ActTxt = WidgetTree->ConstructWidget<UTextBlock>();
+	ActTxt->SetText(FText::FromString(ActionLabel));
+	ActTxt->SetFont(GTFont(15));
+	ActTxt->SetColorAndOpacity(FSlateColor(bActionEnabled ? GTColGold : GTColDim));
+	ActBtn->SetContent(ActTxt);
+	if (UHorizontalBoxSlot* S = Foot->AddChildToHorizontalBox(ActBtn)) { S->SetVerticalAlignment(VAlign_Center); }
 }
 
 void UGT_DeployTerminalWidget::RebuildContent()
 {
-	if (!ContentList) { return; }
-	ContentList->ClearChildren();
+	if (!ContentWrap) { return; }
+	ContentWrap->ClearChildren();
 	CurrentRows.Reset();
 	if (HintText) { HintText->SetText(FText::GetEmpty()); }
 
@@ -284,18 +364,21 @@ void UGT_DeployTerminalWidget::RebuildContent()
 		{
 			const bool bOwned = Meta->OwnsItem(Def.Id);
 			const bool bAfford = Gold >= Def.Price;
-			const FString Right = bOwned ? TEXT("已拥有") : FString::Printf(TEXT("%d"), Def.Price);
-			AddItemRow(CurrentRows.Num(), IconForEquip(Def.Id), Def.DisplayName, EquipEffectText(Def),
-				Right, !bOwned && bAfford, false);
+			const FString Info = bOwned ? TEXT("已拥有 x1")
+				: FString::Printf(TEXT("价格 %d 结算币"), Def.Price);
+			AddItemCard(CurrentRows.Num(), IconForEquip(Def.Id), Def.DisplayName, TEXT("作业装备 · 后勤"),
+				EquipEffectText(Def), Info, bOwned ? TEXT("已拥有") : TEXT("申领"),
+				!bOwned && bAfford, false);
 			CurrentRows.Add({ Def.Id, false });
 		}
 		for (const FGT_ConsumableDef& Def : GT_MetaCatalog::GetConsumableDefs())
 		{
 			const bool bAfford = Gold >= Def.Price;
 			const int32 Have = Meta->GetConsumableCount(Def.Id);
-			const FString Eff = FString::Printf(TEXT("回复 %d 生命 · 持有 %d"), Def.Heal, Have);
-			AddItemRow(CurrentRows.Num(), IconForConsumable(Def.Id), Def.DisplayName, Eff,
-				FString::Printf(TEXT("%d"), Def.Price), bAfford, false);
+			AddItemCard(CurrentRows.Num(), IconForConsumable(Def.Id), Def.DisplayName, TEXT("作业消耗品 · 后勤"),
+				FString::Printf(TEXT("局内使用: 回复 %d 生命"), Def.Heal),
+				FString::Printf(TEXT("持有 %d · 价格 %d 结算币"), Have, Def.Price),
+				TEXT("申领"), bAfford, false);
 			CurrentRows.Add({ Def.Id, true });
 		}
 	}
@@ -307,8 +390,9 @@ void UGT_DeployTerminalWidget::RebuildContent()
 			if (!Meta->OwnsItem(Def.Id)) { continue; }
 			bAny = true;
 			const bool bEquipped = Meta->IsEquipped(Def.Id);
-			AddItemRow(CurrentRows.Num(), IconForEquip(Def.Id), Def.DisplayName, EquipEffectText(Def),
-				bEquipped ? TEXT("已装备") : TEXT("点击装备"), true, bEquipped);
+			AddItemCard(CurrentRows.Num(), IconForEquip(Def.Id), Def.DisplayName, TEXT("作业装备 · 后勤"),
+				EquipEffectText(Def), bEquipped ? TEXT("已装备") : TEXT("可装备"),
+				bEquipped ? TEXT("卸下") : TEXT("装备"), true, bEquipped);
 			CurrentRows.Add({ Def.Id, false });
 		}
 		for (const FGT_ConsumableDef& Def : GT_MetaCatalog::GetConsumableDefs())
@@ -317,8 +401,9 @@ void UGT_DeployTerminalWidget::RebuildContent()
 			if (Stock <= 0) { continue; }
 			bAny = true;
 			const int32 Carry = Meta->GetLoadout().FindRef(Def.Id);
-			const FString Eff = FString::Printf(TEXT("回复 %d 生命 · 库存 %d"), Def.Heal, Stock);
-			AddItemRow(CurrentRows.Num(), IconForConsumable(Def.Id), Def.DisplayName, Eff,
+			AddItemCard(CurrentRows.Num(), IconForConsumable(Def.Id), Def.DisplayName, TEXT("作业消耗品 · 后勤"),
+				FString::Printf(TEXT("局内使用: 回复 %d 生命"), Def.Heal),
+				FString::Printf(TEXT("库存 %d · 已带入 %d"), Stock, Carry),
 				FString::Printf(TEXT("带入 %d"), Carry), true, Carry > 0);
 			CurrentRows.Add({ Def.Id, true });
 		}
@@ -354,39 +439,40 @@ void UGT_DeployTerminalWidget::RefreshSummary()
 		T->SetText(FText::FromString(Text));
 		T->SetFont(GTFont(Size));
 		T->SetColorAndOpacity(FSlateColor(Color));
-		if (UVerticalBoxSlot* S = SummaryBox->AddChildToVerticalBox(T)) { S->SetPadding(FMargin(0, 2)); }
+		T->SetAutoWrapText(true);
+		if (UVerticalBoxSlot* S = SummaryBox->AddChildToVerticalBox(T)) { S->SetPadding(FMargin(0, 3)); }
 	};
 
-	AddLine(TEXT("作业摘要"), 18, GTColGold);
+	AddLine(TEXT("出勤摘要"), 20, GTColGold);
 	AddLine(TEXT("── 已装备 ──"), 13, GTColDim);
 	const TArray<FName>& Equipped = Meta->GetEquippedItems();
-	if (Equipped.Num() == 0) { AddLine(TEXT("(未配置)"), 14, GTColDim); }
+	if (Equipped.Num() == 0) { AddLine(TEXT("(未配置)"), 15, GTColDim); }
 	for (const FName& Id : Equipped)
 	{
 		const FGT_EquipDef* Def = GT_MetaCatalog::FindEquip(Id);
-		AddLine(FString::Printf(TEXT("· %s"), Def ? Def->DisplayName : *Id.ToString()), 14, GTColWhite);
+		AddLine(FString::Printf(TEXT("· %s"), Def ? Def->DisplayName : *Id.ToString()), 15, GTColWhite);
 	}
 
 	AddLine(TEXT("── 本局加成 ──"), 13, GTColDim);
 	const FGT_EquipBonus B = Meta->GetEquipBonus();
 	const FGT_TalentEffects T = Meta->GetTalentEffects();
 	bool bAnyBonus = false;
-	if (B.BonusHP > 0) { AddLine(FString::Printf(TEXT("生命 +%d"), B.BonusHP), 14, GTColGreen); bAnyBonus = true; }
-	if (B.BonusPower > 0) { AddLine(FString::Printf(TEXT("战斗力 +%d"), B.BonusPower), 14, GTColGreen); bAnyBonus = true; }
+	if (B.BonusHP > 0) { AddLine(FString::Printf(TEXT("生命 +%d"), B.BonusHP), 15, GTColGreen); bAnyBonus = true; }
+	if (B.BonusPower > 0) { AddLine(FString::Printf(TEXT("战斗力 +%d"), B.BonusPower), 15, GTColGreen); bAnyBonus = true; }
 	const int32 MineRed = B.MineDmgReduce + T.MineDmgReduce;
-	if (MineRed > 0) { AddLine(FString::Printf(TEXT("雷险伤害 -%d"), MineRed), 14, GTColGreen); bAnyBonus = true; }
-	if (B.bMineImmunity) { AddLine(TEXT("首次踩雷免疫"), 14, GTColGreen); bAnyBonus = true; }
-	if (B.SearchBonus > 0) { AddLine(FString::Printf(TEXT("搜索奖励 +%d%%"), B.SearchBonus), 14, GTColGreen); bAnyBonus = true; }
-	if (B.bShowExitHint) { AddLine(TEXT("撤离信标提示"), 14, GTColGreen); bAnyBonus = true; }
-	if (!bAnyBonus) { AddLine(TEXT("(无)"), 14, GTColDim); }
+	if (MineRed > 0) { AddLine(FString::Printf(TEXT("雷险伤害 -%d"), MineRed), 15, GTColGreen); bAnyBonus = true; }
+	if (B.bMineImmunity) { AddLine(TEXT("首次踩雷免疫"), 15, GTColGreen); bAnyBonus = true; }
+	if (B.SearchBonus > 0) { AddLine(FString::Printf(TEXT("搜索奖励 +%d%%"), B.SearchBonus), 15, GTColGreen); bAnyBonus = true; }
+	if (B.bShowExitHint) { AddLine(TEXT("撤离信标提示"), 15, GTColGreen); bAnyBonus = true; }
+	if (!bAnyBonus) { AddLine(TEXT("(无)"), 15, GTColDim); }
 
 	AddLine(TEXT("── 带入消耗品 ──"), 13, GTColDim);
 	const TMap<FName, int32>& Loadout = Meta->GetLoadout();
-	if (Loadout.Num() == 0) { AddLine(TEXT("(无)"), 14, GTColDim); }
+	if (Loadout.Num() == 0) { AddLine(TEXT("(无)"), 15, GTColDim); }
 	for (const TPair<FName, int32>& Pair : Loadout)
 	{
 		const FGT_ConsumableDef* Def = GT_MetaCatalog::FindConsumable(Pair.Key);
-		AddLine(FString::Printf(TEXT("· %s ×%d"), Def ? Def->DisplayName : *Pair.Key.ToString(), Pair.Value), 14, GTColWhite);
+		AddLine(FString::Printf(TEXT("· %s ×%d"), Def ? Def->DisplayName : *Pair.Key.ToString(), Pair.Value), 15, GTColWhite);
 	}
 }
 
@@ -426,7 +512,7 @@ void UGT_DeployTerminalWidget::HandleRowClicked(int32 Index)
 			const FGT_ConsumableDef* Def = GT_MetaCatalog::FindConsumable(Ref.Id);
 			int32 Cap = Stock;
 			if (Def && Def->MaxCarry > 0) { Cap = FMath::Min(Cap, Def->MaxCarry); }
-			const int32 Next = (Cur >= Cap) ? 0 : Cur + 1;  // 点击循环 0..Cap
+			const int32 Next = (Cur >= Cap) ? 0 : Cur + 1;
 			Meta->SetLoadoutConsumable(Ref.Id, Next);
 		}
 		else

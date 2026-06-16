@@ -26,6 +26,7 @@ class GRAYTAIL_API UGT_DeployTerminalWidget : public UUserWidget
 public:
 	virtual TSharedRef<SWidget> RebuildWidget() override;
 	virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 	virtual bool NativeSupportsKeyboardFocus() const override { return true; }
 
 	void Open();
@@ -71,10 +72,14 @@ private:
 	// (这些按钮图带 mipmap+流送, 运行时 Tex->GetSizeX() 早期返回 32 占位, 故尺寸不取运行时值, 用实测原生像素。)
 	// OutHighlight 非空时: 把按钮外包一层圆角 Border 当"当前页签"高亮框, 通过它回传(导航用)。
 	UButton* MakeTexButton(UHorizontalBox* Row, const FString& Label, const FString& TexPath, float NativeW, float NativeH, float Pad, UBorder** OutHighlight = nullptr);
-	// 设置/清除某导航高亮框(圆角金边)。
-	void SetNavHighlight(UBorder* Target, bool bSelected);
-	// 筛选药丸(纯视觉, P1 不做实际筛选)。
-	void AddFilterPill(UHorizontalBox* Row, const FString& Label, bool bSelected);
+	// 导航高亮框状态: 0=清除 1=选中(金边) 2=悬停(灰框)。
+	void SetNavHighlight(UBorder* Target, uint8 State);
+	// 重建当前页签的筛选药丸(分类, 可点击筛选)。
+	void RebuildFilterPills();
+	// 加一颗可点的筛选药丸(Index = FilterPillKeys 下标)。
+	void AddFilterPill(int32 Index, const FString& Label, bool bSelected);
+	// 当前筛选是否放行某物品(类型键 type_equip/type_consumable/type_recovered + 档位键 tier_*)。
+	bool PassesFilter(FName TypeKey, FName TierKey) const;
 	// 把贴图设成 Border 的 9-slice 金边框(MarginFrac = 边框占贴图比例)。
 	void Apply9Slice(UBorder* Target, const FString& TexPath, float MarginFrac);
 
@@ -86,13 +91,19 @@ private:
 	UFUNCTION() void OnBackClicked();
 	UFUNCTION() void OnDepartClicked();
 	UFUNCTION() void HandleRowClicked(int32 Index);
+	UFUNCTION() void HandleFilterClicked(int32 Index);
 
 	UPROPERTY(Transient) UTextBlock* SectionTitleText = nullptr;
 	UPROPERTY(Transient) UHorizontalBox* FilterRow = nullptr;
 	UPROPERTY(Transient) UTextBlock* AccountText = nullptr;
-	// 五个导航页签的高亮框(与 NavSections 平行), 选中页签套圆角金边。
+	// 五个导航页签的高亮框/按钮(与 NavSections 平行), 选中套金边、悬停套灰框。
 	UPROPERTY(Transient) TArray<UBorder*> NavHighlights;
+	UPROPERTY(Transient) TArray<UButton*> NavButtons;
 	TArray<ESection> NavSections;
+	TArray<uint8> NavVisualState;        // 上一帧各页签高亮态(变化才重设刷, 免抖动)
+	// 当前筛选键 + 当前页签药丸键表(与药丸下标对应)。
+	FName CurrentFilter = FName(TEXT("all"));
+	TArray<FName> FilterPillKeys;
 	UPROPERTY(Transient) UScrollBox* ContentScroll = nullptr;
 	UPROPERTY(Transient) UWrapBox* ContentWrap = nullptr;
 	UPROPERTY(Transient) UVerticalBox* SummaryBox = nullptr;

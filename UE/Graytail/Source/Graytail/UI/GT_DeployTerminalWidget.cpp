@@ -30,9 +30,11 @@ namespace
 {
 	// 线性色: 渲染转 sRGB 会变亮, 故"深"填充用很小的线性值(否则显成中灰)。
 	const FLinearColor GTColGold(0.95f, 0.72f, 0.30f);
-	const FLinearColor GTColOrange(FColor(255, 146, 30));         // 动作按钮文字(申领/出售/解锁): 醒目橙
+	const FLinearColor GTColName(FColor(236, 232, 222));          // 物品名 暖白(最亮一层)
 	const FLinearColor GTColWhite(0.90f, 0.90f, 0.92f);
+	const FLinearColor GTColEffect(FColor(196, 206, 224));        // 效果行 冷白(中亮)
 	const FLinearColor GTColDim(0.34f, 0.37f, 0.45f);
+	const FLinearColor GTColFaint(0.23f, 0.25f, 0.31f);          // flavor 最暗一层
 	const FLinearColor GTColBg(0.010f, 0.014f, 0.024f, 1.0f);     // 根背景 深灰蓝
 	const FLinearColor GTColPanel(0.020f, 0.027f, 0.044f, 1.0f);  // 面板/药丸 深灰蓝
 	const FLinearColor GTColCard(FColor(21, 29, 40));             // 卡片底(原版色, 比背景稍浅一点)
@@ -41,6 +43,32 @@ namespace
 	const FLinearColor GTColLineEq(0.55f, 0.34f, 0.085f, 1.0f);   // 高亮金描边
 	const FLinearColor GTColNavSel(FColor(255, 205, 90));         // 当前页签高亮框 亮金
 	const FLinearColor GTColNavSelFill(0.95f, 0.72f, 0.30f, 0.12f); // 当前页签淡金底光
+	const FLinearColor GTColNavHover(FColor(150, 156, 170));      // 悬停预选框 灰
+	const FLinearColor GTColNavHoverFill(0.5f, 0.52f, 0.56f, 0.09f); // 悬停淡灰底光
+	// 动作按钮(申领/出售/装备/解锁): 蓝底白字。
+	const FLinearColor GTColBtn(FColor(90, 150, 200));
+	const FLinearColor GTColBtnHover(FColor(120, 180, 225));
+	const FLinearColor GTColBtnPress(FColor(70, 120, 165));
+	const FLinearColor GTColBtnDisabled(FColor(52, 58, 70));
+	const FLinearColor GTColBtnText(FColor(245, 248, 252));
+	const FLinearColor GTColBtnTextDisabled(0.45f, 0.48f, 0.55f);
+
+	// 物品稀有度(FName)-> 中文档位键。装备在 UI 层按 id 派生。
+	FName RarityTierKey(FName Rarity)
+	{
+		const FString R = Rarity.ToString().ToLower();
+		if (R == TEXT("rare")) { return FName(TEXT("tier_rare")); }
+		if (R == TEXT("precious") || R == TEXT("epic")) { return FName(TEXT("tier_precious")); }
+		if (R == TEXT("abnormal")) { return FName(TEXT("tier_abnormal")); }
+		return FName(TEXT("tier_common")); // common / uncommon / low / 其它
+	}
+
+	// 6 件装备的稀有度(UI 派生, 申领页按价位粗分)。
+	FName EquipTierKey(FName Id)
+	{
+		if (Id == FName(TEXT("armor")) || Id == FName(TEXT("whetstone"))) { return FName(TEXT("tier_common")); }
+		return FName(TEXT("tier_rare")); // medkit/insulated_gloves/compass/backpack
+	}
 
 	FSlateFontInfo GTFont(int32 Size)
 	{
@@ -265,7 +293,7 @@ UButton* UGT_DeployTerminalWidget::MakeTexButton(UHorizontalBox* Row, const FStr
 		UBorder* Hl = WidgetTree->ConstructWidget<UBorder>();
 		Hl->SetPadding(FMargin(4.f, 3.f));
 		Hl->SetContent(Box);
-		SetNavHighlight(Hl, false);
+		SetNavHighlight(Hl, 0);
 		*OutHighlight = Hl;
 		RowChild = Hl;
 	}
@@ -278,20 +306,26 @@ UButton* UGT_DeployTerminalWidget::MakeTexButton(UHorizontalBox* Row, const FStr
 	return Btn;
 }
 
-void UGT_DeployTerminalWidget::SetNavHighlight(UBorder* Target, bool bSelected)
+void UGT_DeployTerminalWidget::SetNavHighlight(UBorder* Target, uint8 State)
 {
 	if (!Target) { return; }
 	FSlateBrush Br;
 	Br.DrawAs = ESlateBrushDrawType::RoundedBox;
 	Br.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
 	Br.OutlineSettings.CornerRadii = FVector4(8.f, 8.f, 8.f, 8.f);
-	if (bSelected)
+	if (State == 1) // 选中: 金边
 	{
 		Br.TintColor = FSlateColor(GTColNavSelFill);
 		Br.OutlineSettings.Color = FSlateColor(GTColNavSel);
 		Br.OutlineSettings.Width = 2.f;
 	}
-	else
+	else if (State == 2) // 悬停: 灰预选框
+	{
+		Br.TintColor = FSlateColor(GTColNavHoverFill);
+		Br.OutlineSettings.Color = FSlateColor(GTColNavHover);
+		Br.OutlineSettings.Width = 2.f;
+	}
+	else // 清除
 	{
 		Br.TintColor = FSlateColor(FLinearColor(0.f, 0.f, 0.f, 0.f));
 		Br.OutlineSettings.Color = FSlateColor(FLinearColor(0.f, 0.f, 0.f, 0.f));
@@ -300,21 +334,115 @@ void UGT_DeployTerminalWidget::SetNavHighlight(UBorder* Target, bool bSelected)
 	Target->SetBrush(Br);
 }
 
-void UGT_DeployTerminalWidget::AddFilterPill(UHorizontalBox* Row, const FString& Label, bool bSelected)
+void UGT_DeployTerminalWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
-	UBorder* Pill = WidgetTree->ConstructWidget<UBorder>();
-	Pill->SetBrushColor(bSelected ? GTColLine : GTColPanel);
-	Pill->SetPadding(FMargin(13.f, 4.f));
+	Super::NativeTick(MyGeometry, InDeltaTime);
+
+	// 导航页签视觉态: 选中(1) > 悬停(2) > 清除(0); 仅在变化时重设刷, 免每帧抖动。
+	if (NavVisualState.Num() != NavHighlights.Num())
+	{
+		NavVisualState.Init(255, NavHighlights.Num());
+	}
+	for (int32 i = 0; i < NavHighlights.Num(); ++i)
+	{
+		const bool bSel = NavSections.IsValidIndex(i) && NavSections[i] == CurrentSection;
+		const bool bHov = NavButtons.IsValidIndex(i) && NavButtons[i] && NavButtons[i]->IsHovered();
+		const uint8 Want = bSel ? 1 : (bHov ? 2 : 0);
+		if (NavVisualState[i] != Want)
+		{
+			NavVisualState[i] = Want;
+			SetNavHighlight(NavHighlights[i], Want);
+		}
+	}
+}
+
+namespace
+{
+	// 各页签的筛选分类(键, 中文标签)。键: all / type_* / tier_*。
+	struct FFilterPill { const TCHAR* Key; const TCHAR* Label; };
+	const FFilterPill GTReqPills[] = {
+		{ TEXT("all"), TEXT("全部") }, { TEXT("tier_common"), TEXT("一般") }, { TEXT("tier_rare"), TEXT("稀有") },
+		{ TEXT("type_equip"), TEXT("作业装备") }, { TEXT("type_consumable"), TEXT("消耗") },
+	};
+	const FFilterPill GTWarehousePills[] = {
+		{ TEXT("all"), TEXT("全部") }, { TEXT("tier_common"), TEXT("一般") }, { TEXT("tier_rare"), TEXT("稀有") },
+		{ TEXT("tier_precious"), TEXT("史诗") }, { TEXT("tier_abnormal"), TEXT("异常") },
+		{ TEXT("type_equip"), TEXT("作业装备") }, { TEXT("type_consumable"), TEXT("消耗") }, { TEXT("type_recovered"), TEXT("回收") },
+	};
+}
+
+// 可点击筛选药丸: 选中态金底金字, 否则深底灰字。
+void UGT_DeployTerminalWidget::AddFilterPill(int32 Index, const FString& Label, bool bSelected)
+{
+	if (!FilterRow) { return; }
+	UGT_IndexedButton* Pill = WidgetTree->ConstructWidget<UGT_IndexedButton>();
+	Pill->Index = Index;
+	Pill->OnIndexClicked.AddDynamic(this, &UGT_DeployTerminalWidget::HandleFilterClicked);
+
+	FButtonStyle Style = Pill->GetStyle();
+	auto MakePillBrush = [](const FLinearColor& Fill, const FLinearColor& Outline)
+	{
+		FSlateBrush B;
+		B.DrawAs = ESlateBrushDrawType::RoundedBox;
+		B.TintColor = FSlateColor(Fill);
+		B.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+		B.OutlineSettings.CornerRadii = FVector4(7.f, 7.f, 7.f, 7.f);
+		B.OutlineSettings.Color = FSlateColor(Outline);
+		B.OutlineSettings.Width = 1.f;
+		return B;
+	};
+	Style.Normal = MakePillBrush(bSelected ? GTColNavSelFill : GTColPanel, bSelected ? GTColNavSel : GTColLine);
+	Style.Hovered = MakePillBrush(bSelected ? GTColNavSelFill : GTColCard, bSelected ? GTColNavSel : GTColNavHover);
+	Style.Pressed = Style.Normal;
+	Style.NormalPadding = FMargin(12.f, 4.f);
+	Style.PressedPadding = FMargin(12.f, 4.f);
+	Pill->SetStyle(Style);
+
 	UTextBlock* Txt = WidgetTree->ConstructWidget<UTextBlock>();
 	Txt->SetText(FText::FromString(Label));
 	Txt->SetFont(GTFont(13));
 	Txt->SetColorAndOpacity(FSlateColor(bSelected ? GTColGold : GTColDim));
 	Pill->SetContent(Txt);
-	if (UHorizontalBoxSlot* HSlot = Row->AddChildToHorizontalBox(Pill))
+	if (UHorizontalBoxSlot* HSlot = FilterRow->AddChildToHorizontalBox(Pill))
 	{
 		HSlot->SetPadding(FMargin(0.f, 0.f, 7.f, 0.f));
 		HSlot->SetVerticalAlignment(VAlign_Center);
 	}
+}
+
+void UGT_DeployTerminalWidget::RebuildFilterPills()
+{
+	if (!FilterRow) { return; }
+	FilterRow->ClearChildren();
+	FilterPillKeys.Reset();
+
+	const FFilterPill* Pills = nullptr;
+	int32 Count = 0;
+	if (CurrentSection == ESection::Warehouse) { Pills = GTWarehousePills; Count = UE_ARRAY_COUNT(GTWarehousePills); }
+	else if (CurrentSection == ESection::Requisition || CurrentSection == ESection::Loadout) { Pills = GTReqPills; Count = UE_ARRAY_COUNT(GTReqPills); }
+	for (int32 i = 0; i < Count; ++i)
+	{
+		const FName Key(Pills[i].Key);
+		FilterPillKeys.Add(Key);
+		AddFilterPill(i, Pills[i].Label, Key == CurrentFilter);
+	}
+}
+
+bool UGT_DeployTerminalWidget::PassesFilter(FName TypeKey, FName TierKey) const
+{
+	if (CurrentFilter == FName(TEXT("all"))) { return true; }
+	const FString F = CurrentFilter.ToString();
+	if (F.StartsWith(TEXT("type_"))) { return CurrentFilter == TypeKey; }
+	if (F.StartsWith(TEXT("tier_"))) { return CurrentFilter == TierKey; }
+	return true;
+}
+
+void UGT_DeployTerminalWidget::HandleFilterClicked(int32 Index)
+{
+	if (!FilterPillKeys.IsValidIndex(Index)) { return; }
+	CurrentFilter = FilterPillKeys[Index];
+	RebuildFilterPills();
+	RebuildContent();
 }
 
 void UGT_DeployTerminalWidget::BuildWidgetTree()
@@ -335,25 +463,29 @@ void UGT_DeployTerminalWidget::BuildWidgetTree()
 	USpacer* TopSpacer = WidgetTree->ConstructWidget<USpacer>();
 	if (UHorizontalBoxSlot* S = TopBar->AddChildToHorizontalBox(TopSpacer)) { S->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); }
 
-	// 导航页签: 各自带高亮框(选中套金边); NavHighlights/NavSections 平行登记。
+	// 导航页签: 各自带高亮框(选中金边/悬停灰框); NavButtons/NavHighlights/NavSections 平行登记。
+	// (AddDynamic 需字面函数名, 不能用函数指针变量, 故逐个展开。)
+	NavButtons.Reset();
 	NavHighlights.Reset();
 	NavSections.Reset();
+	NavVisualState.Reset();
 	UBorder* Hl = nullptr;
-	MakeTexButton(TopBar, TEXT("后勤仓库"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_warehouse"), 154.f, 56.f, 4.f, &Hl)
-		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavWarehouse);
-	NavHighlights.Add(Hl); NavSections.Add(ESection::Warehouse);
-	MakeTexButton(TopBar, TEXT("后勤申领"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_requisition"), 148.f, 56.f, 4.f, &Hl)
-		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavRequisition);
-	NavHighlights.Add(Hl); NavSections.Add(ESection::Requisition);
-	MakeTexButton(TopBar, TEXT("出勤配置"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_loadout"), 141.f, 56.f, 4.f, &Hl)
-		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavLoadout);
-	NavHighlights.Add(Hl); NavSections.Add(ESection::Loadout);
-	MakeTexButton(TopBar, TEXT("回收资历"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_recovery"), 170.f, 60.f, 4.f, &Hl)
-		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavRecovery);
-	NavHighlights.Add(Hl); NavSections.Add(ESection::Recovery);
-	MakeTexButton(TopBar, TEXT("天赋"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_talent_selected"), 228.f, 61.f, 4.f, &Hl)
-		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavTalent);
-	NavHighlights.Add(Hl); NavSections.Add(ESection::Talent);
+	UButton* NavB = nullptr;
+	NavB = MakeTexButton(TopBar, FString(), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_warehouse"), 154.f, 56.f, 4.f, &Hl);
+	NavB->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavWarehouse);
+	NavButtons.Add(NavB); NavHighlights.Add(Hl); NavSections.Add(ESection::Warehouse);
+	NavB = MakeTexButton(TopBar, FString(), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_requisition"), 148.f, 56.f, 4.f, &Hl);
+	NavB->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavRequisition);
+	NavButtons.Add(NavB); NavHighlights.Add(Hl); NavSections.Add(ESection::Requisition);
+	NavB = MakeTexButton(TopBar, FString(), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_loadout"), 141.f, 56.f, 4.f, &Hl);
+	NavB->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavLoadout);
+	NavButtons.Add(NavB); NavHighlights.Add(Hl); NavSections.Add(ESection::Loadout);
+	NavB = MakeTexButton(TopBar, FString(), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_recovery"), 170.f, 60.f, 4.f, &Hl);
+	NavB->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavRecovery);
+	NavButtons.Add(NavB); NavHighlights.Add(Hl); NavSections.Add(ESection::Recovery);
+	NavB = MakeTexButton(TopBar, FString(), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_talent_selected"), 228.f, 61.f, 4.f, &Hl);
+	NavB->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavTalent);
+	NavButtons.Add(NavB); NavHighlights.Add(Hl); NavSections.Add(ESection::Talent);
 
 	// === 主体: 左主面板(terminal_main 金边框) + 右出勤摘要(summary 框) ===
 	UHorizontalBox* Body = WidgetTree->ConstructWidget<UHorizontalBox>();
@@ -361,7 +493,8 @@ void UGT_DeployTerminalWidget::BuildWidgetTree()
 
 	UBorder* MainPanel = WidgetTree->ConstructWidget<UBorder>();
 	Apply9Slice(MainPanel, TEXT("/Game/Graytail/UI/common/ui_panel_terminal_main"), 0.07f);
-	MainPanel->SetPadding(FMargin(28.f, 24.f));
+	// 内边距加大, 让标题/卡片/底部说明都缩在金边框内, 不压到贴图的边框与底部分隔条。
+	MainPanel->SetPadding(FMargin(44.f, 34.f, 44.f, 54.f));
 	if (UHorizontalBoxSlot* S = Body->AddChildToHorizontalBox(MainPanel)) { S->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); S->SetPadding(FMargin(0, 0, 14, 0)); }
 	UVerticalBox* MainCol = WidgetTree->ConstructWidget<UVerticalBox>();
 	MainPanel->SetContent(MainCol);
@@ -387,12 +520,9 @@ void UGT_DeployTerminalWidget::BuildWidgetTree()
 	AccountText->SetColorAndOpacity(FSlateColor(GTColWhite));
 	if (UHorizontalBoxSlot* S = HeaderRow->AddChildToHorizontalBox(AccountText)) { S->SetVerticalAlignment(VAlign_Center); }
 
-	// -- 筛选条(纯视觉, 仅申领/出勤配置页显示) --
+	// -- 筛选条(分类, 可点击筛选; 申领/仓库各一套, ShowSection 里重建) --
 	FilterRow = WidgetTree->ConstructWidget<UHorizontalBox>();
 	if (UVerticalBoxSlot* S = MainCol->AddChildToVerticalBox(FilterRow)) { S->SetPadding(FMargin(0, 0, 0, 12)); }
-	AddFilterPill(FilterRow, TEXT("全部"), true);
-	AddFilterPill(FilterRow, TEXT("作业装备"), false);
-	AddFilterPill(FilterRow, TEXT("消耗"), false);
 
 	// -- 卡片网格(滚动) --
 	ContentScroll = WidgetTree->ConstructWidget<UScrollBox>();
@@ -472,7 +602,7 @@ void UGT_DeployTerminalWidget::AddItemCard(int32 Index, UTexture2D* Icon, const 
 	UTextBlock* NameTxt = WidgetTree->ConstructWidget<UTextBlock>();
 	NameTxt->SetText(FText::FromString(Name));
 	NameTxt->SetFont(GTFont(18));
-	NameTxt->SetColorAndOpacity(FSlateColor(bHighlight ? GTColGold : GTColWhite));
+	NameTxt->SetColorAndOpacity(FSlateColor(bHighlight ? GTColGold : GTColName));
 	NameCol->AddChildToVerticalBox(NameTxt);
 	UTextBlock* TypeTxt = WidgetTree->ConstructWidget<UTextBlock>();
 	TypeTxt->SetText(FText::FromString(TypeLine));
@@ -484,7 +614,7 @@ void UGT_DeployTerminalWidget::AddItemCard(int32 Index, UTexture2D* Icon, const 
 	UTextBlock* EffTxt = WidgetTree->ConstructWidget<UTextBlock>();
 	EffTxt->SetText(FText::FromString(Effect));
 	EffTxt->SetFont(GTFont(13));
-	EffTxt->SetColorAndOpacity(FSlateColor(GTColWhite));
+	EffTxt->SetColorAndOpacity(FSlateColor(GTColEffect));
 	EffTxt->SetAutoWrapText(true);
 	if (UVerticalBoxSlot* S = Col->AddChildToVerticalBox(EffTxt)) { S->SetPadding(FMargin(0, 7, 0, 0)); }
 
@@ -494,7 +624,7 @@ void UGT_DeployTerminalWidget::AddItemCard(int32 Index, UTexture2D* Icon, const 
 		UTextBlock* FlavorTxt = WidgetTree->ConstructWidget<UTextBlock>();
 		FlavorTxt->SetText(FText::FromString(Flavor));
 		FlavorTxt->SetFont(GTFont(11));
-		FlavorTxt->SetColorAndOpacity(FSlateColor(GTColDim));
+		FlavorTxt->SetColorAndOpacity(FSlateColor(GTColFaint));
 		FlavorTxt->SetAutoWrapText(true);
 		if (UVerticalBoxSlot* S = Col->AddChildToVerticalBox(FlavorTxt)) { S->SetPadding(FMargin(0, 4, 0, 0)); }
 	}
@@ -519,10 +649,30 @@ void UGT_DeployTerminalWidget::AddItemCard(int32 Index, UTexture2D* Icon, const 
 	ActBtn->Index = Index;
 	ActBtn->SetIsEnabled(bActionEnabled);
 	ActBtn->OnIndexClicked.AddDynamic(this, &UGT_DeployTerminalWidget::HandleRowClicked);
+	// 蓝底白字圆角按钮(原版风格); 不可用时灰底暗字。
+	{
+		FButtonStyle BS = ActBtn->GetStyle();
+		auto BtnBrush = [](const FLinearColor& Fill)
+		{
+			FSlateBrush B;
+			B.DrawAs = ESlateBrushDrawType::RoundedBox;
+			B.TintColor = FSlateColor(Fill);
+			B.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+			B.OutlineSettings.CornerRadii = FVector4(6.f, 6.f, 6.f, 6.f);
+			return B;
+		};
+		BS.Normal = BtnBrush(GTColBtn);
+		BS.Hovered = BtnBrush(GTColBtnHover);
+		BS.Pressed = BtnBrush(GTColBtnPress);
+		BS.Disabled = BtnBrush(GTColBtnDisabled);
+		BS.NormalPadding = FMargin(15.f, 5.f);
+		BS.PressedPadding = FMargin(15.f, 5.f);
+		ActBtn->SetStyle(BS);
+	}
 	UTextBlock* ActTxt = WidgetTree->ConstructWidget<UTextBlock>();
 	ActTxt->SetText(FText::FromString(ActionLabel));
 	ActTxt->SetFont(GTFont(15));
-	ActTxt->SetColorAndOpacity(FSlateColor(bActionEnabled ? GTColOrange : GTColDim));
+	ActTxt->SetColorAndOpacity(FSlateColor(bActionEnabled ? GTColBtnText : GTColBtnTextDisabled));
 	ActBtn->SetContent(ActTxt);
 	if (UHorizontalBoxSlot* S = Foot->AddChildToHorizontalBox(ActBtn)) { S->SetVerticalAlignment(VAlign_Center); }
 }
@@ -543,6 +693,7 @@ void UGT_DeployTerminalWidget::RebuildContent()
 		if (DetailText) { DetailText->SetText(FText::FromString(TEXT("点击卡片右侧按钮: 未拥有→申领, 已拥有→装备/卸下(最多 2 件)。"))); }
 		for (const FGT_EquipDef& Def : GT_MetaCatalog::GetEquipDefs())
 		{
+			if (!PassesFilter(FName(TEXT("type_equip")), EquipTierKey(Def.Id))) { continue; }
 			const bool bOwned = Meta->OwnsItem(Def.Id);
 			const bool bEq = Meta->IsEquipped(Def.Id);
 			const bool bAfford = Gold >= Def.Price;
@@ -556,6 +707,7 @@ void UGT_DeployTerminalWidget::RebuildContent()
 		}
 		for (const FGT_ConsumableDef& Def : GT_MetaCatalog::GetConsumableDefs())
 		{
+			if (!PassesFilter(FName(TEXT("type_consumable")), FName(TEXT("tier_common")))) { continue; }
 			const bool bAfford = Gold >= Def.Price;
 			const int32 Have = Meta->GetConsumableCount(Def.Id);
 			AddItemCard(CurrentRows.Num(), IconForConsumable(Def.Id), Def.DisplayName, TEXT("作业消耗品 · 后勤"),
@@ -572,6 +724,7 @@ void UGT_DeployTerminalWidget::RebuildContent()
 		for (const FGT_EquipDef& Def : GT_MetaCatalog::GetEquipDefs())
 		{
 			if (!Meta->OwnsItem(Def.Id)) { continue; }
+			if (!PassesFilter(FName(TEXT("type_equip")), EquipTierKey(Def.Id))) { continue; }
 			bAny = true;
 			const bool bEq = Meta->IsEquipped(Def.Id);
 			AddItemCard(CurrentRows.Num(), IconForEquip(Def.Id), Def.DisplayName, TEXT("作业装备 · 后勤"),
@@ -583,6 +736,7 @@ void UGT_DeployTerminalWidget::RebuildContent()
 		{
 			const int32 Stock = Meta->GetConsumableCount(Def.Id);
 			if (Stock <= 0) { continue; }
+			if (!PassesFilter(FName(TEXT("type_consumable")), FName(TEXT("tier_common")))) { continue; }
 			bAny = true;
 			const int32 Carry = Meta->GetLoadout().FindRef(Def.Id);
 			AddItemCard(CurrentRows.Num(), IconForConsumable(Def.Id), Def.DisplayName, TEXT("作业消耗品 · 后勤"),
@@ -607,6 +761,12 @@ void UGT_DeployTerminalWidget::RebuildContent()
 		for (const FGT_WarehouseEntry& Entry : Items)
 		{
 			const FGT_ItemCatalogEntry* Def = GT_ItemCatalog::FindItemDef(Entry.ItemId);
+			// 类型键: 来源 recovered→回收, equipment→作业装备, consumable→消耗; 档位键: 按物品稀有度。
+			FName TypeKey = FName(TEXT("type_recovered"));
+			if (Entry.Source == FName(TEXT("equipment"))) { TypeKey = FName(TEXT("type_equip")); }
+			else if (Entry.Source == FName(TEXT("consumable"))) { TypeKey = FName(TEXT("type_consumable")); }
+			const FName TierKey = RarityTierKey(Def ? Def->Rarity : NAME_None);
+			if (!PassesFilter(TypeKey, TierKey)) { continue; }
 			const FString Name = Def ? Def->DisplayName : Entry.ItemId.ToString();
 			FName Reason;
 			const bool bSellable = Meta->CanSellItem(Entry.ItemId, Reason);
@@ -773,16 +933,22 @@ void UGT_DeployTerminalWidget::ShowSection(ESection Section)
 	case ESection::Recovery:    Name = TEXT("回收资历"); break;
 	}
 	if (SectionTitleText) { SectionTitleText->SetText(FText::FromString(Name)); }
-	// 当前页签高亮(选中套圆角金边, 代替原来的"当前页签/"面包屑)。
+	// 当前页签高亮(选中套圆角金边, 代替原来的"当前页签/"面包屑); 同步 NavVisualState 给 Tick 维护悬停。
+	if (NavVisualState.Num() != NavHighlights.Num()) { NavVisualState.Init(0, NavHighlights.Num()); }
 	for (int32 i = 0; i < NavHighlights.Num(); ++i)
 	{
-		SetNavHighlight(NavHighlights[i], NavSections.IsValidIndex(i) && NavSections[i] == Section);
+		const uint8 St = (NavSections.IsValidIndex(i) && NavSections[i] == Section) ? 1 : 0;
+		NavVisualState[i] = St;
+		SetNavHighlight(NavHighlights[i], St);
 	}
-	// 筛选条只对申领/出勤配置(物品)有意义, 其余页隐藏。
+	// 筛选条只对申领/出勤配置/仓库(物品)有意义, 其余页隐藏。每次切页重置为"全部"。
+	CurrentFilter = FName(TEXT("all"));
 	if (FilterRow)
 	{
-		const bool bShowFilter = (Section == ESection::Requisition || Section == ESection::Loadout);
+		const bool bShowFilter = (Section == ESection::Requisition || Section == ESection::Loadout || Section == ESection::Warehouse);
 		FilterRow->SetVisibility(bShowFilter ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+		if (bShowFilter) { RebuildFilterPills(); }
+		else { FilterRow->ClearChildren(); FilterPillKeys.Reset(); }
 	}
 	RefreshAccount();
 	RebuildContent();

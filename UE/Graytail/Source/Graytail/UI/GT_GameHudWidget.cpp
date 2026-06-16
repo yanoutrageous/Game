@@ -30,6 +30,7 @@
 #include "Styling/CoreStyle.h"
 #include "UI/GT_EventPanelWidget.h"
 #include "UI/GT_LootResultWidget.h"
+#include "UI/GT_DeployTerminalWidget.h"
 #include "UI/GT_MainMenuWidget.h"
 #include "UI/GT_MapOverlayWidget.h"
 #include "UI/GT_RoomViewWidget.h"
@@ -443,11 +444,26 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	if (MainMenu)
 	{
 		MainMenu->OnStartRequested.BindUObject(this, &UGT_GameHudWidget::HandleMenuStartRequested);
+		MainMenu->OnDeployRequested.BindUObject(this, &UGT_GameHudWidget::HandleDeployRequested);
 		MainMenu->SetVisibility(ESlateVisibility::Collapsed);
 		if (UOverlaySlot* MenuSlot = Screen->AddChildToOverlay(MainMenu))
 		{
 			MenuSlot->SetHorizontalAlignment(HAlign_Fill);
 			MenuSlot->SetVerticalAlignment(VAlign_Fill);
+		}
+	}
+
+	// 第 8.5 层: 局外部署终端(主菜单之上、教程弹窗之下)。由主菜单「装备天赋」打开。
+	DeployTerminal = CreateWidget<UGT_DeployTerminalWidget>(this, UGT_DeployTerminalWidget::StaticClass());
+	if (DeployTerminal)
+	{
+		DeployTerminal->OnBackRequested.BindUObject(this, &UGT_GameHudWidget::HandleDeployBack);
+		DeployTerminal->OnDepartRequested.BindUObject(this, &UGT_GameHudWidget::HandleDeployDepart);
+		DeployTerminal->SetVisibility(ESlateVisibility::Collapsed);
+		if (UOverlaySlot* DeploySlot = Screen->AddChildToOverlay(DeployTerminal))
+		{
+			DeploySlot->SetHorizontalAlignment(HAlign_Fill);
+			DeploySlot->SetVerticalAlignment(VAlign_Fill);
 		}
 	}
 
@@ -1011,6 +1027,10 @@ FReply UGT_GameHudWidget::NativeOnFocusReceived(const FGeometry& InGeometry, con
 	{
 		return FReply::Handled().SetUserFocus(TutorialPopup->TakeWidget(), EFocusCause::SetDirectly);
 	}
+	if (DeployTerminal && DeployTerminal->IsOpen())
+	{
+		return FReply::Handled().SetUserFocus(DeployTerminal->TakeWidget(), EFocusCause::SetDirectly);
+	}
 	if (MainMenu && MainMenu->IsOpen())
 	{
 		return FReply::Handled().SetUserFocus(MainMenu->TakeWidget(), EFocusCause::SetDirectly);
@@ -1174,6 +1194,24 @@ void UGT_GameHudWidget::OnNewRun()
 	{
 		TutorialEnterRoom(Snapshot.PlayerX, Snapshot.PlayerY);
 	}
+}
+
+void UGT_GameHudWidget::HandleDeployRequested()
+{
+	if (MainMenu) { MainMenu->Close(); }
+	if (DeployTerminal) { DeployTerminal->Open(); }
+}
+
+void UGT_GameHudWidget::HandleDeployBack()
+{
+	if (DeployTerminal) { DeployTerminal->Close(); }
+	if (MainMenu) { MainMenu->Open(); }
+}
+
+void UGT_GameHudWidget::HandleDeployDepart()
+{
+	if (DeployTerminal) { DeployTerminal->Close(); }
+	if (MainMenu) { MainMenu->OpenToDepart(); }
 }
 
 void UGT_GameHudWidget::OnReturnToMenu()

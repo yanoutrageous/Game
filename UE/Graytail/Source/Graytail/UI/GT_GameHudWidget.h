@@ -20,6 +20,7 @@ class UGT_MapOverlayWidget;
 class UGT_LootResultWidget;
 class UGT_EventPanelWidget;
 class UGT_MainMenuWidget;
+class UGT_DeployTerminalWidget;
 class UGT_TutorialPopupWidget;
 
 // 主游戏界面(对齐 Lua 原版构图): 房间视图铺满全屏为背景,
@@ -65,6 +66,11 @@ private:
 
 	// 主菜单回调: 选难度开局。
 	void HandleMenuStartRequested(EGT_Difficulty Difficulty);
+
+	// 部署终端(局外)导航: 装备天赋入口打开 / 返回主菜单 / 出发探索(转难度选择)。
+	void HandleDeployRequested();
+	void HandleDeployBack();
+	void HandleDeployDepart();
 
 	// 过门换房后的统一回调: 刷新信息面板 + 驱动新手教程弹窗(若在教程局)。
 	void HandleRoomChanged();
@@ -114,6 +120,8 @@ private:
 
 	// 主菜单(最顶层): 无局时显示, 选难度后开局; "重新出发"沿用上次选的难度。
 	UPROPERTY(Transient) UGT_MainMenuWidget* MainMenu = nullptr;
+	// 局外部署终端(装备天赋入口打开; 在主菜单之上)。
+	UPROPERTY(Transient) UGT_DeployTerminalWidget* DeployTerminal = nullptr;
 	EGT_Difficulty LastDifficulty = EGT_Difficulty::Standard;
 
 	// 新手教程教学弹窗(最顶层): blocking 模态抢焦点暂停移动, 非blocking 顶部提示条。

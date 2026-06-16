@@ -37,9 +37,14 @@ public:
 	void Open();
 	void Close();
 	bool IsOpen() const;
+	// 从部署终端「出发探索」回来: 打开并直接进区域选择页。
+	void OpenToDepart();
 
 	// 选难度开局(HUD 负责发命令); 参数 = 内核难度档。
 	TDelegate<void(EGT_Difficulty)> OnStartRequested;
+
+	// 「装备天赋」入口: 打开局外部署终端(HUD 接)。
+	TDelegate<void()> OnDeployRequested;
 
 private:
 	// 页面: 主页(四入口) / 区域页(地图大小) / 难度页(三档, 随区域切换)。

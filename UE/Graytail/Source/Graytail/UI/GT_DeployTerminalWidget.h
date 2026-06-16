@@ -60,8 +60,9 @@ private:
 	void AddItemCard(int32 Index, UTexture2D* Icon, const FString& Name, const FString& TypeLine,
 		const FString& Effect, const FString& InfoLine, const FString& StatusLine,
 		const FString& ActionLabel, bool bActionEnabled, bool bHighlight);
-	// 顶栏导航/底栏按钮: 用 deploy 贴图(标签烤在图里), 原生尺寸 1:1 不拉伸。
-	UButton* MakeTexButton(UHorizontalBox* Row, const FString& Label, const FString& TexPath, float Pad);
+	// 顶栏导航/底栏按钮: 用 deploy 贴图(标签烤在图里), 显式传原生尺寸 1:1 不拉伸。
+	// (这些按钮图带 mipmap+流送, 运行时 Tex->GetSizeX() 早期返回 32 占位, 故尺寸不取运行时值, 用实测原生像素。)
+	UButton* MakeTexButton(UHorizontalBox* Row, const FString& Label, const FString& TexPath, float NativeW, float NativeH, float Pad);
 	// 筛选药丸(纯视觉, P1 不做实际筛选)。
 	void AddFilterPill(UHorizontalBox* Row, const FString& Label, bool bSelected);
 	// 把贴图设成 Border 的 9-slice 金边框(MarginFrac = 边框占贴图比例)。

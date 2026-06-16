@@ -128,34 +128,41 @@ void UGT_DeployTerminalWidget::Apply9Slice(UBorder* Target, const FString& TexPa
 }
 
 // 贴图按钮(标签烤在图里): 原生尺寸 1:1, 不拉伸不挤压。
-UButton* UGT_DeployTerminalWidget::MakeTexButton(UHorizontalBox* Row, const FString& Label, const FString& TexPath, float Pad)
+// 关键: SizeBox 套在 UButton **外层**(同卡片图标那条已验证尺寸路径),
+// 贴图设成按钮的 style 背景刷而非 content —— SButton 把背景刷铺满整块几何 = 1:1,
+// 绕开 "UButton 包 SizeBox 时 content 尺寸不上传 → 被挤成 30-40px" 的坑。
+UButton* UGT_DeployTerminalWidget::MakeTexButton(UHorizontalBox* Row, const FString& Label, const FString& TexPath, float NativeW, float NativeH, float Pad)
 {
 	UButton* Btn = WidgetTree->ConstructWidget<UButton>();
-	// 透明按钮底(去掉默认灰框), 只显贴图; 贴图放进 UImage 当内容, 按比例定尺寸不拉伸。
-	FButtonStyle Style = Btn->GetStyle();
-	FSlateBrush Empty;
-	Empty.DrawAs = ESlateBrushDrawType::NoDrawType;
-	Style.Normal = Empty;
-	Style.Hovered = Empty;
-	Style.Pressed = Empty;
-	Style.Disabled = Empty;
-	Btn->SetStyle(Style);
-
 	UTexture2D* Tex = LoadUiTex(TexPath);
+
+	FButtonStyle Style = Btn->GetStyle();
+	FSlateBrush TexBrush;
 	if (Tex)
 	{
-		// 按贴图原生尺寸显示(最忠实、最醒目); SetBrushFromTexture + SizeBox(等比不挤压)。
-		const float W = Tex->GetSizeX();
-		const float H = Tex->GetSizeY();
-		UImage* Img = WidgetTree->ConstructWidget<UImage>();
-		Img->SetBrushFromTexture(Tex);
-		USizeBox* IconBox = WidgetTree->ConstructWidget<USizeBox>();
-		IconBox->SetWidthOverride(W);
-		IconBox->SetHeightOverride(H);
-		IconBox->SetContent(Img);
-		Btn->SetContent(IconBox);
+		TexBrush.SetResourceObject(Tex);
+		TexBrush.ImageSize = FVector2D(NativeW, NativeH);   // 用实测原生尺寸, 不取运行时 GetSizeX(早期=32)
+		TexBrush.DrawAs = ESlateBrushDrawType::Image;       // 整刷铺满按钮几何
 	}
 	else
+	{
+		TexBrush.DrawAs = ESlateBrushDrawType::NoDrawType;
+	}
+	Style.Normal = TexBrush;
+	Style.Pressed = TexBrush;
+	Style.Disabled = TexBrush;
+	// 悬停极淡提亮(无独立贴图时给点反馈); 按下略压暗。
+	FSlateBrush HoverBrush = TexBrush;
+	HoverBrush.TintColor = FSlateColor(FLinearColor(1.12f, 1.12f, 1.12f, 1.f));
+	Style.Hovered = HoverBrush;
+	Style.Pressed.TintColor = FSlateColor(FLinearColor(0.82f, 0.82f, 0.82f, 1.f));
+	// content padding 清零(免得在背景刷外再加边距把外层 SizeBox 撑大)。
+	Style.NormalPadding = FMargin(0.f);
+	Style.PressedPadding = FMargin(0.f);
+	Btn->SetStyle(Style);
+
+	// 缺贴图时退化为文字按钮(放进按钮当 content); 有贴图时背景刷已自绘, 无需 content。
+	if (!Tex)
 	{
 		UTextBlock* Txt = WidgetTree->ConstructWidget<UTextBlock>();
 		Txt->SetText(FText::FromString(Label));
@@ -163,7 +170,14 @@ UButton* UGT_DeployTerminalWidget::MakeTexButton(UHorizontalBox* Row, const FStr
 		Txt->SetColorAndOpacity(FSlateColor(GTColWhite));
 		Btn->SetContent(Txt);
 	}
-	if (UHorizontalBoxSlot* HSlot = Row->AddChildToHorizontalBox(Btn))
+
+	// SizeBox 在 UButton 外层强制原生尺寸 —— 与卡片图标同一条尺寸路径, 稳。
+	USizeBox* Box = WidgetTree->ConstructWidget<USizeBox>();
+	Box->SetWidthOverride(NativeW);
+	Box->SetHeightOverride(NativeH);
+	Box->SetContent(Btn);
+
+	if (UHorizontalBoxSlot* HSlot = Row->AddChildToHorizontalBox(Box))
 	{
 		HSlot->SetPadding(FMargin(Pad, 0.f));
 		HSlot->SetVerticalAlignment(VAlign_Center);
@@ -201,19 +215,19 @@ void UGT_DeployTerminalWidget::BuildWidgetTree()
 	// === 顶栏: 左 返回主界面 + 右 五个导航页签(贴图自带标签) ===
 	UHorizontalBox* TopBar = WidgetTree->ConstructWidget<UHorizontalBox>();
 	if (UVerticalBoxSlot* S = Main->AddChildToVerticalBox(TopBar)) { S->SetPadding(FMargin(0, 0, 0, 6)); }
-	MakeTexButton(TopBar, TEXT("返回主界面"), TEXT("/Game/Graytail/UI/deploy/ui_button_back_main"), 0.f)
+	MakeTexButton(TopBar, TEXT("返回主界面"), TEXT("/Game/Graytail/UI/deploy/ui_button_back_main"), 194.f, 56.f, 0.f)
 		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnBackClicked);
 	USpacer* TopSpacer = WidgetTree->ConstructWidget<USpacer>();
 	if (UHorizontalBoxSlot* S = TopBar->AddChildToHorizontalBox(TopSpacer)) { S->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); }
-	MakeTexButton(TopBar, TEXT("后勤仓库"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_warehouse"), 4.f)
+	MakeTexButton(TopBar, TEXT("后勤仓库"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_warehouse"), 154.f, 56.f, 4.f)
 		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavWarehouse);
-	MakeTexButton(TopBar, TEXT("后勤申领"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_requisition"), 4.f)
+	MakeTexButton(TopBar, TEXT("后勤申领"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_requisition"), 148.f, 56.f, 4.f)
 		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavRequisition);
-	MakeTexButton(TopBar, TEXT("出勤配置"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_loadout"), 4.f)
+	MakeTexButton(TopBar, TEXT("出勤配置"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_loadout"), 141.f, 56.f, 4.f)
 		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavLoadout);
-	MakeTexButton(TopBar, TEXT("回收资历"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_recovery"), 4.f)
+	MakeTexButton(TopBar, TEXT("回收资历"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_recovery"), 170.f, 60.f, 4.f)
 		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavRecovery);
-	MakeTexButton(TopBar, TEXT("天赋"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_talent_selected"), 4.f)
+	MakeTexButton(TopBar, TEXT("天赋"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_talent_selected"), 228.f, 61.f, 4.f)
 		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavTalent);
 
 	// === 面包屑 ===
@@ -290,7 +304,7 @@ void UGT_DeployTerminalWidget::BuildWidgetTree()
 	if (UVerticalBoxSlot* S = Main->AddChildToVerticalBox(Footer)) { S->SetPadding(FMargin(0, 12, 0, 0)); }
 	USpacer* FootSpacer = WidgetTree->ConstructWidget<USpacer>();
 	if (UHorizontalBoxSlot* S = Footer->AddChildToHorizontalBox(FootSpacer)) { S->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); }
-	MakeTexButton(Footer, TEXT("确认出发"), TEXT("/Game/Graytail/UI/deploy/ui_button_confirm_deploy_large"), 0.f)
+	MakeTexButton(Footer, TEXT("确认出发"), TEXT("/Game/Graytail/UI/deploy/ui_button_confirm_deploy_large"), 289.f, 98.f, 0.f)
 		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnDepartClicked);
 }
 

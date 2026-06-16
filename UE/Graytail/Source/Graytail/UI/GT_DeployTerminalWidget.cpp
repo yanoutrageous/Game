@@ -131,21 +131,29 @@ void UGT_DeployTerminalWidget::Apply9Slice(UBorder* Target, const FString& TexPa
 UButton* UGT_DeployTerminalWidget::MakeTexButton(UHorizontalBox* Row, const FString& Label, const FString& TexPath, float Pad)
 {
 	UButton* Btn = WidgetTree->ConstructWidget<UButton>();
-	float W = 150.f, H = 52.f;
+	// 透明按钮底(去掉默认灰框), 只显贴图; 贴图放进 UImage 当内容, 按比例定尺寸不拉伸。
+	FButtonStyle Style = Btn->GetStyle();
+	FSlateBrush Empty;
+	Empty.DrawAs = ESlateBrushDrawType::NoDrawType;
+	Style.Normal = Empty;
+	Style.Hovered = Empty;
+	Style.Pressed = Empty;
+	Style.Disabled = Empty;
+	Btn->SetStyle(Style);
+
 	UTexture2D* Tex = LoadUiTex(TexPath);
 	if (Tex)
 	{
-		W = Tex->GetSizeX();
-		H = Tex->GetSizeY();
-		FButtonStyle Style = Btn->GetStyle();
-		FSlateBrush B;
-		B.SetResourceObject(Tex);
-		B.ImageSize = FVector2D(W, H);
-		B.DrawAs = ESlateBrushDrawType::Image;
-		Style.Normal = B;
-		Style.Hovered = B;
-		Style.Pressed = B;
-		Btn->SetStyle(Style);
+		// 按贴图原生尺寸显示(最忠实、最醒目); SetBrushFromTexture + SizeBox(等比不挤压)。
+		const float W = Tex->GetSizeX();
+		const float H = Tex->GetSizeY();
+		UImage* Img = WidgetTree->ConstructWidget<UImage>();
+		Img->SetBrushFromTexture(Tex);
+		USizeBox* IconBox = WidgetTree->ConstructWidget<USizeBox>();
+		IconBox->SetWidthOverride(W);
+		IconBox->SetHeightOverride(H);
+		IconBox->SetContent(Img);
+		Btn->SetContent(IconBox);
 	}
 	else
 	{
@@ -155,11 +163,7 @@ UButton* UGT_DeployTerminalWidget::MakeTexButton(UHorizontalBox* Row, const FStr
 		Txt->SetColorAndOpacity(FSlateColor(GTColWhite));
 		Btn->SetContent(Txt);
 	}
-	USizeBox* Box = WidgetTree->ConstructWidget<USizeBox>();
-	Box->SetWidthOverride(W);
-	Box->SetHeightOverride(H);
-	Box->SetContent(Btn);
-	if (UHorizontalBoxSlot* HSlot = Row->AddChildToHorizontalBox(Box))
+	if (UHorizontalBoxSlot* HSlot = Row->AddChildToHorizontalBox(Btn))
 	{
 		HSlot->SetPadding(FMargin(Pad, 0.f));
 		HSlot->SetVerticalAlignment(VAlign_Center);

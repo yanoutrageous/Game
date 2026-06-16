@@ -27,7 +27,7 @@ enum class EGT_MapMode : uint8
 UENUM(BlueprintType)
 enum class EGT_Difficulty : uint8
 {
-	Tutorial UMETA(DisplayName = "Tutorial (7x7, 2 exits)"),
+	Tutorial UMETA(DisplayName = "Tutorial (fixed 5x5)"),
 	Easy UMETA(DisplayName = "Easy (10x10, 3 exits)"),
 	Standard UMETA(DisplayName = "Standard (10x10, 2 exits)"),
 	Hard UMETA(DisplayName = "Hard (10x10, 1 exit)"),

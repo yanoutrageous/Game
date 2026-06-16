@@ -54,6 +54,9 @@ void UGT_RunContext::InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec)
 	ProtocolState.Reset();
 	DefeatedCombatRooms.Reset();
 	PressureExploredCells.Reset();
+	LoadoutMineDmgReduce = 0;
+	bLoadoutMineImmunityAvailable = false;
+	LoadoutSearchBonusPercent = 0;
 
 	PlayerActorId = FName(TEXT("Player"));
 
@@ -81,9 +84,23 @@ void UGT_RunContext::InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec)
 			PlayerIntelMap.SetScannedNumber(PlayerState.X, PlayerState.Y, SpawnAdjacentMines);
 		}
 
-		// 开局占位携带应急止血贴: 部署界面(局外组 loadout)接入前的临时来源,
-		// 让 Q 键消耗品当下可玩可测; 将来由 loadout 带入数量替代。
-		RunInventory.AddCarriedItem(FName(TEXT("emergency_bandage")), 2, FName(TEXT("loadout")));
+		// 开局消耗品由 RunSubsystem 在 ApplyMetaLoadout(S3)按真实 loadout 灌入(占位绷带已移除)。
+	}
+
+	// 教程: 开局把撤离信标在情报图上标为可见(对齐 Lua 固定可见撤离点), 让新手一开始就知道目标在哪。
+	// 大图 GetDebugMiniMapViewData 见 bVisible 即从真值填 "Exit" 图标, 自动画黄框, 无需额外渲染改动。
+	if (MapSpec.bRevealExitsAtStart)
+	{
+		for (int32 CellY = 0; CellY < MapHeight; ++CellY)
+		{
+			for (int32 CellX = 0; CellX < MapWidth; ++CellX)
+			{
+				if (TruthMap.IsExit(CellX, CellY))
+				{
+					PlayerIntelMap.MarkVisible(CellX, CellY, true);
+				}
+			}
+		}
 	}
 }
 
@@ -110,6 +127,9 @@ void UGT_RunContext::ResetRun()
 	ProtocolState.Reset();
 	DefeatedCombatRooms.Reset();
 	PressureExploredCells.Reset();
+	LoadoutMineDmgReduce = 0;
+	bLoadoutMineImmunityAvailable = false;
+	LoadoutSearchBonusPercent = 0;
 	MapMode = EGT_MapMode::Unknown;
 }
 
@@ -470,10 +490,40 @@ bool UGT_RunContext::IsPlayerAlive() const
 
 void UGT_RunContext::ApplyMineHitToPlayer(int32& OutDamage, bool& bOutDead)
 {
-	// 对齐 Combat.TakeMineHit: 雷伤 30(装备减免后最低 5, 减免待装备阶段)。
-	OutDamage = FMath::Max(GT_CombatRules::MineDamageFloor, GT_CombatRules::MineDamage);
+	// 急救包: 首次踩雷免疫(一次性, 伤害 0 绕过下限)。
+	if (bLoadoutMineImmunityAvailable)
+	{
+		bLoadoutMineImmunityAvailable = false;
+		OutDamage = 0;
+		bOutDead = !PlayerCombatState.IsAlive();
+		return;
+	}
+	// 对齐 Combat.TakeMineHit: 雷伤 30, 装备(绝缘套)/天赋(厚皮)减免后最低 5。
+	OutDamage = FMath::Max(GT_CombatRules::MineDamageFloor, GT_CombatRules::MineDamage - LoadoutMineDmgReduce);
 	PlayerCombatState.ApplyDamage(OutDamage);
 	bOutDead = !PlayerCombatState.IsAlive();
+}
+
+void UGT_RunContext::ApplyMetaLoadout(const FGT_EquipBonus& Equip, const FGT_TalentEffects& Talents, const TMap<FName, int32>& Consumables)
+{
+	// 属性加成(开局直接设, 开局满血)。
+	PlayerCombatState.MaxHp += Equip.BonusHP;
+	PlayerCombatState.Hp = PlayerCombatState.MaxHp;
+	PlayerCombatState.Power += Equip.BonusPower;
+
+	// 规则层加成(雷伤减免 = 装备 + 天赋叠加; 首次免雷; 搜索奖励 %)。
+	LoadoutMineDmgReduce = Equip.MineDmgReduce + Talents.MineDmgReduce;
+	bLoadoutMineImmunityAvailable = Equip.bMineImmunity;
+	LoadoutSearchBonusPercent = Equip.SearchBonus;
+
+	// 带入消耗品(替换原写死占位)。
+	for (const TPair<FName, int32>& Pair : Consumables)
+	{
+		if (!Pair.Key.IsNone() && Pair.Value > 0)
+		{
+			RunInventory.AddCarriedItem(Pair.Key, Pair.Value, FName(TEXT("loadout")));
+		}
+	}
 }
 
 bool UGT_RunContext::MarkExploredForPressure(int32 X, int32 Y)
@@ -634,7 +684,8 @@ bool UGT_RunContext::SearchCurrentRoom(FGT_SearchOutcome& OutOutcome)
 	// 入账顺序对齐 Lua SearchCurrentRoom: 标记已搜 -> 待结算金币 -> parts -> 物品堆叠。
 	const FGT_SearchReward Reward = GT_LootRules::ComputeSearchReward(Seed, PlayerX, PlayerY, AdjacentMineCount, bIsChest);
 	RunInventory.MarkRoomSearched(PlayerX, PlayerY);
-	RunInventory.AddPendingGold(Reward.Gold);
+	// 大背包搜索奖励 +SearchBonus%(无背包 = 0% 不变, 对齐 Lua RunInventory.searchBonus)。
+	RunInventory.AddPendingGold((Reward.Gold * (100 + LoadoutSearchBonusPercent)) / 100);
 	RunInventory.Parts += Reward.Parts;
 	for (const FGT_ItemStack& Stack : Reward.Items)
 	{

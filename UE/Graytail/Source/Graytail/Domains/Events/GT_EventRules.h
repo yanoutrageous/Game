@@ -49,7 +49,8 @@ namespace GT_EventRules
 	GRAYTAIL_API int32 RollDiceAt(int32 Seed, int32 X, int32 Y, int32 PendingGold);
 
 	// 旅商收购价(对齐 Balance.TraderSaleValue): floor(基础价 * 0.75), 有价物最低 1。
-	GRAYTAIL_API int32 GetTraderSaleValue(int32 BaseValue);
+	// BonusPercent = 议价天赋的收购价加成(S4); 0 时与原值完全一致(基础不变)。
+	GRAYTAIL_API int32 GetTraderSaleValue(int32 BaseValue, int32 BonusPercent = 0);
 
 	// 事件文案(对齐 Lua GameText.events)。
 	GRAYTAIL_API FString GetEventTitle(EGT_EventKind Kind);

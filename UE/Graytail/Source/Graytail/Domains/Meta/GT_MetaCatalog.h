@@ -29,7 +29,7 @@ struct FGT_TalentDef
 	int32 MineDmgReduce = 0;
 	int32 MonsterFleeBonus = 0;
 	int32 FailureGoldBonus = 0;
-	int32 TradePrice = 0;       // 0 = 不改默认 15
+	int32 TradePrice = 0;       // S4: 议价 → 旅商收购价加成百分比(0 = 无此效果, 20 = +20%)
 	bool bMapHighlight = false;
 };
 

@@ -102,6 +102,6 @@ struct GRAYTAIL_API FGT_TalentEffects
 	UPROPERTY() int32 MineDmgReduce = 0;
 	UPROPERTY() int32 MonsterFleeBonus = 0;
 	UPROPERTY() int32 FailureGoldBonus = 0;
-	UPROPERTY() int32 TradePrice = 15;      // 默认 NPC 交易价
+	UPROPERTY() int32 TradePrice = 0;       // S4: 议价 → 旅商收购价加成百分比(0=无议价, 20=已解锁)
 	UPROPERTY() bool bMapHighlight = false;
 };

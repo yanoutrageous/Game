@@ -92,7 +92,7 @@ namespace
 		if (Def.MineDmgReduce > 0) { return FString::Printf(TEXT("雷险伤害 -%d"), Def.MineDmgReduce); }
 		if (Def.MonsterFleeBonus > 0) { return FString::Printf(TEXT("怪物避让窗口 +%ds"), Def.MonsterFleeBonus); }
 		if (Def.FailureGoldBonus > 0) { return FString::Printf(TEXT("撤离失败保留 +%d 金"), Def.FailureGoldBonus); }
-		if (Def.TradePrice > 0) { return FString::Printf(TEXT("交易出售价提升至 %d"), Def.TradePrice); }
+		if (Def.TradePrice > 0) { return FString::Printf(TEXT("旅商收购价 +%d%%"), Def.TradePrice); }
 		return TEXT("");
 	}
 

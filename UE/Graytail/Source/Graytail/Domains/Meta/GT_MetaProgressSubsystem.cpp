@@ -388,7 +388,7 @@ FGT_EquipBonus UGT_MetaProgressSubsystem::GetEquipBonus() const
 
 FGT_TalentEffects UGT_MetaProgressSubsystem::GetTalentEffects() const
 {
-	FGT_TalentEffects Effects;   // TradePrice 默认 15
+	FGT_TalentEffects Effects;   // TradePrice 默认 0(无议价 = 收购价无加成, 基础 0.75 不变)
 	for (const FName& TalentId : State.UnlockedTalents)
 	{
 		const FGT_TalentDef* Def = GT_MetaCatalog::FindTalent(TalentId);
@@ -396,7 +396,7 @@ FGT_TalentEffects UGT_MetaProgressSubsystem::GetTalentEffects() const
 		Effects.MineDmgReduce += Def->MineDmgReduce;
 		Effects.MonsterFleeBonus += Def->MonsterFleeBonus;
 		Effects.FailureGoldBonus += Def->FailureGoldBonus;
-		if (Def->TradePrice > 0) { Effects.TradePrice = Def->TradePrice; }
+		if (Def->TradePrice > 0) { Effects.TradePrice = Def->TradePrice; } // 议价 → 收购价加成 %
 		Effects.bMapHighlight |= Def->bMapHighlight;
 	}
 	return Effects;

@@ -9,7 +9,11 @@ import os
 import unreal
 
 DEST = "/Game/Graytail/UI/deploy"
-NAMES = ["ui_icon_whetstone", "ui_icon_insulated_gloves"]
+NAMES = [
+    "ui_icon_whetstone", "ui_icon_insulated_gloves",
+    "ui_icon_talent_map", "ui_icon_talent_mine", "ui_icon_talent_monster",
+    "ui_icon_talent_extract", "ui_icon_talent_event",
+]
 
 
 def assets_root():

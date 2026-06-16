@@ -38,10 +38,12 @@ public:
 private:
 	enum class ESection : uint8 { Requisition, Loadout, Warehouse, Talent, Recovery };
 
+	enum class ERowKind : uint8 { Equip, Consumable, Talent, Warehouse };
+
 	struct FRowRef
 	{
 		FName Id;
-		bool bConsumable = false;
+		ERowKind Kind = ERowKind::Equip;
 	};
 
 	void BuildWidgetTree();
@@ -55,6 +57,11 @@ private:
 	UTexture2D* LoadUiTex(const FString& AssetPath);
 	UTexture2D* IconForEquip(FName Id) const;
 	UTexture2D* IconForConsumable(FName Id) const;
+	UTexture2D* IconForTalent(FName Id) const;
+	UTexture2D* IconForWarehouse(FName Id) const;
+
+	// 回收资历页(纯统计, 非卡片): 在内容区放一块宽统计面板。
+	void AddRecoveryPanel();
 
 	// 卡片: 图标 + 名称 + 类型 + 效果 + 拥有/价格行 + (状态左 / 动作按钮右)。
 	void AddItemCard(int32 Index, UTexture2D* Icon, const FString& Name, const FString& TypeLine,
@@ -78,6 +85,7 @@ private:
 	UFUNCTION() void HandleRowClicked(int32 Index);
 
 	UPROPERTY(Transient) UTextBlock* SectionTitleText = nullptr;
+	UPROPERTY(Transient) UHorizontalBox* FilterRow = nullptr;
 	UPROPERTY(Transient) UTextBlock* BreadcrumbText = nullptr;
 	UPROPERTY(Transient) UTextBlock* AccountText = nullptr;
 	UPROPERTY(Transient) UScrollBox* ContentScroll = nullptr;

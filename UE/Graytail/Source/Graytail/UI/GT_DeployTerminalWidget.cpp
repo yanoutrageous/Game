@@ -22,6 +22,8 @@
 #include "Domains/Meta/GT_MetaCatalog.h"
 #include "Domains/Meta/GT_MetaProgressSubsystem.h"
 #include "Domains/Meta/GT_MetaTypes.h"
+#include "Domains/Inventory/GT_ItemCatalog.h"
+#include "Domains/Inventory/GT_InventoryTypes.h"
 #include "UI/GT_IndexedButton.h"
 
 namespace
@@ -51,6 +53,35 @@ namespace
 		if (Def.bShowExitHint) { return TEXT("撤离信标方向提示"); }
 		if (Def.SearchBonus > 0) { return FString::Printf(TEXT("搜索奖励 +%d%%"), Def.SearchBonus); }
 		return TEXT("");
+	}
+
+	FString TalentEffectText(const FGT_TalentDef& Def)
+	{
+		if (Def.bMapHighlight) { return TEXT("小地图邻域威胁高亮"); }
+		if (Def.MineDmgReduce > 0) { return FString::Printf(TEXT("雷险伤害 -%d"), Def.MineDmgReduce); }
+		if (Def.MonsterFleeBonus > 0) { return FString::Printf(TEXT("怪物避让窗口 +%ds"), Def.MonsterFleeBonus); }
+		if (Def.FailureGoldBonus > 0) { return FString::Printf(TEXT("撤离失败保留 +%d 金"), Def.FailureGoldBonus); }
+		if (Def.TradePrice > 0) { return FString::Printf(TEXT("交易出售价提升至 %d"), Def.TradePrice); }
+		return TEXT("");
+	}
+
+	// 仓库条目来源 -> 中文类型行。
+	FString WarehouseSourceLabel(FName Source)
+	{
+		if (Source == FName(TEXT("recovered"))) { return TEXT("回收物 · 可出售"); }
+		if (Source == FName(TEXT("equipment"))) { return TEXT("作业装备"); }
+		if (Source == FName(TEXT("consumable"))) { return TEXT("作业消耗品"); }
+		return TEXT("库存物资");
+	}
+
+	// CanSellItem 的 OutReason -> 状态行文案。
+	FString SellReasonLabel(FName Reason)
+	{
+		if (Reason == FName(TEXT("unique"))) { return TEXT("独有 · 不可售"); }
+		if (Reason == FName(TEXT("not_sellable"))) { return TEXT("非回收物 · 不可售"); }
+		if (Reason == FName(TEXT("equipped"))) { return TEXT("装备中 · 不可售"); }
+		if (Reason == FName(TEXT("no_value"))) { return TEXT("无价值"); }
+		return TEXT("不可出售");
 	}
 }
 
@@ -108,6 +139,25 @@ UTexture2D* UGT_DeployTerminalWidget::IconForConsumable(FName Id) const
 		return Self->LoadUiTex(TEXT("/Game/Graytail/UI/deploy/ui_icon_bandage"));
 	}
 	return nullptr;
+}
+
+UTexture2D* UGT_DeployTerminalWidget::IconForTalent(FName Id) const
+{
+	UGT_DeployTerminalWidget* Self = const_cast<UGT_DeployTerminalWidget*>(this);
+	// id "talent_map" -> deploy/ui_icon_talent_map(切自 菜单图标 sheet)。
+	FString Key = Id.ToString();
+	Key.RemoveFromStart(TEXT("talent_"));
+	return Self->LoadUiTex(FString::Printf(TEXT("/Game/Graytail/UI/deploy/ui_icon_talent_%s"), *Key));
+}
+
+UTexture2D* UGT_DeployTerminalWidget::IconForWarehouse(FName Id) const
+{
+	UGT_DeployTerminalWidget* Self = const_cast<UGT_DeployTerminalWidget*>(this);
+	// 装备/消耗品类回收物先用部署终端自己的图标; 回收物走物品目录的图标路径。
+	if (UTexture2D* Equip = IconForEquip(Id)) { return Equip; }
+	if (UTexture2D* Cons = IconForConsumable(Id)) { return Cons; }
+	const FString Path = GT_ItemCatalog::GetItemIconAssetPath(Id);
+	return Path.IsEmpty() ? nullptr : Self->LoadUiTex(Path);
 }
 
 void UGT_DeployTerminalWidget::Apply9Slice(UBorder* Target, const FString& TexPath, float MarginFrac)
@@ -268,8 +318,8 @@ void UGT_DeployTerminalWidget::BuildWidgetTree()
 	AccountText->SetColorAndOpacity(FSlateColor(GTColWhite));
 	if (UHorizontalBoxSlot* S = HeaderRow->AddChildToHorizontalBox(AccountText)) { S->SetVerticalAlignment(VAlign_Center); }
 
-	// -- 筛选条(纯视觉) --
-	UHorizontalBox* FilterRow = WidgetTree->ConstructWidget<UHorizontalBox>();
+	// -- 筛选条(纯视觉, 仅申领/出勤配置页显示) --
+	FilterRow = WidgetTree->ConstructWidget<UHorizontalBox>();
 	if (UVerticalBoxSlot* S = MainCol->AddChildToVerticalBox(FilterRow)) { S->SetPadding(FMargin(0, 0, 0, 12)); }
 	AddFilterPill(FilterRow, TEXT("全部"), true);
 	AddFilterPill(FilterRow, TEXT("作业装备"), false);
@@ -418,7 +468,7 @@ void UGT_DeployTerminalWidget::RebuildContent()
 			const bool bEnabled = !bOwned ? bAfford : (bEq ? true : EquippedNum < GT_MetaCatalog::MaxEquipped);
 			AddItemCard(CurrentRows.Num(), IconForEquip(Def.Id), Def.DisplayName, TEXT("作业装备 · 后勤"),
 				EquipEffectText(Def), Info, Status, Action, bEnabled, bEq);
-			CurrentRows.Add({ Def.Id, false });
+			CurrentRows.Add({ Def.Id, ERowKind::Equip });
 		}
 		for (const FGT_ConsumableDef& Def : GT_MetaCatalog::GetConsumableDefs())
 		{
@@ -428,7 +478,7 @@ void UGT_DeployTerminalWidget::RebuildContent()
 				FString::Printf(TEXT("局内使用: 回复 %d 生命"), Def.Heal),
 				FString::Printf(TEXT("价格 %d 结算币"), Def.Price), FString::Printf(TEXT("持有 %d"), Have),
 				TEXT("申领"), bAfford, false);
-			CurrentRows.Add({ Def.Id, true });
+			CurrentRows.Add({ Def.Id, ERowKind::Consumable });
 		}
 	}
 	else if (CurrentSection == ESection::Loadout)
@@ -443,7 +493,7 @@ void UGT_DeployTerminalWidget::RebuildContent()
 			AddItemCard(CurrentRows.Num(), IconForEquip(Def.Id), Def.DisplayName, TEXT("作业装备 · 后勤"),
 				EquipEffectText(Def), TEXT("拥有 x1"), bEq ? TEXT("已装备") : TEXT("已拥有"),
 				bEq ? TEXT("卸下") : TEXT("装备"), bEq ? true : EquippedNum < GT_MetaCatalog::MaxEquipped, bEq);
-			CurrentRows.Add({ Def.Id, false });
+			CurrentRows.Add({ Def.Id, ERowKind::Equip });
 		}
 		for (const FGT_ConsumableDef& Def : GT_MetaCatalog::GetConsumableDefs())
 		{
@@ -455,16 +505,109 @@ void UGT_DeployTerminalWidget::RebuildContent()
 				FString::Printf(TEXT("局内使用: 回复 %d 生命"), Def.Heal),
 				FString::Printf(TEXT("库存 %d"), Stock), FString::Printf(TEXT("已带入 %d"), Carry),
 				FString::Printf(TEXT("带入 %d"), Carry), true, Carry > 0);
-			CurrentRows.Add({ Def.Id, true });
+			CurrentRows.Add({ Def.Id, ERowKind::Consumable });
 		}
 		if (!bAny && DetailText)
 		{
 			DetailText->SetText(FText::FromString(TEXT("尚无可配置的装备/消耗品 —— 先到「后勤申领」购买。")));
 		}
 	}
-	else if (DetailText)
+	else if (CurrentSection == ESection::Warehouse)
 	{
-		DetailText->SetText(FText::FromString(TEXT("该模块将在 Phase 2 开放(后勤仓库 / 回收资历 / 天赋)。")));
+		if (DetailText) { DetailText->SetText(FText::FromString(TEXT("回收物可按单件价值出售换取结算币; 装备/消耗品类入库物资不可在此出售。"))); }
+		const TArray<FGT_WarehouseEntry>& Items = Meta->GetWarehouse();
+		if (Items.Num() == 0)
+		{
+			if (DetailText) { DetailText->SetText(FText::FromString(TEXT("后勤仓库空空如也 —— 撤离或失败抢救带回的回收物会存放在这里。"))); }
+		}
+		for (const FGT_WarehouseEntry& Entry : Items)
+		{
+			const FGT_ItemCatalogEntry* Def = GT_ItemCatalog::FindItemDef(Entry.ItemId);
+			const FString Name = Def ? Def->DisplayName : Entry.ItemId.ToString();
+			FName Reason;
+			const bool bSellable = Meta->CanSellItem(Entry.ItemId, Reason);
+			const FString Action = bSellable ? FString::Printf(TEXT("出售 +%d"), Entry.Value) : TEXT("不可售");
+			const FString Status = bSellable ? FString::Printf(TEXT("单件 %d 结算币"), Entry.Value) : SellReasonLabel(Reason);
+			AddItemCard(CurrentRows.Num(), IconForWarehouse(Entry.ItemId), Name, WarehouseSourceLabel(Entry.Source),
+				FString::Printf(TEXT("单件价值 %d 结算币"), Entry.Value),
+				FString::Printf(TEXT("库存 x%d"), Entry.Count), Status, Action, bSellable, false);
+			CurrentRows.Add({ Entry.ItemId, ERowKind::Warehouse });
+		}
+	}
+	else if (CurrentSection == ESection::Talent)
+	{
+		if (DetailText) { DetailText->SetText(FText::FromString(TEXT("天赋为永久解锁(花费结算币), 解锁后每局自动生效, 不占装备位。"))); }
+		for (const FGT_TalentDef& Def : GT_MetaCatalog::GetTalentDefs())
+		{
+			const bool bOwned = Meta->HasTalent(Def.Id);
+			const bool bAfford = Gold >= Def.Price;
+			const FString Info = bOwned ? TEXT("已解锁 · 永久生效") : FString::Printf(TEXT("解锁 %d 结算币"), Def.Price);
+			const FString Status = bOwned ? TEXT("已解锁") : TEXT("未解锁");
+			const FString Action = bOwned ? TEXT("已解锁") : TEXT("解锁");
+			AddItemCard(CurrentRows.Num(), IconForTalent(Def.Id), Def.DisplayName, TEXT("作业天赋 · 资历"),
+				TalentEffectText(Def), Info, Status, Action, !bOwned && bAfford, bOwned);
+			CurrentRows.Add({ Def.Id, ERowKind::Talent });
+		}
+	}
+	else if (CurrentSection == ESection::Recovery)
+	{
+		if (DetailText) { DetailText->SetText(FText::FromString(TEXT("累计作业与回收资历(只读)。"))); }
+		AddRecoveryPanel();
+	}
+}
+
+void UGT_DeployTerminalWidget::AddRecoveryPanel()
+{
+	if (!ContentWrap) { return; }
+	UGT_MetaProgressSubsystem* Meta = GetMeta();
+	if (!Meta) { return; }
+
+	// 一块宽统计面板(跨内容区, 非卡片网格)。
+	USizeBox* PanelSize = WidgetTree->ConstructWidget<USizeBox>();
+	PanelSize->SetWidthOverride(680.f);
+	if (UWrapBoxSlot* WSlot = ContentWrap->AddChildToWrapBox(PanelSize)) { WSlot->SetPadding(FMargin(6.f)); }
+	UBorder* Outer = WidgetTree->ConstructWidget<UBorder>();
+	Outer->SetBrushColor(GTColLine);
+	Outer->SetPadding(FMargin(1.f));
+	PanelSize->SetContent(Outer);
+	UBorder* Card = WidgetTree->ConstructWidget<UBorder>();
+	Card->SetBrushColor(GTColCard);
+	Card->SetPadding(FMargin(20.f, 16.f));
+	Outer->SetContent(Card);
+	UVerticalBox* Col = WidgetTree->ConstructWidget<UVerticalBox>();
+	Card->SetContent(Col);
+
+	auto AddLine = [this, Col](const FString& Text, int32 Size, const FLinearColor& Color, float TopPad)
+	{
+		UTextBlock* T = WidgetTree->ConstructWidget<UTextBlock>();
+		T->SetText(FText::FromString(Text));
+		T->SetFont(GTFont(Size));
+		T->SetColorAndOpacity(FSlateColor(Color));
+		if (UVerticalBoxSlot* S = Col->AddChildToVerticalBox(T)) { S->SetPadding(FMargin(0, TopPad, 0, 0)); }
+	};
+
+	const FGT_MetaStats& Stats = Meta->GetStats();
+	const FGT_RecoverySummary& Rec = Meta->GetRecoverySummary();
+
+	AddLine(TEXT("作业统计"), 18, GTColGold, 0.f);
+	AddLine(FString::Printf(TEXT("出勤次数      %d"), Stats.TotalRuns), 15, GTColWhite, 6.f);
+	AddLine(FString::Printf(TEXT("成功撤离      %d"), Stats.TotalExtractions), 15, GTColWhite, 3.f);
+	AddLine(FString::Printf(TEXT("累计赚取      %d 结算币"), Stats.TotalGoldEarned), 15, GTColWhite, 3.f);
+
+	AddLine(TEXT("回收资历"), 18, GTColGold, 16.f);
+	AddLine(FString::Printf(TEXT("累计带回物品  %d 件"), Rec.TotalItems), 15, GTColWhite, 6.f);
+	AddLine(FString::Printf(TEXT("累计回收价值  %d 结算币"), Rec.TotalValue), 15, GTColWhite, 3.f);
+	AddLine(FString::Printf(TEXT("带物撤离次数  %d"), Rec.TotalExtractionsWithItems), 15, GTColWhite, 3.f);
+
+	AddLine(TEXT("最近带回"), 16, GTColDim, 16.f);
+	if (Rec.RecentItemIds.Num() == 0)
+	{
+		AddLine(TEXT("(暂无记录)"), 15, GTColDim, 4.f);
+	}
+	for (const FName& Id : Rec.RecentItemIds)
+	{
+		const FGT_ItemCatalogEntry* Def = GT_ItemCatalog::FindItemDef(Id);
+		AddLine(FString::Printf(TEXT("· %s"), Def ? *Def->DisplayName : *Id.ToString()), 15, GTColWhite, 3.f);
 	}
 }
 
@@ -547,6 +690,12 @@ void UGT_DeployTerminalWidget::ShowSection(ESection Section)
 	}
 	if (SectionTitleText) { SectionTitleText->SetText(FText::FromString(Name)); }
 	if (BreadcrumbText) { BreadcrumbText->SetText(FText::FromString(TEXT("当前页签 / ") + Name)); }
+	// 筛选条只对申领/出勤配置(物品)有意义, 其余页隐藏。
+	if (FilterRow)
+	{
+		const bool bShowFilter = (Section == ESection::Requisition || Section == ESection::Loadout);
+		FilterRow->SetVisibility(bShowFilter ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	}
 	RefreshAccount();
 	RebuildContent();
 	RefreshSummary();
@@ -560,25 +709,41 @@ void UGT_DeployTerminalWidget::HandleRowClicked(int32 Index)
 	const FRowRef Ref = CurrentRows[Index];
 	FName Err;
 
-	if (Ref.bConsumable && CurrentSection == ESection::Loadout)
+	switch (Ref.Kind)
 	{
-		const int32 Cur = Meta->GetLoadout().FindRef(Ref.Id);
-		const int32 Stock = Meta->GetConsumableCount(Ref.Id);
-		const FGT_ConsumableDef* Def = GT_MetaCatalog::FindConsumable(Ref.Id);
-		int32 Cap = Stock;
-		if (Def && Def->MaxCarry > 0) { Cap = FMath::Min(Cap, Def->MaxCarry); }
-		const int32 Next = (Cur >= Cap) ? 0 : Cur + 1;
-		Meta->SetLoadoutConsumable(Ref.Id, Next);
-	}
-	else if (Ref.bConsumable)
-	{
-		Meta->BuyConsumable(Ref.Id, 1, Err);   // 申领页买消耗品
-	}
-	else
-	{
+	case ERowKind::Consumable:
+		if (CurrentSection == ESection::Loadout)
+		{
+			const int32 Cur = Meta->GetLoadout().FindRef(Ref.Id);
+			const int32 Stock = Meta->GetConsumableCount(Ref.Id);
+			const FGT_ConsumableDef* Def = GT_MetaCatalog::FindConsumable(Ref.Id);
+			int32 Cap = Stock;
+			if (Def && Def->MaxCarry > 0) { Cap = FMath::Min(Cap, Def->MaxCarry); }
+			const int32 Next = (Cur >= Cap) ? 0 : Cur + 1;
+			Meta->SetLoadoutConsumable(Ref.Id, Next);
+		}
+		else
+		{
+			Meta->BuyConsumable(Ref.Id, 1, Err);   // 申领页买消耗品
+		}
+		break;
+
+	case ERowKind::Equip:
 		// 装备: 未拥有→购买, 已拥有→装/卸(申领页与出勤配置页一致)。
 		if (!Meta->OwnsItem(Ref.Id)) { Meta->BuyItem(Ref.Id, Err); }
 		else { Meta->ToggleEquip(Ref.Id, Err); }
+		break;
+
+	case ERowKind::Talent:
+		Meta->UnlockTalent(Ref.Id, Err);
+		break;
+
+	case ERowKind::Warehouse:
+	{
+		int32 OutGold = 0;
+		Meta->SellWarehouseItem(Ref.Id, 1, OutGold, Err);   // 单件出售
+		break;
+	}
 	}
 	RefreshAll();
 }

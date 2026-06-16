@@ -315,6 +315,7 @@ private:
 	int32 LoadoutMineDmgReduce = 0;
 	bool bLoadoutMineImmunityAvailable = false;
 	int32 LoadoutSearchBonusPercent = 0;
+	int32 LoadoutTradeBonusPercent = 0;   // S4: 议价天赋 → 旅商收购价 +N%(0 = 无议价, 基础 0.75 不变)
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Protocol", meta = (AllowPrivateAccess = "true"))
 	FGT_ProtocolState ProtocolState;

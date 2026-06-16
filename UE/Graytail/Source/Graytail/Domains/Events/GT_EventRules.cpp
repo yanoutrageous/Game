@@ -37,14 +37,16 @@ namespace GT_EventRules
 		return static_cast<int32>(((Hash % 6) + 6) % 6) + 1;
 	}
 
-	int32 GetTraderSaleValue(int32 BaseValue)
+	int32 GetTraderSaleValue(int32 BaseValue, int32 BonusPercent)
 	{
 		if (BaseValue <= 0)
 		{
 			return 0;
 		}
-		// floor(baseValue * 0.75): 用整数乘除避免浮点误差。
-		return FMath::Max(1, BaseValue * 3 / 4);
+		// floor(baseValue * 0.75 * (100+Bonus)/100) = baseValue * 3 * (100+Bonus) / 400; 整数乘除避免浮点。
+		// Bonus=0 时 = baseValue*3/4(与原值一致); Bonus=20(议价) 时 = baseValue*9/10。
+		const int32 Pct = FMath::Max(0, BonusPercent);
+		return FMath::Max(1, BaseValue * 3 * (100 + Pct) / 400);
 	}
 
 	FString GetEventTitle(EGT_EventKind Kind)

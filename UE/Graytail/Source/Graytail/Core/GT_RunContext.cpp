@@ -57,6 +57,7 @@ void UGT_RunContext::InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec)
 	LoadoutMineDmgReduce = 0;
 	bLoadoutMineImmunityAvailable = false;
 	LoadoutSearchBonusPercent = 0;
+	LoadoutTradeBonusPercent = 0;
 
 	PlayerActorId = FName(TEXT("Player"));
 
@@ -130,6 +131,7 @@ void UGT_RunContext::ResetRun()
 	LoadoutMineDmgReduce = 0;
 	bLoadoutMineImmunityAvailable = false;
 	LoadoutSearchBonusPercent = 0;
+	LoadoutTradeBonusPercent = 0;
 	MapMode = EGT_MapMode::Unknown;
 }
 
@@ -511,10 +513,11 @@ void UGT_RunContext::ApplyMetaLoadout(const FGT_EquipBonus& Equip, const FGT_Tal
 	PlayerCombatState.Hp = PlayerCombatState.MaxHp;
 	PlayerCombatState.Power += Equip.BonusPower;
 
-	// 规则层加成(雷伤减免 = 装备 + 天赋叠加; 首次免雷; 搜索奖励 %)。
+	// 规则层加成(雷伤减免 = 装备 + 天赋叠加; 首次免雷; 搜索奖励 %; 议价 → 旅商收购价 +%)。
 	LoadoutMineDmgReduce = Equip.MineDmgReduce + Talents.MineDmgReduce;
 	bLoadoutMineImmunityAvailable = Equip.bMineImmunity;
 	LoadoutSearchBonusPercent = Equip.SearchBonus;
+	LoadoutTradeBonusPercent = Talents.TradePrice;   // 议价天赋: 0(无)/ 20(已解锁) = 收购价加成百分比
 
 	// 带入消耗品(替换原写死占位)。
 	for (const TPair<FName, int32>& Pair : Consumables)
@@ -861,7 +864,7 @@ bool UGT_RunContext::GetEventMenuAtPlayer(FGT_EventMenuView& OutMenu) const
 			const FGT_ItemCatalogEntry* Def = GT_ItemCatalog::FindItemDef(Stack.ItemId);
 			const FString DisplayName = Def ? Def->DisplayName : Stack.ItemId.ToString();
 			const int32 BaseValue = Def ? Def->Value : 0;
-			const int32 Price = GT_EventRules::GetTraderSaleValue(BaseValue);
+			const int32 Price = GT_EventRules::GetTraderSaleValue(BaseValue, LoadoutTradeBonusPercent);
 			OutMenu.Options.Add(MakeEventOption(
 				FName(*(GTEventSellPrefix + Stack.ItemId.ToString())),
 				FString::Printf(TEXT("%s｜估值 %d｜出售价 %d"), *DisplayName, BaseValue, Price),
@@ -1043,7 +1046,7 @@ bool UGT_RunContext::ExecuteEventOptionAtPlayer(FName OptionId, FGT_EventOutcome
 			return false;
 		}
 
-		const int32 Price = GT_EventRules::GetTraderSaleValue(GT_ItemCatalog::GetItemValue(SellItemId));
+		const int32 Price = GT_EventRules::GetTraderSaleValue(GT_ItemCatalog::GetItemValue(SellItemId), LoadoutTradeBonusPercent);
 		RunInventory.AddSafeGold(Price);
 		// 对齐 Lua RemoveTradableItem: 物品 -1, parts 同步 -1。
 		Stack->Count -= 1;

@@ -14,9 +14,10 @@ class UButton;
 class UTexture2D;
 class UGT_MetaProgressSubsystem;
 
-// 局外部署终端(S5 元终端 UI, Phase 1): 终端外壳 + 导航 + 申领(商店) + 作业装备(装备/loadout)
-// + 金币栏 + 作业摘要。纯 C++ UMG(RebuildWidget 搭树), 读写 S1 UGT_MetaProgressSubsystem。
-// 入口由主菜单「装备天赋」触发, HUD 持有并开关。Phase 2 补 仓库/天赋/抢救页。
+// 局外部署终端(S5 元终端 UI, Phase 1): 严格照原版构图——
+// 顶栏(左 返回主界面 + 右 五个导航页签) / 面包屑 / 主面板(terminal_main 金边框:
+// 标题+账户 / 筛选条 / 卡片网格 / 底部当前选中条) / 右侧出勤摘要(summary 框) / 右下 确认出发。
+// 纯 C++ UMG, 读写 S1 UGT_MetaProgressSubsystem。Phase 2 补 仓库/天赋/抢救页 + 筛选功能。
 UCLASS()
 class GRAYTAIL_API UGT_DeployTerminalWidget : public UUserWidget
 {
@@ -31,14 +32,12 @@ public:
 	void Close();
 	bool IsOpen() const;
 
-	// 返回主菜单 / 出发探索(开局选难度流程), 由 HUD 接。
 	TDelegate<void()> OnBackRequested;
 	TDelegate<void()> OnDepartRequested;
 
 private:
 	enum class ESection : uint8 { Requisition, Loadout, Warehouse, Talent, Recovery };
 
-	// 当前列表每行指向的物品(HandleRowClicked 按 Index 查)。
 	struct FRowRef
 	{
 		FName Id;
@@ -48,7 +47,7 @@ private:
 	void BuildWidgetTree();
 	void ShowSection(ESection Section);
 	void RebuildContent();
-	void RefreshGold();
+	void RefreshAccount();
 	void RefreshSummary();
 	void RefreshAll();
 
@@ -57,13 +56,15 @@ private:
 	UTexture2D* IconForEquip(FName Id) const;
 	UTexture2D* IconForConsumable(FName Id) const;
 
-	// 往内容网格加一张物品卡(图标 + 名称 + 类型 + 效果描述 + 拥有/价格行 + 动作按钮)。
+	// 卡片: 图标 + 名称 + 类型 + 效果 + 拥有/价格行 + (状态左 / 动作按钮右)。
 	void AddItemCard(int32 Index, UTexture2D* Icon, const FString& Name, const FString& TypeLine,
-		const FString& Effect, const FString& InfoLine, const FString& ActionLabel,
-		bool bActionEnabled, bool bHighlight);
-	UButton* MakeFooterButton(UHorizontalBox* Row, const FString& Label, const FString& AssetPath);
-	UButton* MakeNavButton(UHorizontalBox* Row, const FString& Label, const FString& TexPath);
-	// 把贴图设成 Border 的 9-slice 背景刷(MarginFrac = 边框占比, 0 则整图拉伸)。
+		const FString& Effect, const FString& InfoLine, const FString& StatusLine,
+		const FString& ActionLabel, bool bActionEnabled, bool bHighlight);
+	// 顶栏导航/底栏按钮: 用 deploy 贴图(标签烤在图里), 原生尺寸 1:1 不拉伸。
+	UButton* MakeTexButton(UHorizontalBox* Row, const FString& Label, const FString& TexPath, float Pad);
+	// 筛选药丸(纯视觉, P1 不做实际筛选)。
+	void AddFilterPill(UHorizontalBox* Row, const FString& Label, bool bSelected);
+	// 把贴图设成 Border 的 9-slice 金边框(MarginFrac = 边框占贴图比例)。
 	void Apply9Slice(UBorder* Target, const FString& TexPath, float MarginFrac);
 
 	UFUNCTION() void OnNavRequisition();
@@ -75,12 +76,13 @@ private:
 	UFUNCTION() void OnDepartClicked();
 	UFUNCTION() void HandleRowClicked(int32 Index);
 
-	UPROPERTY(Transient) UTextBlock* GoldText = nullptr;
-	UPROPERTY(Transient) UTextBlock* TitleText = nullptr;
+	UPROPERTY(Transient) UTextBlock* SectionTitleText = nullptr;
+	UPROPERTY(Transient) UTextBlock* BreadcrumbText = nullptr;
+	UPROPERTY(Transient) UTextBlock* AccountText = nullptr;
 	UPROPERTY(Transient) UScrollBox* ContentScroll = nullptr;
 	UPROPERTY(Transient) UWrapBox* ContentWrap = nullptr;
 	UPROPERTY(Transient) UVerticalBox* SummaryBox = nullptr;
-	UPROPERTY(Transient) UTextBlock* HintText = nullptr;
+	UPROPERTY(Transient) UTextBlock* DetailText = nullptr;
 
 	UPROPERTY(Transient) TMap<FString, UTexture2D*> TexCache;
 

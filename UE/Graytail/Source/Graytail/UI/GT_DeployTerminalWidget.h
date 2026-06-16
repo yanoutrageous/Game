@@ -63,13 +63,16 @@ private:
 	// 回收资历页(纯统计, 非卡片): 在内容区放一块宽统计面板。
 	void AddRecoveryPanel();
 
-	// 卡片: 图标 + 名称 + 类型 + 效果 + 拥有/价格行 + (状态左 / 动作按钮右)。
+	// 卡片: 图标 + 名称 + 类型 + 效果 + flavor 描述 + 拥有/价格行 + (状态左 / 动作按钮右)。圆角 RoundedBox。
 	void AddItemCard(int32 Index, UTexture2D* Icon, const FString& Name, const FString& TypeLine,
-		const FString& Effect, const FString& InfoLine, const FString& StatusLine,
+		const FString& Effect, const FString& Flavor, const FString& InfoLine, const FString& StatusLine,
 		const FString& ActionLabel, bool bActionEnabled, bool bHighlight);
 	// 顶栏导航/底栏按钮: 用 deploy 贴图(标签烤在图里), 显式传原生尺寸 1:1 不拉伸。
 	// (这些按钮图带 mipmap+流送, 运行时 Tex->GetSizeX() 早期返回 32 占位, 故尺寸不取运行时值, 用实测原生像素。)
-	UButton* MakeTexButton(UHorizontalBox* Row, const FString& Label, const FString& TexPath, float NativeW, float NativeH, float Pad);
+	// OutHighlight 非空时: 把按钮外包一层圆角 Border 当"当前页签"高亮框, 通过它回传(导航用)。
+	UButton* MakeTexButton(UHorizontalBox* Row, const FString& Label, const FString& TexPath, float NativeW, float NativeH, float Pad, UBorder** OutHighlight = nullptr);
+	// 设置/清除某导航高亮框(圆角金边)。
+	void SetNavHighlight(UBorder* Target, bool bSelected);
 	// 筛选药丸(纯视觉, P1 不做实际筛选)。
 	void AddFilterPill(UHorizontalBox* Row, const FString& Label, bool bSelected);
 	// 把贴图设成 Border 的 9-slice 金边框(MarginFrac = 边框占贴图比例)。
@@ -86,8 +89,10 @@ private:
 
 	UPROPERTY(Transient) UTextBlock* SectionTitleText = nullptr;
 	UPROPERTY(Transient) UHorizontalBox* FilterRow = nullptr;
-	UPROPERTY(Transient) UTextBlock* BreadcrumbText = nullptr;
 	UPROPERTY(Transient) UTextBlock* AccountText = nullptr;
+	// 五个导航页签的高亮框(与 NavSections 平行), 选中页签套圆角金边。
+	UPROPERTY(Transient) TArray<UBorder*> NavHighlights;
+	TArray<ESection> NavSections;
 	UPROPERTY(Transient) UScrollBox* ContentScroll = nullptr;
 	UPROPERTY(Transient) UWrapBox* ContentWrap = nullptr;
 	UPROPERTY(Transient) UVerticalBox* SummaryBox = nullptr;

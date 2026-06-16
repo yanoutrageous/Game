@@ -30,14 +30,17 @@ namespace
 {
 	// 线性色: 渲染转 sRGB 会变亮, 故"深"填充用很小的线性值(否则显成中灰)。
 	const FLinearColor GTColGold(0.95f, 0.72f, 0.30f);
+	const FLinearColor GTColOrange(FColor(255, 146, 30));         // 动作按钮文字(申领/出售/解锁): 醒目橙
 	const FLinearColor GTColWhite(0.90f, 0.90f, 0.92f);
 	const FLinearColor GTColDim(0.34f, 0.37f, 0.45f);
 	const FLinearColor GTColBg(0.010f, 0.014f, 0.024f, 1.0f);     // 根背景 深灰蓝
 	const FLinearColor GTColPanel(0.020f, 0.027f, 0.044f, 1.0f);  // 面板/药丸 深灰蓝
-	const FLinearColor GTColCard(0.032f, 0.042f, 0.064f, 1.0f);   // 卡片 灰蓝
+	const FLinearColor GTColCard(FColor(21, 29, 40));             // 卡片底(原版色, 比背景稍浅一点)
 	const FLinearColor GTColCardEq(0.058f, 0.044f, 0.017f, 1.0f); // 已装备卡片(暗金调)
 	const FLinearColor GTColLine(0.11f, 0.082f, 0.030f, 1.0f);    // 暗金描边
 	const FLinearColor GTColLineEq(0.55f, 0.34f, 0.085f, 1.0f);   // 高亮金描边
+	const FLinearColor GTColNavSel(FColor(255, 205, 90));         // 当前页签高亮框 亮金
+	const FLinearColor GTColNavSelFill(0.95f, 0.72f, 0.30f, 0.12f); // 当前页签淡金底光
 
 	FSlateFontInfo GTFont(int32 Size)
 	{
@@ -82,6 +85,34 @@ namespace
 		if (Reason == FName(TEXT("equipped"))) { return TEXT("装备中 · 不可售"); }
 		if (Reason == FName(TEXT("no_value"))) { return TEXT("无价值"); }
 		return TEXT("不可出售");
+	}
+
+	// flavor 文本(照原版风格补写, 无对应原文的自拟)。
+	FString EquipFlavor(FName Id)
+	{
+		if (Id == FName(TEXT("armor")))            { return TEXT("复合纤维背心, 挡得住流弹与近身啃咬, 是老兵进区的底气。"); }
+		if (Id == FName(TEXT("whetstone")))        { return TEXT("粗粒油石, 临行前给刀刃补一道锋, 出手更狠更利落。"); }
+		if (Id == FName(TEXT("medkit")))           { return TEXT("塞满止血凝胶与镇定剂, 关键时刻扛下踩空的第一脚雷。"); }
+		if (Id == FName(TEXT("insulated_gloves"))) { return TEXT("厚橡胶绝缘手套, 削弱雷管回路的瞬时电流, 少挨点伤。"); }
+		if (Id == FName(TEXT("compass")))          { return TEXT("磁针锁定撤离信标, 再慌乱也能摸到回家的方向。"); }
+		if (Id == FName(TEXT("backpack")))         { return TEXT("加装侧袋与挂点, 翻找废墟时总能多摸出点值钱货。"); }
+		return TEXT("制式作业装备, 后勤按需配发。");
+	}
+
+	FString ConsumableFlavor(FName Id)
+	{
+		if (Id == FName(TEXT("emergency_bandage"))) { return TEXT("单兵速效止血贴, 局内随用随贴, 回点血续命。"); }
+		return TEXT("一次性作业消耗品, 进区前可备入背包。");
+	}
+
+	FString TalentFlavor(FName Id)
+	{
+		if (Id == FName(TEXT("talent_map")))     { return TEXT("长期作业练出的直觉, 危险还没靠近就先在小地图上发亮。"); }
+		if (Id == FName(TEXT("talent_mine")))    { return TEXT("皮糙肉厚, 常年踩线练出的抗性, 雷险伤害都打了折。"); }
+		if (Id == FName(TEXT("talent_monster"))) { return TEXT("气场摄人, 游荡的怪物总要多犹豫两秒才敢扑上来。"); }
+		if (Id == FName(TEXT("talent_extract"))) { return TEXT("和后勤私下签的条款, 撤离失败也能多保住一笔结算币。"); }
+		if (Id == FName(TEXT("talent_event")))   { return TEXT("舌灿莲花, 跟黑市贩子谈价从不吃亏, 出售更值钱。"); }
+		return TEXT("长期作业沉淀下来的资历。");
 	}
 }
 
@@ -181,7 +212,7 @@ void UGT_DeployTerminalWidget::Apply9Slice(UBorder* Target, const FString& TexPa
 // 关键: SizeBox 套在 UButton **外层**(同卡片图标那条已验证尺寸路径),
 // 贴图设成按钮的 style 背景刷而非 content —— SButton 把背景刷铺满整块几何 = 1:1,
 // 绕开 "UButton 包 SizeBox 时 content 尺寸不上传 → 被挤成 30-40px" 的坑。
-UButton* UGT_DeployTerminalWidget::MakeTexButton(UHorizontalBox* Row, const FString& Label, const FString& TexPath, float NativeW, float NativeH, float Pad)
+UButton* UGT_DeployTerminalWidget::MakeTexButton(UHorizontalBox* Row, const FString& Label, const FString& TexPath, float NativeW, float NativeH, float Pad, UBorder** OutHighlight)
 {
 	UButton* Btn = WidgetTree->ConstructWidget<UButton>();
 	UTexture2D* Tex = LoadUiTex(TexPath);
@@ -227,12 +258,46 @@ UButton* UGT_DeployTerminalWidget::MakeTexButton(UHorizontalBox* Row, const FStr
 	Box->SetHeightOverride(NativeH);
 	Box->SetContent(Btn);
 
-	if (UHorizontalBoxSlot* HSlot = Row->AddChildToHorizontalBox(Box))
+	// 导航按钮再外包一层圆角高亮框(默认透明, 选中时画金边); 其余(返回/确认)直接放。
+	UWidget* RowChild = Box;
+	if (OutHighlight)
+	{
+		UBorder* Hl = WidgetTree->ConstructWidget<UBorder>();
+		Hl->SetPadding(FMargin(4.f, 3.f));
+		Hl->SetContent(Box);
+		SetNavHighlight(Hl, false);
+		*OutHighlight = Hl;
+		RowChild = Hl;
+	}
+
+	if (UHorizontalBoxSlot* HSlot = Row->AddChildToHorizontalBox(RowChild))
 	{
 		HSlot->SetPadding(FMargin(Pad, 0.f));
 		HSlot->SetVerticalAlignment(VAlign_Center);
 	}
 	return Btn;
+}
+
+void UGT_DeployTerminalWidget::SetNavHighlight(UBorder* Target, bool bSelected)
+{
+	if (!Target) { return; }
+	FSlateBrush Br;
+	Br.DrawAs = ESlateBrushDrawType::RoundedBox;
+	Br.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+	Br.OutlineSettings.CornerRadii = FVector4(8.f, 8.f, 8.f, 8.f);
+	if (bSelected)
+	{
+		Br.TintColor = FSlateColor(GTColNavSelFill);
+		Br.OutlineSettings.Color = FSlateColor(GTColNavSel);
+		Br.OutlineSettings.Width = 2.f;
+	}
+	else
+	{
+		Br.TintColor = FSlateColor(FLinearColor(0.f, 0.f, 0.f, 0.f));
+		Br.OutlineSettings.Color = FSlateColor(FLinearColor(0.f, 0.f, 0.f, 0.f));
+		Br.OutlineSettings.Width = 0.f;
+	}
+	Target->SetBrush(Br);
 }
 
 void UGT_DeployTerminalWidget::AddFilterPill(UHorizontalBox* Row, const FString& Label, bool bSelected)
@@ -269,22 +334,26 @@ void UGT_DeployTerminalWidget::BuildWidgetTree()
 		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnBackClicked);
 	USpacer* TopSpacer = WidgetTree->ConstructWidget<USpacer>();
 	if (UHorizontalBoxSlot* S = TopBar->AddChildToHorizontalBox(TopSpacer)) { S->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); }
-	MakeTexButton(TopBar, TEXT("后勤仓库"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_warehouse"), 154.f, 56.f, 4.f)
-		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavWarehouse);
-	MakeTexButton(TopBar, TEXT("后勤申领"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_requisition"), 148.f, 56.f, 4.f)
-		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavRequisition);
-	MakeTexButton(TopBar, TEXT("出勤配置"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_loadout"), 141.f, 56.f, 4.f)
-		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavLoadout);
-	MakeTexButton(TopBar, TEXT("回收资历"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_recovery"), 170.f, 60.f, 4.f)
-		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavRecovery);
-	MakeTexButton(TopBar, TEXT("天赋"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_talent_selected"), 228.f, 61.f, 4.f)
-		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavTalent);
 
-	// === 面包屑 ===
-	BreadcrumbText = WidgetTree->ConstructWidget<UTextBlock>();
-	BreadcrumbText->SetFont(GTFont(13));
-	BreadcrumbText->SetColorAndOpacity(FSlateColor(GTColDim));
-	if (UVerticalBoxSlot* S = Main->AddChildToVerticalBox(BreadcrumbText)) { S->SetPadding(FMargin(4, 2, 0, 8)); }
+	// 导航页签: 各自带高亮框(选中套金边); NavHighlights/NavSections 平行登记。
+	NavHighlights.Reset();
+	NavSections.Reset();
+	UBorder* Hl = nullptr;
+	MakeTexButton(TopBar, TEXT("后勤仓库"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_warehouse"), 154.f, 56.f, 4.f, &Hl)
+		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavWarehouse);
+	NavHighlights.Add(Hl); NavSections.Add(ESection::Warehouse);
+	MakeTexButton(TopBar, TEXT("后勤申领"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_requisition"), 148.f, 56.f, 4.f, &Hl)
+		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavRequisition);
+	NavHighlights.Add(Hl); NavSections.Add(ESection::Requisition);
+	MakeTexButton(TopBar, TEXT("出勤配置"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_loadout"), 141.f, 56.f, 4.f, &Hl)
+		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavLoadout);
+	NavHighlights.Add(Hl); NavSections.Add(ESection::Loadout);
+	MakeTexButton(TopBar, TEXT("回收资历"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_recovery"), 170.f, 60.f, 4.f, &Hl)
+		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavRecovery);
+	NavHighlights.Add(Hl); NavSections.Add(ESection::Recovery);
+	MakeTexButton(TopBar, TEXT("天赋"), TEXT("/Game/Graytail/UI/deploy/ui_button_nav_talent_selected"), 228.f, 61.f, 4.f, &Hl)
+		->OnClicked.AddDynamic(this, &UGT_DeployTerminalWidget::OnNavTalent);
+	NavHighlights.Add(Hl); NavSections.Add(ESection::Talent);
 
 	// === 主体: 左主面板(terminal_main 金边框) + 右出勤摘要(summary 框) ===
 	UHorizontalBox* Body = WidgetTree->ConstructWidget<UHorizontalBox>();
@@ -359,24 +428,28 @@ void UGT_DeployTerminalWidget::BuildWidgetTree()
 }
 
 void UGT_DeployTerminalWidget::AddItemCard(int32 Index, UTexture2D* Icon, const FString& Name, const FString& TypeLine,
-	const FString& Effect, const FString& InfoLine, const FString& StatusLine, const FString& ActionLabel,
+	const FString& Effect, const FString& Flavor, const FString& InfoLine, const FString& StatusLine, const FString& ActionLabel,
 	bool bActionEnabled, bool bHighlight)
 {
 	if (!ContentWrap) { return; }
 
 	USizeBox* CardSize = WidgetTree->ConstructWidget<USizeBox>();
 	CardSize->SetWidthOverride(330.f);
-	CardSize->SetHeightOverride(158.f);
+	CardSize->SetHeightOverride(196.f);
 	if (UWrapBoxSlot* WSlot = ContentWrap->AddChildToWrapBox(CardSize)) { WSlot->SetPadding(FMargin(6.f)); }
 
-	UBorder* Outer = WidgetTree->ConstructWidget<UBorder>();
-	Outer->SetBrushColor(bHighlight ? GTColLineEq : GTColLine);
-	Outer->SetPadding(FMargin(bHighlight ? 2.f : 1.f));
-	CardSize->SetContent(Outer);
+	// 圆角卡片(RoundedBox): 底色 (21,29,40), 描边暗金/高亮金。
 	UBorder* Card = WidgetTree->ConstructWidget<UBorder>();
-	Card->SetBrushColor(bHighlight ? GTColCardEq : GTColCard);
-	Card->SetPadding(FMargin(12.f));
-	Outer->SetContent(Card);
+	FSlateBrush CardBrush;
+	CardBrush.DrawAs = ESlateBrushDrawType::RoundedBox;
+	CardBrush.TintColor = FSlateColor(bHighlight ? GTColCardEq : GTColCard);
+	CardBrush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+	CardBrush.OutlineSettings.CornerRadii = FVector4(10.f, 10.f, 10.f, 10.f);
+	CardBrush.OutlineSettings.Color = FSlateColor(bHighlight ? GTColLineEq : GTColLine);
+	CardBrush.OutlineSettings.Width = bHighlight ? 2.f : 1.f;
+	Card->SetBrush(CardBrush);
+	Card->SetPadding(FMargin(13.f, 11.f));
+	CardSize->SetContent(Card);
 
 	UVerticalBox* Col = WidgetTree->ConstructWidget<UVerticalBox>();
 	Card->SetContent(Col);
@@ -415,6 +488,17 @@ void UGT_DeployTerminalWidget::AddItemCard(int32 Index, UTexture2D* Icon, const 
 	EffTxt->SetAutoWrapText(true);
 	if (UVerticalBoxSlot* S = Col->AddChildToVerticalBox(EffTxt)) { S->SetPadding(FMargin(0, 7, 0, 0)); }
 
+	// flavor 描述(暗色小字, 可换行)
+	if (!Flavor.IsEmpty())
+	{
+		UTextBlock* FlavorTxt = WidgetTree->ConstructWidget<UTextBlock>();
+		FlavorTxt->SetText(FText::FromString(Flavor));
+		FlavorTxt->SetFont(GTFont(11));
+		FlavorTxt->SetColorAndOpacity(FSlateColor(GTColDim));
+		FlavorTxt->SetAutoWrapText(true);
+		if (UVerticalBoxSlot* S = Col->AddChildToVerticalBox(FlavorTxt)) { S->SetPadding(FMargin(0, 4, 0, 0)); }
+	}
+
 	// 拥有/价格行
 	UTextBlock* InfoTxt = WidgetTree->ConstructWidget<UTextBlock>();
 	InfoTxt->SetText(FText::FromString(InfoLine));
@@ -438,7 +522,7 @@ void UGT_DeployTerminalWidget::AddItemCard(int32 Index, UTexture2D* Icon, const 
 	UTextBlock* ActTxt = WidgetTree->ConstructWidget<UTextBlock>();
 	ActTxt->SetText(FText::FromString(ActionLabel));
 	ActTxt->SetFont(GTFont(15));
-	ActTxt->SetColorAndOpacity(FSlateColor(bActionEnabled ? GTColGold : GTColDim));
+	ActTxt->SetColorAndOpacity(FSlateColor(bActionEnabled ? GTColOrange : GTColDim));
 	ActBtn->SetContent(ActTxt);
 	if (UHorizontalBoxSlot* S = Foot->AddChildToHorizontalBox(ActBtn)) { S->SetVerticalAlignment(VAlign_Center); }
 }
@@ -467,7 +551,7 @@ void UGT_DeployTerminalWidget::RebuildContent()
 			const FString Action = !bOwned ? TEXT("申领") : (bEq ? TEXT("卸下") : TEXT("装备"));
 			const bool bEnabled = !bOwned ? bAfford : (bEq ? true : EquippedNum < GT_MetaCatalog::MaxEquipped);
 			AddItemCard(CurrentRows.Num(), IconForEquip(Def.Id), Def.DisplayName, TEXT("作业装备 · 后勤"),
-				EquipEffectText(Def), Info, Status, Action, bEnabled, bEq);
+				EquipEffectText(Def), EquipFlavor(Def.Id), Info, Status, Action, bEnabled, bEq);
 			CurrentRows.Add({ Def.Id, ERowKind::Equip });
 		}
 		for (const FGT_ConsumableDef& Def : GT_MetaCatalog::GetConsumableDefs())
@@ -475,7 +559,7 @@ void UGT_DeployTerminalWidget::RebuildContent()
 			const bool bAfford = Gold >= Def.Price;
 			const int32 Have = Meta->GetConsumableCount(Def.Id);
 			AddItemCard(CurrentRows.Num(), IconForConsumable(Def.Id), Def.DisplayName, TEXT("作业消耗品 · 后勤"),
-				FString::Printf(TEXT("局内使用: 回复 %d 生命"), Def.Heal),
+				FString::Printf(TEXT("局内使用: 回复 %d 生命"), Def.Heal), ConsumableFlavor(Def.Id),
 				FString::Printf(TEXT("价格 %d 结算币"), Def.Price), FString::Printf(TEXT("持有 %d"), Have),
 				TEXT("申领"), bAfford, false);
 			CurrentRows.Add({ Def.Id, ERowKind::Consumable });
@@ -491,7 +575,7 @@ void UGT_DeployTerminalWidget::RebuildContent()
 			bAny = true;
 			const bool bEq = Meta->IsEquipped(Def.Id);
 			AddItemCard(CurrentRows.Num(), IconForEquip(Def.Id), Def.DisplayName, TEXT("作业装备 · 后勤"),
-				EquipEffectText(Def), TEXT("拥有 x1"), bEq ? TEXT("已装备") : TEXT("已拥有"),
+				EquipEffectText(Def), EquipFlavor(Def.Id), TEXT("拥有 x1"), bEq ? TEXT("已装备") : TEXT("已拥有"),
 				bEq ? TEXT("卸下") : TEXT("装备"), bEq ? true : EquippedNum < GT_MetaCatalog::MaxEquipped, bEq);
 			CurrentRows.Add({ Def.Id, ERowKind::Equip });
 		}
@@ -502,7 +586,7 @@ void UGT_DeployTerminalWidget::RebuildContent()
 			bAny = true;
 			const int32 Carry = Meta->GetLoadout().FindRef(Def.Id);
 			AddItemCard(CurrentRows.Num(), IconForConsumable(Def.Id), Def.DisplayName, TEXT("作业消耗品 · 后勤"),
-				FString::Printf(TEXT("局内使用: 回复 %d 生命"), Def.Heal),
+				FString::Printf(TEXT("局内使用: 回复 %d 生命"), Def.Heal), ConsumableFlavor(Def.Id),
 				FString::Printf(TEXT("库存 %d"), Stock), FString::Printf(TEXT("已带入 %d"), Carry),
 				FString::Printf(TEXT("带入 %d"), Carry), true, Carry > 0);
 			CurrentRows.Add({ Def.Id, ERowKind::Consumable });
@@ -529,7 +613,7 @@ void UGT_DeployTerminalWidget::RebuildContent()
 			const FString Action = bSellable ? FString::Printf(TEXT("出售 +%d"), Entry.Value) : TEXT("不可售");
 			const FString Status = bSellable ? FString::Printf(TEXT("单件 %d 结算币"), Entry.Value) : SellReasonLabel(Reason);
 			AddItemCard(CurrentRows.Num(), IconForWarehouse(Entry.ItemId), Name, WarehouseSourceLabel(Entry.Source),
-				FString::Printf(TEXT("单件价值 %d 结算币"), Entry.Value),
+				FString::Printf(TEXT("单件价值 %d 结算币"), Entry.Value), TEXT("战区回收的物资, 后勤按当日行情折价收购。"),
 				FString::Printf(TEXT("库存 x%d"), Entry.Count), Status, Action, bSellable, false);
 			CurrentRows.Add({ Entry.ItemId, ERowKind::Warehouse });
 		}
@@ -545,7 +629,7 @@ void UGT_DeployTerminalWidget::RebuildContent()
 			const FString Status = bOwned ? TEXT("已解锁") : TEXT("未解锁");
 			const FString Action = bOwned ? TEXT("已解锁") : TEXT("解锁");
 			AddItemCard(CurrentRows.Num(), IconForTalent(Def.Id), Def.DisplayName, TEXT("作业天赋 · 资历"),
-				TalentEffectText(Def), Info, Status, Action, !bOwned && bAfford, bOwned);
+				TalentEffectText(Def), TalentFlavor(Def.Id), Info, Status, Action, !bOwned && bAfford, bOwned);
 			CurrentRows.Add({ Def.Id, ERowKind::Talent });
 		}
 	}
@@ -689,7 +773,11 @@ void UGT_DeployTerminalWidget::ShowSection(ESection Section)
 	case ESection::Recovery:    Name = TEXT("回收资历"); break;
 	}
 	if (SectionTitleText) { SectionTitleText->SetText(FText::FromString(Name)); }
-	if (BreadcrumbText) { BreadcrumbText->SetText(FText::FromString(TEXT("当前页签 / ") + Name)); }
+	// 当前页签高亮(选中套圆角金边, 代替原来的"当前页签/"面包屑)。
+	for (int32 i = 0; i < NavHighlights.Num(); ++i)
+	{
+		SetNavHighlight(NavHighlights[i], NavSections.IsValidIndex(i) && NavSections[i] == Section);
+	}
 	// 筛选条只对申领/出勤配置(物品)有意义, 其余页隐藏。
 	if (FilterRow)
 	{

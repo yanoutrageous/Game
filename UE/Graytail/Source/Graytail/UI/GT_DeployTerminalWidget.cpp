@@ -25,6 +25,7 @@
 #include "Domains/Inventory/GT_ItemCatalog.h"
 #include "Domains/Inventory/GT_InventoryTypes.h"
 #include "UI/GT_IndexedButton.h"
+#include "UI/GT_UIStyle.h"
 
 namespace
 {
@@ -72,7 +73,7 @@ namespace
 
 	FSlateFontInfo GTFont(int32 Size)
 	{
-		return FCoreStyle::GetDefaultFontStyle("Regular", Size);
+		return GT_UIStyle::Font(Size);
 	}
 
 	FString EquipEffectText(const FGT_EquipDef& Def)

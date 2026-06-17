@@ -15,6 +15,7 @@
 #include "Engine/GameInstance.h"
 #include "Engine/Texture2D.h"
 #include "Fonts/SlateFontInfo.h"
+#include "UI/GT_UIStyle.h"
 #include "Input/Events.h"
 #include "Misc/PackageName.h"
 #include "Styling/CoreStyle.h"
@@ -162,7 +163,7 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 		PartsSlot->SetSize(FVector2D(28.f, 28.f));
 	}
 	ChestCaption = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	ChestCaption->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 12));
+	ChestCaption->SetFont(GT_UIStyle::Font(12));
 	ChestCaption->SetJustification(ETextJustify::Center);
 	ChestCaption->SetVisibility(ESlateVisibility::Collapsed);
 	if (UCanvasPanelSlot* CaptionSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(ChestCaption)))
@@ -195,7 +196,7 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 		EventEyeRight = MakeEventImage(NpcCenter + FVector2D(6.f, -3.f), 6.f);
 
 		EventNameLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		EventNameLabel->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 13));
+		EventNameLabel->SetFont(GT_UIStyle::Font(13));
 		EventNameLabel->SetJustification(ETextJustify::Center);
 		EventNameLabel->SetVisibility(ESlateVisibility::Collapsed);
 		if (UCanvasPanelSlot* NameSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(EventNameLabel)))
@@ -205,7 +206,7 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 		}
 
 		EventCaption = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		EventCaption->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 12));
+		EventCaption->SetFont(GT_UIStyle::Font(12));
 		EventCaption->SetJustification(ETextJustify::Center);
 		EventCaption->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(255, 255, 255, 230))));
 		EventCaption->SetVisibility(ESlateVisibility::Collapsed);
@@ -230,7 +231,7 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 	auto MakeBurstText = [this](const FColor& Color) -> UTextBlock*
 	{
 		UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		Text->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 15));
+		Text->SetFont(GT_UIStyle::Font(15));
 		Text->SetColorAndOpacity(FSlateColor(FLinearColor(Color)));
 		Text->SetJustification(ETextJustify::Center);
 		Text->SetVisibility(ESlateVisibility::Collapsed);
@@ -351,7 +352,7 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 	// 怪物名牌(怪头顶, 显示名称 + 战力)。
 	EnemyNameLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	EnemyNameLabel->SetVisibility(ESlateVisibility::Collapsed);
-	EnemyNameLabel->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 11));
+	EnemyNameLabel->SetFont(GT_UIStyle::Font(11));
 	EnemyNameLabel->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(255, 210, 200, 240))));
 	EnemyNameLabel->SetJustification(ETextJustify::Center);
 	if (UCanvasPanelSlot* NameSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(EnemyNameLabel)))
@@ -397,7 +398,7 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 	// 战斗提示(玩家未进入攻击射程时提示"靠近 F 攻击")。
 	CombatHintLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	CombatHintLabel->SetVisibility(ESlateVisibility::Collapsed);
-	CombatHintLabel->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 13));
+	CombatHintLabel->SetFont(GT_UIStyle::Font(13));
 	CombatHintLabel->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(255, 225, 150, 235))));
 	CombatHintLabel->SetJustification(ETextJustify::Center);
 	CombatHintLabel->SetText(FText::FromString(TEXT("靠近怪物 · F 攻击")));
@@ -410,7 +411,7 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 	// 撞地图边缘提示(房顶中央, 推向无相邻格的边被内核拒时短暂显示, 然后淡出)。
 	EdgeHintLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	EdgeHintLabel->SetVisibility(ESlateVisibility::Collapsed);
-	EdgeHintLabel->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 13));
+	EdgeHintLabel->SetFont(GT_UIStyle::Font(13));
 	EdgeHintLabel->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(255, 180, 150, 240))));
 	EdgeHintLabel->SetJustification(ETextJustify::Center);
 	EdgeHintLabel->SetText(FText::FromString(TEXT("已到地图边缘, 无法继续前进")));
@@ -1273,7 +1274,7 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 		struct FBoxObstacle { FVector2D Center; float Half; bool bActive; };
 		const FBoxObstacle Obstacles[] = {
 			{ FVector2D(0.5f, 0.5f),  GTChestCollideHalf, ChestImage && ChestImage->GetVisibility() == ESlateVisibility::HitTestInvisible },
-			{ FVector2D(0.5f, 0.35f), GTEventCollideHalf, EventBodyImage && EventBodyImage->GetVisibility() == ESlateVisibility::HitTestInvisible },
+			{ FVector2D(0.5f, 0.32f), GTEventCollideHalf, EventBodyImage && EventBodyImage->GetVisibility() == ESlateVisibility::HitTestInvisible },
 		};
 		for (const FBoxObstacle& Ob : Obstacles)
 		{

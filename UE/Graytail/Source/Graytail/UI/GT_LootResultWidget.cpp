@@ -17,6 +17,7 @@
 #include "Input/Events.h"
 #include "Misc/PackageName.h"
 #include "Styling/CoreStyle.h"
+#include "UI/GT_UIStyle.h"
 
 namespace
 {
@@ -91,12 +92,12 @@ void UGT_LootResultWidget::BuildWidgetTree()
 	PanelWidth->SetContent(Column);
 
 	TitleText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	TitleText->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 22));
+	TitleText->SetFont(GT_UIStyle::Font(22));
 	TitleText->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(242, 246, 235))));
 	Column->AddChildToVerticalBox(TitleText);
 
 	SubtitleText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	SubtitleText->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 12));
+	SubtitleText->SetFont(GT_UIStyle::Font(12));
 	SubtitleText->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(180, 205, 210, 230))));
 	if (UVerticalBoxSlot* SubtitleSlot = Column->AddChildToVerticalBox(SubtitleText))
 	{
@@ -104,7 +105,7 @@ void UGT_LootResultWidget::BuildWidgetTree()
 	}
 
 	SummaryText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	SummaryText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 13));
+	SummaryText->SetFont(GT_UIStyle::Font(13));
 	SummaryText->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(255, 226, 120, 245))));
 	if (UVerticalBoxSlot* SummarySlot = Column->AddChildToVerticalBox(SummaryText))
 	{
@@ -118,7 +119,7 @@ void UGT_LootResultWidget::BuildWidgetTree()
 	}
 
 	UTextBlock* Footer = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	Footer->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 11));
+	Footer->SetFont(GT_UIStyle::Font(11));
 	Footer->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(155, 170, 180, 220))));
 	Footer->SetJustification(ETextJustify::Right);
 	Footer->SetText(FText::FromString(TEXT("Enter / F / Esc 确认放入临时回收包")));
@@ -183,7 +184,7 @@ void UGT_LootResultWidget::RebuildContent(const FGT_SearchOutcome& Outcome)
 	if (Reward.Items.Num() == 0)
 	{
 		UTextBlock* Empty = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		Empty->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 14));
+		Empty->SetFont(GT_UIStyle::Font(14));
 		Empty->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(180, 190, 200, 220))));
 		Empty->SetText(FText::FromString(TEXT("未发现可携带回收物。")));
 		ItemsBox->AddChildToVerticalBox(Empty);
@@ -250,7 +251,7 @@ void UGT_LootResultWidget::AddItemCard(const FGT_ItemStack& Stack)
 	}
 
 	UTextBlock* NameText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	NameText->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 16));
+	NameText->SetFont(GT_UIStyle::Font(16));
 	NameText->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(240, 245, 235))));
 	NameText->SetText(FText::FromString(Stack.Count > 1
 		? FString::Printf(TEXT("%s x%d"), *Def->DisplayName, Stack.Count)
@@ -258,7 +259,7 @@ void UGT_LootResultWidget::AddItemCard(const FGT_ItemStack& Stack)
 	TextColumn->AddChildToVerticalBox(NameText);
 
 	UTextBlock* KindText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	KindText->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 11));
+	KindText->SetFont(GT_UIStyle::Font(11));
 	KindText->SetColorAndOpacity(FSlateColor(RarityColor));
 	KindText->SetText(FText::FromString(FString::Printf(
 		TEXT("%s · %s"), GTKindLabel(Def->Kind), GTRarityLabel(Def->Rarity))));
@@ -270,7 +271,7 @@ void UGT_LootResultWidget::AddItemCard(const FGT_ItemStack& Stack)
 	if (!Def->EffectText.IsEmpty())
 	{
 		UTextBlock* EffectTextBlock = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		EffectTextBlock->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 11));
+		EffectTextBlock->SetFont(GT_UIStyle::Font(11));
 		EffectTextBlock->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(215, 230, 170, 230))));
 		EffectTextBlock->SetText(FText::FromString(Def->EffectText));
 		if (UVerticalBoxSlot* EffectSlot = TextColumn->AddChildToVerticalBox(EffectTextBlock))
@@ -280,7 +281,7 @@ void UGT_LootResultWidget::AddItemCard(const FGT_ItemStack& Stack)
 	}
 
 	UTextBlock* DescText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	DescText->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 10));
+	DescText->SetFont(GT_UIStyle::Font(10));
 	DescText->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(175, 188, 196, 220))));
 	DescText->SetAutoWrapText(true);
 	DescText->SetText(FText::FromString(Def->Description));
@@ -291,7 +292,7 @@ void UGT_LootResultWidget::AddItemCard(const FGT_ItemStack& Stack)
 
 	// 右上: 估值。
 	UTextBlock* ValueText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	ValueText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 11));
+	ValueText->SetFont(GT_UIStyle::Font(11));
 	ValueText->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(255, 220, 120, 230))));
 	ValueText->SetText(FText::FromString(FString::Printf(TEXT("估值 %d"), Def->Value * FMath::Max(1, Stack.Count))));
 	if (UHorizontalBoxSlot* ValueSlot = Row->AddChildToHorizontalBox(ValueText))

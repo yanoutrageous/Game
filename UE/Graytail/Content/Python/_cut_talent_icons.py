@@ -15,7 +15,9 @@ OUT = os.path.join(ASSETS, "ui", "deploy")
 
 
 def find_sheet():
-    for p in glob.glob(os.path.join(ASSETS, "*.png")):
+    # 母图(菜单图标.png)归档在 assets/sources/; 兼容旧位置(根目录)。
+    search = glob.glob(os.path.join(ASSETS, "sources", "*.png")) + glob.glob(os.path.join(ASSETS, "*.png"))
+    for p in search:
         b = os.path.basename(p)
         if any(ord(c) > 127 for c in b):
             im = Image.open(p).convert("RGBA")

@@ -410,6 +410,13 @@ bool UGT_RunContext::AttackDummyCombat(FGT_CombatRuntimeState& OutState)
 			PlayerCombatState.MonsterPowerBonus += PowerGain;
 		}
 
+		// S6 异常体犬牙: 战斗胜利本局攻击叠加(≤Cap 层, 每层 +Amount)。
+		if (bLoadoutKillPowerStack && KillPowerStacksUsed < KillPowerStackCap)
+		{
+			PlayerCombatState.Power += KillPowerStackAmount;
+			++KillPowerStacksUsed;
+		}
+
 		OutState = CombatRuntimeState;
 		return true;
 	}

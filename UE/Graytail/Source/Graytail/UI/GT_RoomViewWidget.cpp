@@ -1250,26 +1250,44 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 
 	FVector2D NewPos = PlayerPos + MoveVelocity * InDeltaTime;
 
-	// 道具碰撞(中间宝箱 / 事件房 NPC): 分轴阻挡 -> 被挡的轴回退, 实现贴边滑动。
-	// 只挡"越来越深"(DNew<DFrom)的移动, 已重叠时仍可移出, 避免卡死。怪物会动+影响走位风筝, 不做碰撞。
+	// 道具碰撞(中间宝箱 / 事件房 NPC): 分轴阻挡 + 纯单轴撞心时切向 nudge 自动绕开(否则单键直走会顶死)。
+	// 只挡"越来越深"的移动, 已重叠时仍可移出, 避免卡死。怪物会动+影响走位风筝, 不做碰撞。
 	{
 		struct FObstacle { FVector2D Center; float Radius; bool bActive; };
 		const FObstacle Obstacles[] = {
 			{ FVector2D(0.5f, 0.5f),  GTChestCollideRadius, ChestImage && ChestImage->GetVisibility() == ESlateVisibility::HitTestInvisible },
 			{ FVector2D(0.5f, 0.35f), GTEventCollideRadius, EventBodyImage && EventBodyImage->GetVisibility() == ESlateVisibility::HitTestInvisible },
 		};
-		auto MovesDeeperIn = [&Obstacles](const FVector2D& Cand, const FVector2D& From) -> bool
+		// 返回挡住该候选移动的障碍中心(只挡越来越深的移动)。
+		auto BlockingCenter = [&Obstacles](const FVector2D& Cand, const FVector2D& From, FVector2D& OutCenter) -> bool
 		{
 			for (const FObstacle& Ob : Obstacles)
 			{
 				if (!Ob.bActive) { continue; }
 				const float DNew = FVector2D::Distance(Cand, Ob.Center);
-				if (DNew < Ob.Radius && DNew < FVector2D::Distance(From, Ob.Center)) { return true; }
+				if (DNew < Ob.Radius && DNew < FVector2D::Distance(From, Ob.Center)) { OutCenter = Ob.Center; return true; }
 			}
 			return false;
 		};
-		if (MovesDeeperIn(FVector2D(NewPos.X, PlayerPos.Y), PlayerPos)) { NewPos.X = PlayerPos.X; }
-		if (MovesDeeperIn(NewPos, FVector2D(NewPos.X, PlayerPos.Y))) { NewPos.Y = PlayerPos.Y; }
+		FVector2D HitCx;
+		const bool bBlockedX = BlockingCenter(FVector2D(NewPos.X, PlayerPos.Y), PlayerPos, HitCx);
+		if (bBlockedX) { NewPos.X = PlayerPos.X; }
+		FVector2D HitCy;
+		const bool bBlockedY = BlockingCenter(NewPos, FVector2D(NewPos.X, PlayerPos.Y), HitCy);
+		if (bBlockedY) { NewPos.Y = PlayerPos.Y; }
+
+		// 纯单轴撞心解卡: 被挡轴的另一轴此帧几乎没动(单键直走撞圆心)时, 沿切向给一点横移自动绕开。
+		const float Nudge = GTMoveSpeed * InDeltaTime;
+		if (bBlockedY && FMath::Abs(NewPos.X - PlayerPos.X) < 1.e-4f)
+		{
+			const float Side = !FMath::IsNearlyEqual(PlayerPos.X, HitCy.X) ? FMath::Sign(PlayerPos.X - HitCy.X) : 1.f;
+			NewPos.X = FMath::Clamp(PlayerPos.X + Side * Nudge, 0.f, 1.f);
+		}
+		else if (bBlockedX && FMath::Abs(NewPos.Y - PlayerPos.Y) < 1.e-4f)
+		{
+			const float Side = !FMath::IsNearlyEqual(PlayerPos.Y, HitCx.Y) ? FMath::Sign(PlayerPos.Y - HitCx.Y) : 1.f;
+			NewPos.Y = FMath::Clamp(PlayerPos.Y + Side * Nudge, 0.f, 1.f);
+		}
 	}
 
 	// 越界 + 对准门 -> 尝试过门(对齐 Lua isAlignedWithDoor)。

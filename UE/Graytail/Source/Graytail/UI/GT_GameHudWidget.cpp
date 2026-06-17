@@ -1075,8 +1075,9 @@ void UGT_GameHudWidget::OnSearch()
 	}
 
 	// F = 搜索/攻击(对齐原版底栏): 战斗激活时 F 是攻击。
+	// 逻辑修改：不仅要战斗激活，还必须当前脚下站着的是怪物房，F 键才作为“攻击”
 	FGT_DebugRunSnapshot Probe;
-	if (Debug->GetDebugRunSnapshot(Probe) && Probe.bCombatActive)
+	if (Debug->GetDebugRunSnapshot(Probe) && Probe.bCombatActive && Probe.CurrentRoomBaseType == EGT_RoomBaseType::Combat)
 	{
 		FGT_DebugRunSnapshot AttackSnapshot;
 		Debug->DebugAttack(AttackSnapshot);

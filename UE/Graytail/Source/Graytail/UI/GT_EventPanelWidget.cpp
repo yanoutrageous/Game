@@ -20,8 +20,8 @@
 namespace
 {
 	const FName GTEventPanelOption_Leave(TEXT("leave"));
-	const FLinearColor GTEventRowSelected(0.32f, 0.26f, 0.14f, 0.92f);
-	const FLinearColor GTEventRowNormal(0.12f, 0.11f, 0.10f, 0.78f);
+	const FLinearColor GTEventRowSelected(0.24f, 0.19f, 0.10f, 0.96f);   // 选中行加深加饱和, 让文字更跳
+	const FLinearColor GTEventRowNormal(0.10f, 0.095f, 0.085f, 0.82f);
 }
 
 TSharedRef<SWidget> UGT_EventPanelWidget::RebuildWidget()
@@ -194,18 +194,18 @@ void UGT_EventPanelWidget::RebuildOptionRows()
 		UTextBlock* Label = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 		Label->SetFont(GT_UIStyle::Font(15));
 		Label->SetColorAndOpacity(FSlateColor(!Option.bEnabled
-			? FLinearColor(FColor(125, 122, 112))
+			? FLinearColor(FColor(182, 176, 162))
 			: bSelected ? FLinearColor(FColor(255, 235, 170)) : FLinearColor(FColor(222, 218, 204))));
 		Label->SetText(FText::FromString(Option.Label));
 		RowColumn->AddChildToVerticalBox(Label);
 
 		// 第二行: 可用选项给 代价/收益/风险 摘要, 不可用选项给原因。
 		FString DetailLine;
-		FLinearColor DetailColor(0.55f, 0.53f, 0.48f, 1.f);
+		FLinearColor DetailColor(0.70f, 0.67f, 0.60f, 1.f);
 		if (!Option.bEnabled && !Option.DisabledReason.IsEmpty())
 		{
 			DetailLine = Option.DisabledReason;
-			DetailColor = FLinearColor(FColor(190, 110, 100));
+			DetailColor = FLinearColor(FColor(240, 162, 150));
 		}
 		else if (Option.CostText != TEXT("无") || Option.RewardText != TEXT("无") || Option.RiskText != TEXT("无"))
 		{

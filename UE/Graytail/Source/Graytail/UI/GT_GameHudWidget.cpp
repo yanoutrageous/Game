@@ -12,6 +12,7 @@
 #include "Components/ProgressBar.h"
 #include "Components/ScaleBox.h"
 #include "Components/SizeBox.h"
+#include "Components/Spacer.h"
 #include "Components/TextBlock.h"
 #include "Components/UniformGridPanel.h"
 #include "Components/UniformGridSlot.h"
@@ -214,7 +215,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	UTextBlock* HpTitle = MakePanelText(Panel, 13, FLinearColor(0.9f, 0.45f, 0.40f, 1.f));
 	HpTitle->SetText(FText::FromString(TEXT("生命")));
 	HpBar = WidgetTree->ConstructWidget<UProgressBar>(UProgressBar::StaticClass());
-	HpBar->SetFillColorAndOpacity(FLinearColor(0.78f, 0.16f, 0.14f, 1.f));
+	HpBar->SetFillColorAndOpacity(FLinearColor(0.70f, 0.02f, 0.02f, 1.f));   // 鲜红(降 G/B 去粉调)
 	if (UVerticalBoxSlot* HpSlot = Panel->AddChildToVerticalBox(HpBar))
 	{
 		HpSlot->SetPadding(FMargin(0.f, 2.f, 0.f, 2.f));
@@ -229,21 +230,36 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	SearchedText = MakePanelText(Panel, 11, FLinearColor(0.55f, 0.60f, 0.70f, 1.f));
 	StateText = MakePanelText(Panel, 13, FLinearColor(0.95f, 0.85f, 0.5f, 1.f));
 
+	// 作业包摘要前空开一两行, 与上面的属性信息分隔(别和上面挤在一起)。
+	{
+		USpacer* BagGap = WidgetTree->ConstructWidget<USpacer>(USpacer::StaticClass());
+		BagGap->SetSize(FVector2D(1.f, 16.f));
+		Panel->AddChildToVerticalBox(BagGap);
+	}
+
 	UTextBlock* BagTitle = MakePanelText(Panel, 13, FLinearColor(0.65f, 0.75f, 0.95f, 1.f));
 	BagTitle->SetText(FText::FromString(TEXT("作业包摘要")));
 
 	ItemsList = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	Panel->AddChildToVerticalBox(ItemsList);
 
+	// 动作按钮已移除: F=搜索/攻击, E=撤离, 重开走局终弹窗。
+	LogText = MakePanelText(Panel, 11, FLinearColor(0.6f, 0.65f, 0.72f, 1.f));
+	LogText->SetAutoWrapText(true);
+
+	// 道具选择面板下沉到背景图底部那一小块: Fill Spacer 把它顶到面板底, 和上面的信息分开。
+	{
+		USpacer* BottomPush = WidgetTree->ConstructWidget<USpacer>(USpacer::StaticClass());
+		if (UVerticalBoxSlot* PushSlot = Panel->AddChildToVerticalBox(BottomPush))
+		{
+			PushSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+		}
+	}
 	// 左下道具面板: 列可用消耗品 + 【N】标号; 数字键选, Q 使用选中道具。
 	UTextBlock* BagItemTitle = MakePanelText(Panel, 13, FLinearColor(0.65f, 0.75f, 0.95f, 1.f));
 	BagItemTitle->SetText(FText::FromString(TEXT("道具 (数字键选 · Q 使用)")));
 	ConsumableList = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	Panel->AddChildToVerticalBox(ConsumableList);
-
-	// 动作按钮已移除: F=搜索/攻击, E=撤离, 重开走局终弹窗。
-	LogText = MakePanelText(Panel, 11, FLinearColor(0.6f, 0.65f, 0.72f, 1.f));
-	LogText->SetAutoWrapText(true);
 
 	// 第 3 层: 右上协议面板(占位, 数值待协议系统迁入)。
 	UBorder* ProtocolPanel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
@@ -620,6 +636,10 @@ void UGT_GameHudWidget::RefreshRunEndPanel()
 	else if (Reason == FName(TEXT("Protocol")))
 	{
 		ReasonLine = TEXT("协议压力满载, 调度台强制中断作业。");
+	}
+	else if (Reason == FName(TEXT("ProtocolDrain")))
+	{
+		ReasonLine = TEXT("信号持续高压侵蚀, 血量耗尽, 作业体信号丢失。");
 	}
 	else if (Reason == FName(TEXT("CombatDeath")))
 	{

@@ -165,7 +165,8 @@ bool UGT_CommandProcessor::ProcessMoveCommand(const FGT_Command& Command)
 				bool bPressureDead = false;
 				if (RunContext->ApplyMaxPressureRoomPenalty(PressureDamage, bPressureDead) && bPressureDead)
 				{
-					if (RunContext->MarkRunFailed(FName(TEXT("Protocol"))))
+					// Standard 满压是"每进新房扣血", 死因实为血量耗尽(非瞬时强制中断), 用独立 reason 区分文案。
+					if (RunContext->MarkRunFailed(FName(TEXT("ProtocolDrain"))))
 					{
 						PublishCommandEvent(GTEventType_RunFailed, Command.SourceActorId, Command.TargetActorId, Command.TargetX, Command.TargetY, true);
 					}

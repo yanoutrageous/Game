@@ -38,8 +38,8 @@ namespace
 	constexpr float GTEdgeHintDuration = 1.4f;          // 撞地图边缘提示显示+淡出时长
 	// 道具方形空气墙(AABB)归一化半边长 = (道具半宽 + 玩家碰撞半宽)/房宽。撞墙即停(不绕不抽搐);
 	// 宝藏房宝箱墙较大(对应箱体)、一般事件房 NPC 墙较小。PIE 可微调。怪物会动+影响走位风筝, 不做碰撞。
-	constexpr float GTChestCollideHalf = 0.105f;        // 宝藏房宝箱(较大)
-	constexpr float GTEventCollideHalf = 0.072f;        // 一般事件房 NPC(较小)
+	constexpr float GTChestCollideHalf = 0.060f;        // 宝藏房宝箱(贴箱体, 碰到才挡)
+	constexpr float GTEventCollideHalf = 0.055f;        // 一般事件房 NPC(更小)
 
 	const FLinearColor GTFloor_Normal(0.16f, 0.17f, 0.20f, 1.f);
 	const FLinearColor GTFloor_Mine(0.45f, 0.12f, 0.10f, 1.f);

@@ -83,6 +83,20 @@ namespace
 		if (Def.MineDmgReduce > 0) { return FString::Printf(TEXT("雷险伤害 -%d"), Def.MineDmgReduce); }
 		if (Def.bShowExitHint) { return TEXT("撤离信标方向提示"); }
 		if (Def.SearchBonus > 0) { return FString::Printf(TEXT("搜索奖励 +%d%%"), Def.SearchBonus); }
+		// S6 触发型装备(效果已实现, 走 EGT_ItemTrigger, 不是静态加成, 故单列描述)。
+		switch (Def.Trigger)
+		{
+		case EGT_ItemTrigger::KillPowerStack:
+			return FString::Printf(TEXT("击败异常体后 战斗力 +%d(至多叠 %d 层)"), Def.TriggerAmount, Def.TriggerCap);
+		case EGT_ItemTrigger::ProtocolHeal:
+			return FString::Printf(TEXT("协议每升一级 回复 %d 生命(至多 %d 次)"), Def.TriggerAmount, Def.TriggerCap);
+		case EGT_ItemTrigger::SettleGoldBonus:
+			return FString::Printf(TEXT("撤离结算 金币 +%d%%"), Def.TriggerAmount);
+		case EGT_ItemTrigger::ChestBonusLoot:
+			return FString::Printf(TEXT("进入宝箱房 额外掉落 %d 件低价值回收物(每房一次)"), Def.TriggerAmount);
+		default:
+			break;
+		}
 		return TEXT("");
 	}
 

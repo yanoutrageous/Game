@@ -114,6 +114,8 @@ private:
 	UPROPERTY(Transient) UImage* PlayerHpBarFill = nullptr;
 	UPROPERTY(Transient) UImage* EnemyAttackCircle = nullptr;
 	UPROPERTY(Transient) UTextBlock* CombatHintLabel = nullptr;
+	// 撞地图边缘提示(房顶, 推向无相邻格的边被拒时短暂显示)。
+	UPROPERTY(Transient) UTextBlock* EdgeHintLabel = nullptr;
 
 	// 贴图资产缓存(防 GC): key = /Game 包路径。
 	UPROPERTY(Transient) TMap<FString, UTexture2D*> TextureCache;
@@ -139,6 +141,8 @@ private:
 	float HealParticlePhase[8] = {};
 	// 过门被内核拒绝(地图边界等)后的重试冷却: 冷却内按撞墙处理, 防止逐帧重试抽搐。
 	float CrossRetryCooldown = 0.f;
+	// 撞地图边缘提示淡出计时。
+	float EdgeHintTimer = 0.f;
 	int32 BurstParts = 0;
 	int32 CurrentCellX = -1;
 	int32 CurrentCellY = -1;

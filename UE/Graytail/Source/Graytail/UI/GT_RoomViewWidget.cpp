@@ -35,6 +35,10 @@ namespace
 	constexpr float GTMineFlashDuration = 0.6f;    // 踩雷红闪时长
 	constexpr float GTPlayerAttackCooldown = 0.45f;     // 玩家挥砍冷却(Combat.lua playerAttackCooldown)
 	constexpr float GTPlayerInvincibleDuration = 0.9f;  // 受击无敌帧(Combat.lua playerInvincibleDuration)
+	constexpr float GTEdgeHintDuration = 1.4f;          // 撞地图边缘提示显示+淡出时长
+	// 道具碰撞圈(归一化半径 = 道具半径+玩家半径, PIE 可微调)。怪物会动+影响走位风筝, 不做碰撞。
+	constexpr float GTChestCollideRadius = 0.10f;       // 中间宝箱
+	constexpr float GTEventCollideRadius = 0.09f;       // 事件房 NPC
 
 	const FLinearColor GTFloor_Normal(0.16f, 0.17f, 0.20f, 1.f);
 	const FLinearColor GTFloor_Mine(0.45f, 0.12f, 0.10f, 1.f);
@@ -400,6 +404,19 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 	{
 		HintSlot->SetSize(FVector2D(220.f, 20.f));
 		HintSlot->SetPosition(FVector2D(GTRoomSize * 0.5f - 110.f, GTRoomSize - 40.f));
+	}
+
+	// 撞地图边缘提示(房顶中央, 推向无相邻格的边被内核拒时短暂显示, 然后淡出)。
+	EdgeHintLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+	EdgeHintLabel->SetVisibility(ESlateVisibility::Collapsed);
+	EdgeHintLabel->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 13));
+	EdgeHintLabel->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(255, 180, 150, 240))));
+	EdgeHintLabel->SetJustification(ETextJustify::Center);
+	EdgeHintLabel->SetText(FText::FromString(TEXT("已到地图边缘, 无法继续前进")));
+	if (UCanvasPanelSlot* EdgeSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(EdgeHintLabel)))
+	{
+		EdgeSlot->SetSize(FVector2D(260.f, 20.f));
+		EdgeSlot->SetPosition(FVector2D(GTRoomSize * 0.5f - 130.f, 22.f));
 	}
 }
 
@@ -890,6 +907,14 @@ void UGT_RoomViewWidget::UpdateChestBurstAnim(float DeltaTime)
 		MineFlash->SetRenderOpacity(0.5f * Frac * Pulse);
 		MineFlash->SetVisibility(MineFlashTimer > 0.f ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 	}
+
+	// 撞地图边缘提示: 保持后线性淡出(最后约 0.4s 渐隐)。
+	if (EdgeHintTimer > 0.f && EdgeHintLabel)
+	{
+		EdgeHintTimer = FMath::Max(0.f, EdgeHintTimer - DeltaTime);
+		EdgeHintLabel->SetRenderOpacity(FMath::Clamp(EdgeHintTimer / 0.4f, 0.f, 1.f));
+		EdgeHintLabel->SetVisibility(EdgeHintTimer > 0.f ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	}
 }
 
 void UGT_RoomViewWidget::PlayHealGlow()
@@ -1225,6 +1250,28 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 
 	FVector2D NewPos = PlayerPos + MoveVelocity * InDeltaTime;
 
+	// 道具碰撞(中间宝箱 / 事件房 NPC): 分轴阻挡 -> 被挡的轴回退, 实现贴边滑动。
+	// 只挡"越来越深"(DNew<DFrom)的移动, 已重叠时仍可移出, 避免卡死。怪物会动+影响走位风筝, 不做碰撞。
+	{
+		struct FObstacle { FVector2D Center; float Radius; bool bActive; };
+		const FObstacle Obstacles[] = {
+			{ FVector2D(0.5f, 0.5f),  GTChestCollideRadius, ChestImage && ChestImage->GetVisibility() == ESlateVisibility::HitTestInvisible },
+			{ FVector2D(0.5f, 0.35f), GTEventCollideRadius, EventBodyImage && EventBodyImage->GetVisibility() == ESlateVisibility::HitTestInvisible },
+		};
+		auto MovesDeeperIn = [&Obstacles](const FVector2D& Cand, const FVector2D& From) -> bool
+		{
+			for (const FObstacle& Ob : Obstacles)
+			{
+				if (!Ob.bActive) { continue; }
+				const float DNew = FVector2D::Distance(Cand, Ob.Center);
+				if (DNew < Ob.Radius && DNew < FVector2D::Distance(From, Ob.Center)) { return true; }
+			}
+			return false;
+		};
+		if (MovesDeeperIn(FVector2D(NewPos.X, PlayerPos.Y), PlayerPos)) { NewPos.X = PlayerPos.X; }
+		if (MovesDeeperIn(NewPos, FVector2D(NewPos.X, PlayerPos.Y))) { NewPos.Y = PlayerPos.Y; }
+	}
+
 	// 越界 + 对准门 -> 尝试过门(对齐 Lua isAlignedWithDoor)。
 	// 刚被内核拒绝过(地图边界等)的冷却内不重试, 落到下方撞墙逻辑: 人物贴墙原地踏步, 不来回闪现。
 	const float EdgeMargin = GTPlayerSize * 0.5f / GTRoomSize;
@@ -1267,6 +1314,17 @@ void UGT_RoomViewWidget::TryCrossDoor(int32 DirX, int32 DirY)
 		// 内核拒绝(地图边界/死亡等): 当作撞墙 — 人物留在门口, 进入重试冷却,
 		// 冷却内持续推门走撞墙逻辑(贴墙原地踏步)。状态没变, 不刷 HUD。
 		CrossRetryCooldown = 0.4f;
+		// 仅当该方向是地图边界(无相邻格)时弹"到边缘"提示; 死亡等其它拒绝不弹。
+		const UGT_RunContext* RC = GetRunContext();
+		if (RC && !RC->IsValidMapCoord(CurrentCellX + DirX, CurrentCellY + DirY))
+		{
+			EdgeHintTimer = GTEdgeHintDuration;
+			if (EdgeHintLabel)
+			{
+				EdgeHintLabel->SetRenderOpacity(1.f);
+				EdgeHintLabel->SetVisibility(ESlateVisibility::HitTestInvisible);
+			}
+		}
 		return;
 	}
 

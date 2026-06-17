@@ -396,12 +396,12 @@ namespace
 	struct FFilterPill { const TCHAR* Key; const TCHAR* Label; };
 	const FFilterPill GTReqPills[] = {
 		{ TEXT("all"), TEXT("全部") }, { TEXT("tier_common"), TEXT("一般") }, { TEXT("tier_rare"), TEXT("稀有") },
-		{ TEXT("type_equip"), TEXT("作业装备") }, { TEXT("type_consumable"), TEXT("消耗") },
+		{ TEXT("type_equip"), TEXT("作业装备") }, { TEXT("type_consumable"), TEXT("消耗品") },
 	};
 	const FFilterPill GTWarehousePills[] = {
 		{ TEXT("all"), TEXT("全部") }, { TEXT("tier_common"), TEXT("一般") }, { TEXT("tier_rare"), TEXT("稀有") },
 		{ TEXT("tier_precious"), TEXT("史诗") }, { TEXT("tier_abnormal"), TEXT("异常") },
-		{ TEXT("type_equip"), TEXT("作业装备") }, { TEXT("type_consumable"), TEXT("消耗") }, { TEXT("type_recovered"), TEXT("回收") },
+		{ TEXT("type_equip"), TEXT("作业装备") }, { TEXT("type_consumable"), TEXT("消耗品") }, { TEXT("type_recovered"), TEXT("回收") },
 	};
 }
 
@@ -740,7 +740,7 @@ void UGT_DeployTerminalWidget::RebuildContent()
 			const FString Status = !bOwned ? TEXT("未拥有") : (bEq ? TEXT("已装备") : TEXT("已拥有"));
 			const FString Action = !bOwned ? TEXT("申领") : (bEq ? TEXT("卸下") : TEXT("装备"));
 			const bool bEnabled = !bOwned ? bAfford : (bEq ? true : EquippedNum < GT_MetaCatalog::MaxEquipped);
-			AddItemCard(CurrentRows.Num(), IconForEquip(Def.Id), Def.DisplayName, TEXT("作业装备 · 后勤"),
+			AddItemCard(CurrentRows.Num(), IconForEquip(Def.Id), Def.DisplayName, TEXT("装备"),
 				EquipEffectText(Def), EquipFlavor(Def.Id), Info, Status, Action, bEnabled, bEq);
 			CurrentRows.Add({ Def.Id, ERowKind::Equip });
 		}
@@ -749,7 +749,7 @@ void UGT_DeployTerminalWidget::RebuildContent()
 			if (!PassesFilter(FName(TEXT("type_consumable")), FName(TEXT("tier_common")))) { continue; }
 			const bool bAfford = Gold >= Def.Price;
 			const int32 Have = Meta->GetConsumableCount(Def.Id);
-			AddItemCard(CurrentRows.Num(), IconForConsumable(Def.Id), Def.DisplayName, TEXT("作业消耗品 · 后勤"),
+			AddItemCard(CurrentRows.Num(), IconForConsumable(Def.Id), Def.DisplayName, TEXT("消耗品"),
 				ConsumableEffectText(Def), ConsumableFlavor(Def.Id),
 				FString::Printf(TEXT("价格 %d 结算币"), Def.Price), FString::Printf(TEXT("持有 %d"), Have),
 				TEXT("申领"), bAfford, false);
@@ -766,7 +766,7 @@ void UGT_DeployTerminalWidget::RebuildContent()
 			if (!PassesFilter(FName(TEXT("type_equip")), EquipTierKey(Def.Id))) { continue; }
 			bAny = true;
 			const bool bEq = Meta->IsEquipped(Def.Id);
-			AddItemCard(CurrentRows.Num(), IconForEquip(Def.Id), Def.DisplayName, TEXT("作业装备 · 后勤"),
+			AddItemCard(CurrentRows.Num(), IconForEquip(Def.Id), Def.DisplayName, TEXT("装备"),
 				EquipEffectText(Def), EquipFlavor(Def.Id), TEXT("拥有 x1"), bEq ? TEXT("已装备") : TEXT("已拥有"),
 				bEq ? TEXT("卸下") : TEXT("装备"), bEq ? true : EquippedNum < GT_MetaCatalog::MaxEquipped, bEq);
 			CurrentRows.Add({ Def.Id, ERowKind::Equip });
@@ -778,7 +778,7 @@ void UGT_DeployTerminalWidget::RebuildContent()
 			if (!PassesFilter(FName(TEXT("type_consumable")), FName(TEXT("tier_common")))) { continue; }
 			bAny = true;
 			const int32 Carry = Meta->GetLoadout().FindRef(Def.Id);
-			AddItemCard(CurrentRows.Num(), IconForConsumable(Def.Id), Def.DisplayName, TEXT("作业消耗品 · 后勤"),
+			AddItemCard(CurrentRows.Num(), IconForConsumable(Def.Id), Def.DisplayName, TEXT("消耗品"),
 				ConsumableEffectText(Def), ConsumableFlavor(Def.Id),
 				FString::Printf(TEXT("库存 %d"), Stock), FString::Printf(TEXT("已带入 %d"), Carry),
 				FString::Printf(TEXT("带入 %d"), Carry), true, Carry > 0);
@@ -827,7 +827,7 @@ void UGT_DeployTerminalWidget::RebuildContent()
 			const FString Info = bOwned ? TEXT("已解锁 · 永久生效") : FString::Printf(TEXT("解锁 %d 结算币"), Def.Price);
 			const FString Status = bOwned ? TEXT("已解锁") : TEXT("未解锁");
 			const FString Action = bOwned ? TEXT("已解锁") : TEXT("解锁");
-			AddItemCard(CurrentRows.Num(), IconForTalent(Def.Id), Def.DisplayName, TEXT("作业天赋 · 资历"),
+			AddItemCard(CurrentRows.Num(), IconForTalent(Def.Id), Def.DisplayName, TEXT("天赋"),
 				TalentEffectText(Def), TalentFlavor(Def.Id), Info, Status, Action, !bOwned && bAfford, bOwned);
 			CurrentRows.Add({ Def.Id, ERowKind::Talent });
 		}

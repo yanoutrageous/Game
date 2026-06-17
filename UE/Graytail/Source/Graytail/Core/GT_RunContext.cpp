@@ -5,6 +5,7 @@
 #include "Domains/Inventory/GT_ItemCatalog.h"
 #include "Domains/Inventory/GT_LootRules.h"
 #include "Domains/Map/GT_MapGenerator.h"
+#include "Domains/Meta/GT_MetaCatalog.h"
 
 namespace
 {
@@ -59,6 +60,9 @@ void UGT_RunContext::InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec)
 	bLoadoutMineImmunityAvailable = false;
 	LoadoutSearchBonusPercent = 0;
 	LoadoutTradeBonusPercent = 0;
+	bLoadoutKillPowerStack = false; KillPowerStackCap = 0; KillPowerStackAmount = 0; KillPowerStacksUsed = 0;
+	bLoadoutProtocolHeal = false; ProtocolHealCap = 0; ProtocolHealAmount = 0; ProtocolHealsUsed = 0;
+	bLoadoutChestBonusLoot = false; ChestBonusGrantedCells.Reset();
 
 	PlayerActorId = FName(TEXT("Player"));
 
@@ -133,6 +137,9 @@ void UGT_RunContext::ResetRun()
 	bLoadoutMineImmunityAvailable = false;
 	LoadoutSearchBonusPercent = 0;
 	LoadoutTradeBonusPercent = 0;
+	bLoadoutKillPowerStack = false; KillPowerStackCap = 0; KillPowerStackAmount = 0; KillPowerStacksUsed = 0;
+	bLoadoutProtocolHeal = false; ProtocolHealCap = 0; ProtocolHealAmount = 0; ProtocolHealsUsed = 0;
+	bLoadoutChestBonusLoot = false; ChestBonusGrantedCells.Reset();
 	MapMode = EGT_MapMode::Unknown;
 }
 
@@ -546,7 +553,7 @@ void UGT_RunContext::ApplyMineHitToPlayer(int32& OutDamage, bool& bOutDead)
 	bOutDead = !PlayerCombatState.IsAlive();
 }
 
-void UGT_RunContext::ApplyMetaLoadout(const FGT_EquipBonus& Equip, const FGT_TalentEffects& Talents, const TMap<FName, int32>& Consumables)
+void UGT_RunContext::ApplyMetaLoadout(const FGT_EquipBonus& Equip, const FGT_TalentEffects& Talents, const TMap<FName, int32>& Consumables, const TArray<FName>& EquippedItemIds)
 {
 	// 属性加成(开局直接设, 开局满血)。
 	PlayerCombatState.MaxHp += Equip.BonusHP;
@@ -565,6 +572,23 @@ void UGT_RunContext::ApplyMetaLoadout(const FGT_EquipBonus& Equip, const FGT_Tal
 		if (!Pair.Key.IsNone() && Pair.Value > 0)
 		{
 			RunInventory.AddCarriedItem(Pair.Key, Pair.Value, FName(TEXT("loadout")));
+		}
+	}
+
+	// S6: 已装备的触发型装备 -> 激活本局触发态(SettleGoldBonus 在 Meta 侧算, 不需 RunContext 态)。
+	for (const FName& EquipId : EquippedItemIds)
+	{
+		const FGT_EquipDef* Def = GT_MetaCatalog::FindEquip(EquipId);
+		if (!Def) { continue; }
+		switch (Def->Trigger)
+		{
+		case EGT_ItemTrigger::KillPowerStack:
+			bLoadoutKillPowerStack = true; KillPowerStackCap = Def->TriggerCap; KillPowerStackAmount = Def->TriggerAmount; break;
+		case EGT_ItemTrigger::ProtocolHeal:
+			bLoadoutProtocolHeal = true; ProtocolHealCap = Def->TriggerCap; ProtocolHealAmount = Def->TriggerAmount; break;
+		case EGT_ItemTrigger::ChestBonusLoot:
+			bLoadoutChestBonusLoot = true; break;
+		default: break;
 		}
 	}
 }

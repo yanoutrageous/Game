@@ -111,6 +111,13 @@ struct GRAYTAIL_API FGT_DebugRunSnapshot
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
 	bool bCurrentRoomResolved = false;
 
+	// 玩家战斗状态(供 UI: 血量条 / 踩雷红闪门控 / 战斗表现)。
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	int32 PlayerHp = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	int32 PlayerMaxHp = 0;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
 	FString Summary;
 };

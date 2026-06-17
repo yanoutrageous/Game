@@ -127,6 +127,9 @@ private:
 	int32 CurrentCellX = -1;
 	int32 CurrentCellY = -1;
 
+	// 上一次已知的玩家血量(用于踩雷红闪门控: 仅本次真扣血才闪)。-1 = 未初始化。
+	int32 PrevPlayerHp = -1;
+
 	// --- 怪物混合攻击系统状态变量 ---
 	UPROPERTY(Transient) UImage* EnemyWarningLine = nullptr;
 	UPROPERTY(Transient) UImage* EnemyProjectileImage = nullptr;

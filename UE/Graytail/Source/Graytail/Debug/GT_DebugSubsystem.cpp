@@ -536,6 +536,13 @@ bool UGT_DebugSubsystem::GetDebugRunSnapshot(FGT_DebugRunSnapshot& OutSnapshot) 
 		OutSnapshot.LastCombatResultId = CombatState.LastCombatResultId;
 	}
 
+	if (RunContext)
+	{
+		const FGT_PlayerCombatState& PlayerCombat = RunContext->GetPlayerCombatState();
+		OutSnapshot.PlayerHp = PlayerCombat.Hp;
+		OutSnapshot.PlayerMaxHp = PlayerCombat.MaxHp;
+	}
+
 	FGT_RunSummary RunSummary;
 	if (RunContext && RunContext->GetRunSummarySnapshot(RunSummary))
 	{

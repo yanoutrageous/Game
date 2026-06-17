@@ -366,6 +366,8 @@ void UGT_RoomViewWidget::SyncToCurrentCell(bool bCenterPlayer)
 	{
 		PlayerPos = FVector2D(0.5, 0.5);
 	}
+	// 同步血量基准(开局/瞬移/外部移动后), 避免下次踩雷误判扣血。
+	PrevPlayerHp = Snapshot.PlayerHp;
 	RefreshRoomDecor();
 	UpdatePlayerImagePosition();
 }
@@ -1028,10 +1030,13 @@ void UGT_RoomViewWidget::TryCrossDoor(int32 DirX, int32 DirY)
 	UpdatePlayerImagePosition();
 
 	// 进入雷格 = 踩雷, 红光闪烁反馈(内核已扣血, 这里只做表现)。
-	if (Snapshot.CurrentRoomBaseType == EGT_RoomBaseType::Mine)
+	// 只在本次真扣了血(新引爆)时红闪; 重进已引爆的废墟雷格 HP 不变 → 不重复闪。
+	if (Snapshot.CurrentRoomBaseType == EGT_RoomBaseType::Mine
+		&& PrevPlayerHp >= 0 && Snapshot.PlayerHp < PrevPlayerHp)
 	{
 		PlayMineFlash();
 	}
+	PrevPlayerHp = Snapshot.PlayerHp;
 
 	// 通知 HUD 整体刷新(状态行/小地图)。
 	if (OnRoomChanged.IsBound())

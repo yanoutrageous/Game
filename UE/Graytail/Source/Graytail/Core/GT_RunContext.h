@@ -205,6 +205,10 @@ public:
 	};
 	FProtocolPressureResult AddProtocolPressure(int32 Amount);
 
+	// Standard 满压惩罚(对齐"信号中断"改设计): 已满压时每进一个新房按难度扣血,
+	// 替代原来的"满压直接败北"。返回是否真扣了血; OutDead = 扣血后是否归零。仅 Standard 生效。
+	bool ApplyMaxPressureRoomPenalty(int32& OutDamage, bool& bOutDead);
+
 	UFUNCTION(BlueprintPure, Category = "Graytail|Protocol")
 	const FGT_ProtocolState& GetProtocolState() const;
 
@@ -316,6 +320,8 @@ private:
 	bool bLoadoutMineImmunityAvailable = false;
 	int32 LoadoutSearchBonusPercent = 0;
 	int32 LoadoutTradeBonusPercent = 0;   // S4: 议价天赋 → 旅商收购价 +N%(0 = 无议价, 基础 0.75 不变)
+	// 本局难度(Standard 满压惩罚按难度分档扣血; BasicDebug 不用)。
+	EGT_Difficulty CurrentDifficulty = EGT_Difficulty::Standard;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Protocol", meta = (AllowPrivateAccess = "true"))
 	FGT_ProtocolState ProtocolState;

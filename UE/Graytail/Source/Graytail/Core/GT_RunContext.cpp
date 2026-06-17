@@ -27,6 +27,7 @@ void UGT_RunContext::InitializeRunStandard(int32 InSeed, EGT_Difficulty Difficul
 {
 	// 新路径: 按难度档位生成 Standard 随机地图。
 	InitializeFromSpec(UGT_MapGenerator::MakeSpecForDifficulty(Difficulty, InSeed));
+	CurrentDifficulty = Difficulty;   // 记录难度供满压惩罚分档(InitializeFromSpec 不知难度, 故在此设)。
 }
 
 void UGT_RunContext::InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec)
@@ -568,13 +569,52 @@ UGT_RunContext::FProtocolPressureResult UGT_RunContext::AddProtocolPressure(int3
 	Result.Pressure = ProtocolState.Pressure;
 	Result.bLevelChanged = ProtocolState.bLevelChanged;
 
-	// 满压强制败北(对齐协议 1 时的"撤离是建议, 不撤离是选择"): 压力到顶 = 信号中断。
-	if (ProtocolState.Pressure >= ProtocolState.MaxPressure)
+	// 满压处理:
+	//  - BasicDebug 测试夹具: 保持"满压即信号中断败北"老行为(护 163, 永不改)。
+	//  - Standard: 不再直接败北, 改由"满压后每进新房按难度扣血"惩罚(见 ApplyMaxPressureRoomPenalty)。
+	if (ProtocolState.Pressure >= ProtocolState.MaxPressure && MapMode == EGT_MapMode::BasicDebug)
 	{
 		Result.bForcedFail = MarkRunFailed(FName(TEXT("Protocol")));
 	}
 
 	return Result;
+}
+
+namespace
+{
+	// 满压后每进一个新房的扣血(难度分档): 简单档 2 / 中档 3 / 困难档 5。
+	int32 MaxPressureRoomDamageForDifficulty(EGT_Difficulty Difficulty)
+	{
+		switch (Difficulty)
+		{
+		case EGT_Difficulty::Tutorial:
+		case EGT_Difficulty::Easy:      return 2;
+		case EGT_Difficulty::Standard:
+		case EGT_Difficulty::Veteran:   return 3;
+		case EGT_Difficulty::Hard:
+		case EGT_Difficulty::Elite:
+		case EGT_Difficulty::Nightmare: return 5;
+		default:                        return 3;
+		}
+	}
+}
+
+bool UGT_RunContext::ApplyMaxPressureRoomPenalty(int32& OutDamage, bool& bOutDead)
+{
+	OutDamage = 0;
+	bOutDead = false;
+	// 仅 Standard、运行中、且压力已满时生效(BasicDebug 由 AddProtocolPressure 的 insta-fail 处理)。
+	if (MapMode != EGT_MapMode::Standard || !IsRunActive())
+	{
+		return false;
+	}
+	if (ProtocolState.Pressure < ProtocolState.MaxPressure)
+	{
+		return false;
+	}
+	OutDamage = PlayerCombatState.ApplyDamage(MaxPressureRoomDamageForDifficulty(CurrentDifficulty));
+	bOutDead = !PlayerCombatState.IsAlive();
+	return OutDamage > 0;
 }
 
 const FGT_ProtocolState& UGT_RunContext::GetProtocolState() const

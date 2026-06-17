@@ -152,6 +152,17 @@ bool UGT_CommandProcessor::ProcessMoveCommand(const FGT_Command& Command)
 			{
 				const auto PressureResult = RunContext->AddProtocolPressure(GT_ProtocolRules::ExplorePressure);
 				PublishProtocolPressureEvent(Command.TargetActorId, Command.TargetX, Command.TargetY, GT_ProtocolRules::ExplorePressure, PressureResult);
+
+				// 满压惩罚: 已满压时每进一个新房按难度扣血(替代直接败北)。血量显示走移动后常规刷新; 这里只处理致死。
+				int32 PressureDamage = 0;
+				bool bPressureDead = false;
+				if (RunContext->ApplyMaxPressureRoomPenalty(PressureDamage, bPressureDead) && bPressureDead)
+				{
+					if (RunContext->MarkRunFailed(FName(TEXT("Protocol"))))
+					{
+						PublishCommandEvent(GTEventType_RunFailed, Command.SourceActorId, Command.TargetActorId, Command.TargetX, Command.TargetY, true);
+					}
+				}
 			}
 		}
 	}

@@ -14,6 +14,7 @@ namespace
 	const FName GTCommandType_ChooseEventOption(TEXT("ChooseEventOption"));
 	const FName GTCommandType_ResolveCombat(TEXT("ResolveCombat"));
 	const FName GTCommandType_Attack(TEXT("Attack"));
+	const FName GTCommandType_MonsterHit(TEXT("MonsterHit"));
 	const FName GTCommandType_UseConsumable(TEXT("UseConsumable"));
 	const FName GTEventType_ActorMoved(TEXT("ActorMoved"));
 	const FName GTEventType_EventOptionChosen(TEXT("EventOptionChosen"));
@@ -27,6 +28,7 @@ namespace
 	const FName GTRunFailureReason_CombatDeath(TEXT("CombatDeath"));
 	const FName GTRunFailureReason_Protocol(TEXT("Protocol"));
 	const FName GTEventType_MineDamaged(TEXT("MineDamaged"));
+	const FName GTEventType_CombatPlayerHit(TEXT("CombatPlayerHit"));
 	const FName GTEventType_ProtocolPressureChanged(TEXT("ProtocolPressureChanged"));
 	const FName GTEventType_ProtocolLevelChanged(TEXT("ProtocolLevelChanged"));
 	const FName GTEventType_ProtocolChanged(TEXT("ProtocolChanged"));
@@ -93,6 +95,11 @@ bool UGT_CommandProcessor::ProcessCommand(const FGT_Command& Command)
 	if (Command.CommandType == GTCommandType_Attack)
 	{
 		return ProcessAttackCommand(Command);
+	}
+
+	if (Command.CommandType == GTCommandType_MonsterHit)
+	{
+		return ProcessMonsterHitCommand(Command);
 	}
 
 	if (Command.CommandType == GTCommandType_UseConsumable)
@@ -468,6 +475,11 @@ bool UGT_CommandProcessor::ProcessAttackCommand(const FGT_Command& Command)
 		return false;
 	}
 
+	// 攻击前是否已结算 —— 用于区分"这一刀打死了怪"与"还没死的中间一刀"。
+	FGT_CombatRuntimeState PreAttackState;
+	RunContext->GetCombatStateSnapshot(PreAttackState);
+	const bool bWasResolvedBefore = PreAttackState.bCombatResolved;
+
 	FGT_RoomResolveResult AttackResult;
 	if (!RoomResolver->AttackCombatAt(PlayerX, PlayerY, AttackResult))
 	{
@@ -477,19 +489,51 @@ bool UGT_CommandProcessor::ProcessAttackCommand(const FGT_Command& Command)
 
 	if (RunContext->GetMapMode() == EGT_MapMode::Standard)
 	{
-		// Standard 真战斗可能反伤致死(战力差扣血), 此处统一判定败北。
-		if (!RunContext->IsPlayerAlive())
-		{
-			if (RunContext->MarkRunFailed(GTRunFailureReason_CombatDeath))
-			{
-				PublishCommandEvent(GTEventType_RunFailed, Command.SourceActorId, EventTargetActorId, PlayerX, PlayerY, true);
-			}
-		}
-		else
+		// Standard 实时战斗: 玩家挥砍只削怪血, 不反伤(伤害走 MonsterHit)。
+		// 仅"这一刀把怪打死"(本次由未结算 -> 结算)时加击杀压力, 中间刀不加。
+		FGT_CombatRuntimeState PostAttackState;
+		RunContext->GetCombatStateSnapshot(PostAttackState);
+		const bool bJustKilled = !bWasResolvedBefore && PostAttackState.bCombatResolved;
+		if (bJustKilled)
 		{
 			// 击杀怪物加协议压力(对齐 Balance.pressure.monsterKill = 5)。
 			const UGT_RunContext::FProtocolPressureResult KillPressureResult = RunContext->AddProtocolPressure(GT_ProtocolRules::CombatKillPressure);
 			PublishProtocolPressureEvent(EventTargetActorId, PlayerX, PlayerY, GT_ProtocolRules::CombatKillPressure, KillPressureResult);
+		}
+	}
+
+	return true;
+}
+
+bool UGT_CommandProcessor::ProcessMonsterHitCommand(const FGT_Command& Command)
+{
+	int32 PlayerX = 0;
+	int32 PlayerY = 0;
+	const FName EventTargetActorId = Command.TargetActorId.IsNone() && IsValid(RunContext)
+		? RunContext->GetPlayerActorId()
+		: Command.TargetActorId;
+	if (!IsValid(RunContext) || !RunContext->TryGetPlayerPosition(PlayerX, PlayerY))
+	{
+		PublishCommandEvent(GTEventType_CommandFailed, Command.SourceActorId, EventTargetActorId, PlayerX, PlayerY, false);
+		return false;
+	}
+
+	// 怪物对玩家造成一次伤害(无敌帧由表现层门控)。未真打到则视为无效命令。
+	int32 Damage = 0;
+	bool bPlayerDead = false;
+	if (!RunContext->MonsterHitPlayer(Damage, bPlayerDead))
+	{
+		PublishCommandEvent(GTEventType_CommandFailed, Command.SourceActorId, EventTargetActorId, PlayerX, PlayerY, false);
+		return false;
+	}
+
+	PublishCommandEvent(GTEventType_CombatPlayerHit, Command.SourceActorId, EventTargetActorId, PlayerX, PlayerY, true);
+
+	if (bPlayerDead)
+	{
+		if (RunContext->MarkRunFailed(GTRunFailureReason_CombatDeath))
+		{
+			PublishCommandEvent(GTEventType_RunFailed, Command.SourceActorId, EventTargetActorId, PlayerX, PlayerY, true);
 		}
 	}
 

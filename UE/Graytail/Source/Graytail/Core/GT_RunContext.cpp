@@ -341,14 +341,22 @@ bool UGT_RunContext::StartDummyCombat(int32 X, int32 Y, FName RoomContentId, FNa
 	CombatRuntimeState.bStandardEnemy = false;
 	CombatRuntimeState.EnemyName.Reset();
 	CombatRuntimeState.EnemyPower = 0;
+	CombatRuntimeState.EnemyHp = 0;
+	CombatRuntimeState.EnemyMaxHp = 0;
+	CombatRuntimeState.EnemyDamage = 0;
 
-	// Standard 模式: 用确定性规则生成真怪(对齐 Combat.TrySpawnEnemy), 替换 1 血 dummy。
+	// Standard 模式: 用确定性规则生成真怪(对齐 Combat.TrySpawnEnemy + ensureMonsterState), 替换 1 血 dummy。
 	if (MapMode == EGT_MapMode::Standard)
 	{
 		int32 AdjacentMineCount = 0;
 		TruthMap.CountAdjacentMines8(X, Y, AdjacentMineCount);
 		CombatRuntimeState.bStandardEnemy = true;
 		GT_CombatRules::MakeEnemyForCell(Seed, X, Y, AdjacentMineCount, CombatRuntimeState.EnemyName, CombatRuntimeState.EnemyPower);
+		CombatRuntimeState.EnemyMaxHp = GT_CombatRules::MonsterMaxHpForPower(CombatRuntimeState.EnemyPower);
+		CombatRuntimeState.EnemyHp = CombatRuntimeState.EnemyMaxHp;
+		CombatRuntimeState.EnemyDamage = GT_CombatRules::MonsterDamageForPower(CombatRuntimeState.EnemyPower);
+		// DummyEnemyHp 镜像真血量, 供仍读旧字段的快照/UI 平滑过渡。
+		CombatRuntimeState.DummyEnemyHp = CombatRuntimeState.EnemyHp;
 	}
 	return true;
 }
@@ -361,28 +369,34 @@ bool UGT_RunContext::AttackDummyCombat(FGT_CombatRuntimeState& OutState)
 		return false;
 	}
 
-	// Standard 模式: 一击整场结算(对齐 Combat.FightEnemy):
-	// 战力 >= 怪则无伤胜; 不够则扣差值血, 怪同样死。存活才拿奖励(金币+战力成长)。
+	// Standard 模式: 实时战斗一次挥砍(对齐 Combat.PlayerAttackEnemy):
+	// 扣怪 EnemyHp = Power, 怪未死则战斗继续; 血尽才结算(标记已击杀 + 金币 + 战力成长)。
+	// 玩家反伤不在此处 —— 真伤害来自怪物实时攻击(MonsterHitPlayer)。
 	if (CombatRuntimeState.bStandardEnemy)
 	{
-		const int32 Damage = FMath::Max(0, CombatRuntimeState.EnemyPower - PlayerCombatState.Power);
-		PlayerCombatState.ApplyDamage(Damage);
+		const int32 Damage = FMath::Max(1, PlayerCombatState.Power);
+		CombatRuntimeState.EnemyHp = FMath::Max(0, CombatRuntimeState.EnemyHp - Damage);
+		CombatRuntimeState.DummyEnemyHp = CombatRuntimeState.EnemyHp;   // 镜像供旧读者
 
-		CombatRuntimeState.DummyEnemyHp = 0;
+		if (CombatRuntimeState.EnemyHp > 0)
+		{
+			// 仅一次命中, 怪还活着: 战斗保持激活, 不结算。
+			OutState = CombatRuntimeState;
+			return true;
+		}
+
+		// 击杀: 结算战斗 + 奖励。
 		CombatRuntimeState.bCombatActive = false;
 		CombatRuntimeState.bCombatResolved = true;
 		CombatRuntimeState.LastCombatResultId = GTCombatResult_Success;
 		DefeatedCombatRooms.AddUnique(FIntPoint(CombatRuntimeState.CombatX, CombatRuntimeState.CombatY));
 
-		if (PlayerCombatState.IsAlive())
+		RunInventory.AddPendingGold(GT_CombatRules::KillRewardGold(CombatRuntimeState.EnemyPower));
+		const int32 PowerGain = FMath::Min(GT_CombatRules::PowerGainPerKill, GT_CombatRules::PowerGainCap - PlayerCombatState.MonsterPowerBonus);
+		if (PowerGain > 0)
 		{
-			RunInventory.AddPendingGold(GT_CombatRules::KillRewardGold(CombatRuntimeState.EnemyPower));
-			const int32 PowerGain = FMath::Min(GT_CombatRules::PowerGainPerKill, GT_CombatRules::PowerGainCap - PlayerCombatState.MonsterPowerBonus);
-			if (PowerGain > 0)
-			{
-				PlayerCombatState.Power += PowerGain;
-				PlayerCombatState.MonsterPowerBonus += PowerGain;
-			}
+			PlayerCombatState.Power += PowerGain;
+			PlayerCombatState.MonsterPowerBonus += PowerGain;
 		}
 
 		OutState = CombatRuntimeState;
@@ -398,6 +412,27 @@ bool UGT_RunContext::AttackDummyCombat(FGT_CombatRuntimeState& OutState)
 	}
 
 	OutState = CombatRuntimeState;
+	return true;
+}
+
+bool UGT_RunContext::MonsterHitPlayer(int32& OutDamage, bool& bOutDead)
+{
+	OutDamage = 0;
+	bOutDead = false;
+
+	// 仅 Standard 实时战斗、战斗激活、怪还活着时生效(无敌帧由表现层门控)。
+	if (!IsRunActive()
+		|| MapMode != EGT_MapMode::Standard
+		|| !CombatRuntimeState.bStandardEnemy
+		|| !CombatRuntimeState.bCombatActive
+		|| CombatRuntimeState.EnemyHp <= 0)
+	{
+		return false;
+	}
+
+	const int32 Damage = FMath::Max(0, CombatRuntimeState.EnemyDamage);
+	OutDamage = PlayerCombatState.ApplyDamage(Damage);
+	bOutDead = !PlayerCombatState.IsAlive();
 	return true;
 }
 

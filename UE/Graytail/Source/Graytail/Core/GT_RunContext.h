@@ -61,6 +61,17 @@ struct GRAYTAIL_API FGT_CombatRuntimeState
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat")
 	int32 EnemyPower = 0;
+
+	// Standard 实时战斗怪物状态(对齐 Combat.lua ensureMonsterState)。
+	// monsterMaxHP = 18 + power; monsterDamage = max(4, power/3)。BasicDebug 不用(走 DummyEnemyHp)。
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat")
+	int32 EnemyHp = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat")
+	int32 EnemyMaxHp = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat")
+	int32 EnemyDamage = 0;
 };
 
 USTRUCT(BlueprintType)
@@ -172,6 +183,11 @@ public:
 	bool MarkTruthCellResolved(int32 X, int32 Y);
 	bool StartDummyCombat(int32 X, int32 Y, FName RoomContentId, FName RoomRuleId, int32 InitialDummyHp = 1);
 	bool AttackDummyCombat(FGT_CombatRuntimeState& OutState);
+
+	// Standard 实时战斗: 怪物对玩家造成一次伤害(对齐 Combat.UpdateEnemy 的 active 命中分支)。
+	// 无敌帧由表现层(RoomView)门控, 此处只在战斗激活、怪未死时按 EnemyDamage 扣血。
+	// OutDamage = 实际扣血; bOutDead = 扣血后是否归零。返回是否真打到(战斗未激活/怪已死则 false)。
+	bool MonsterHitPlayer(int32& OutDamage, bool& bOutDead);
 	bool ResolveDummyCombat(FName ResultId, FGT_CombatRuntimeState& OutState);
 	bool GetCombatStateSnapshot(FGT_CombatRuntimeState& OutState) const;
 	bool GenerateExtractSummary(int32 TotalEventCount);

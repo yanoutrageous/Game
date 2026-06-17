@@ -30,6 +30,8 @@ namespace
 	constexpr float GTChestRewardDuration = 2.0f;  // 奖励飘字时长(对齐 Lua CHEST_REWARD_DURATION)
 	constexpr float GTHealGlowDuration = 1.0f;     // 止血绿色光子上升时长
 	constexpr float GTMineFlashDuration = 0.6f;    // 踩雷红闪时长
+	constexpr float GTPlayerAttackCooldown = 0.45f;     // 玩家挥砍冷却(Combat.lua playerAttackCooldown)
+	constexpr float GTPlayerInvincibleDuration = 0.9f;  // 受击无敌帧(Combat.lua playerInvincibleDuration)
 
 	const FLinearColor GTFloor_Normal(0.16f, 0.17f, 0.20f, 1.f);
 	const FLinearColor GTFloor_Mine(0.45f, 0.12f, 0.10f, 1.f);
@@ -305,6 +307,63 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 	{
 		FlashSlot->SetPosition(FVector2D::ZeroVector);
 		FlashSlot->SetSize(FVector2D(GTRoomSize, GTRoomSize));
+	}
+
+	// 实时战斗血条(怪物/玩家)+ 怪物名牌。逐帧由 NativeTick 更新数值与位置, 非战斗时收起。
+	auto MakeBarBrush = [](const FColor& Fill)
+	{
+		FSlateBrush Brush;
+		Brush.DrawAs = ESlateBrushDrawType::RoundedBox;
+		Brush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+		Brush.OutlineSettings.CornerRadii = FVector4(3.f, 3.f, 3.f, 3.f);
+		Brush.TintColor = FSlateColor(FLinearColor(Fill));
+		return Brush;
+	};
+
+	// 怪物名牌(怪头顶, 显示名称 + 战力)。
+	EnemyNameLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+	EnemyNameLabel->SetVisibility(ESlateVisibility::Collapsed);
+	EnemyNameLabel->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 11));
+	EnemyNameLabel->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(255, 210, 200, 240))));
+	EnemyNameLabel->SetJustification(ETextJustify::Center);
+	if (UCanvasPanelSlot* NameSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(EnemyNameLabel)))
+	{
+		NameSlot->SetSize(FVector2D(160.f, 16.f));
+		NameSlot->SetPosition(FVector2D(GTRoomSize * 0.35f - 80.f, GTRoomSize * 0.45f - 60.f));
+	}
+
+	// 怪物血条底 + 填充(怪头顶, 名牌下方)。
+	EnemyHpBarBg = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+	EnemyHpBarBg->SetVisibility(ESlateVisibility::Collapsed);
+	EnemyHpBarBg->SetBrush(MakeBarBrush(FColor(18, 20, 26, 210)));
+	if (UCanvasPanelSlot* BgSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(EnemyHpBarBg)))
+	{
+		BgSlot->SetSize(FVector2D(72.f, 8.f));
+		BgSlot->SetPosition(FVector2D(GTRoomSize * 0.35f - 36.f, GTRoomSize * 0.45f - 44.f));
+	}
+	EnemyHpBarFill = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+	EnemyHpBarFill->SetVisibility(ESlateVisibility::Collapsed);
+	EnemyHpBarFill->SetBrush(MakeBarBrush(FColor(214, 72, 60)));
+	if (UCanvasPanelSlot* FillSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(EnemyHpBarFill)))
+	{
+		FillSlot->SetSize(FVector2D(72.f, 8.f));
+		FillSlot->SetPosition(FVector2D(GTRoomSize * 0.35f - 36.f, GTRoomSize * 0.45f - 44.f));
+	}
+
+	// 玩家血条底 + 填充(玩家头顶, 位置逐帧跟随)。
+	PlayerHpBarBg = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+	PlayerHpBarBg->SetVisibility(ESlateVisibility::Collapsed);
+	PlayerHpBarBg->SetBrush(MakeBarBrush(FColor(18, 20, 26, 210)));
+	if (UCanvasPanelSlot* PBgSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(PlayerHpBarBg)))
+	{
+		PBgSlot->SetSize(FVector2D(56.f, 7.f));
+	}
+	PlayerHpBarFill = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+	PlayerHpBarFill->SetVisibility(ESlateVisibility::Collapsed);
+	PlayerHpBarFill->SetBrush(MakeBarBrush(FColor(92, 200, 112)));
+	if (UCanvasPanelSlot* PFillSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(PlayerHpBarFill)))
+	{
+		PFillSlot->SetSize(FVector2D(56.f, 7.f));
 	}
 }
 
@@ -815,6 +874,17 @@ void UGT_RoomViewWidget::PlayMineFlash()
 	UpdateChestBurstAnim(0.f);
 }
 
+bool UGT_RoomViewWidget::TryConsumePlayerAttack()
+{
+	// 挥砍冷却未到则拒绝(防 F 自动重复连发秒杀); 就绪则起冷却并放行。
+	if (PlayerAttackCooldownTimer > 0.f)
+	{
+		return false;
+	}
+	PlayerAttackCooldownTimer = GTPlayerAttackCooldown;
+	return true;
+}
+
 void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
@@ -842,6 +912,25 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 			float Distance = FVector2D::Distance(PlayerPos, EnemyNormalizedPos);
 			float MeleeRadius = 0.2f; // 近战触发半径
 
+			// 玩家挥砍冷却 / 受击无敌帧逐帧倒计时(表现层门控, 对齐 Combat.lua)。
+			if (PlayerAttackCooldownTimer > 0.f) PlayerAttackCooldownTimer = FMath::Max(0.f, PlayerAttackCooldownTimer - InDeltaTime);
+			if (PlayerIFrameTimer > 0.f) PlayerIFrameTimer = FMath::Max(0.f, PlayerIFrameTimer - InDeltaTime);
+
+			// 怪物一次攻击落地: 非无敌帧才真扣血(经命令管线 DebugMonsterHit -> MonsterHitPlayer),
+			// 命中后给玩家无敌帧 + 全屏红闪反馈, 并通知 HUD 刷新血量/失败界面。
+			auto TryApplyMonsterHit = [&]()
+			{
+				if (PlayerIFrameTimer > 0.f) return;
+				FGT_DebugRunSnapshot HitSnapshot;
+				if (Debug->DebugMonsterHit(HitSnapshot))
+				{
+					PlayerIFrameTimer = GTPlayerInvincibleDuration;
+					PlayMineFlash();
+					Snapshot = HitSnapshot;            // 本帧血条用最新血量
+					OnCombatStateChanged.ExecuteIfBound();
+				}
+			};
+
 			// 状态 1：冷却倒计时与攻击抉择
 			// 只有在没发射子弹，且没在瞄准时，才进行冷却和下一轮攻击的判定
 			if (!bProjectileActive && EnemyAimTimer <= 0.f)
@@ -858,7 +947,7 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 						// 【近战攻击】直接触发
 						EnemyAttackCooldownTimer = 2.0f; // 重置冷却
 						EnemyShakeTimer = 0.3f;          // 触发近战冲撞动画
-						UE_LOG(LogTemp, Warning, TEXT("怪物发动了【近战攻击】！造成 0 点伤害！"));
+						TryApplyMonsterHit();            // 近战命中: 真扣血(无敌帧门控)
 					}
 					else
 					{
@@ -911,7 +1000,7 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 				{
 					bProjectileActive = false;
 					EnemyProjectileImage->SetVisibility(ESlateVisibility::Collapsed);
-					UE_LOG(LogTemp, Warning, TEXT("砰！被【子弹命中】！造成 0 点伤害！"));
+					TryApplyMonsterHit();            // 子弹命中: 真扣血(无敌帧门控)
 				}
 				else if (ProjectilePos.X < 0.f || ProjectilePos.X > 1.f || ProjectilePos.Y < 0.f || ProjectilePos.Y > 1.f)
 				{
@@ -935,6 +1024,48 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 						EnemySlot->SetPosition(EnemyBasePos);
 				}
 			}
+
+			// 怪物血条 + 名牌(头顶固定)。
+			const float EnemyRatio = Snapshot.EnemyMaxHp > 0
+				? FMath::Clamp(static_cast<float>(Snapshot.EnemyHp) / Snapshot.EnemyMaxHp, 0.f, 1.f)
+				: 0.f;
+			if (EnemyHpBarBg) EnemyHpBarBg->SetVisibility(ESlateVisibility::HitTestInvisible);
+			if (EnemyHpBarFill)
+			{
+				EnemyHpBarFill->SetVisibility(ESlateVisibility::HitTestInvisible);
+				if (UCanvasPanelSlot* FillSlot = Cast<UCanvasPanelSlot>(EnemyHpBarFill->Slot))
+				{
+					FillSlot->SetSize(FVector2D(72.f * EnemyRatio, 8.f));
+				}
+			}
+			if (EnemyNameLabel)
+			{
+				EnemyNameLabel->SetVisibility(ESlateVisibility::HitTestInvisible);
+				EnemyNameLabel->SetText(FText::FromString(Snapshot.EnemyName.IsEmpty()
+					? FString::Printf(TEXT("敌人  战力%d"), Snapshot.EnemyPower)
+					: FString::Printf(TEXT("%s  战力%d"), *Snapshot.EnemyName, Snapshot.EnemyPower)));
+			}
+
+			// 玩家血条(头顶跟随)。
+			const float PlayerRatio = Snapshot.PlayerMaxHp > 0
+				? FMath::Clamp(static_cast<float>(Snapshot.PlayerHp) / Snapshot.PlayerMaxHp, 0.f, 1.f)
+				: 0.f;
+			const FVector2D PlayerCenterPx = PlayerPos * GTRoomSize;
+			const FVector2D PlayerBarTopLeft(PlayerCenterPx.X - 28.f, PlayerCenterPx.Y - GTPlayerSize * 0.5f - 12.f);
+			if (PlayerHpBarBg)
+			{
+				PlayerHpBarBg->SetVisibility(ESlateVisibility::HitTestInvisible);
+				if (UCanvasPanelSlot* S = Cast<UCanvasPanelSlot>(PlayerHpBarBg->Slot)) S->SetPosition(PlayerBarTopLeft);
+			}
+			if (PlayerHpBarFill)
+			{
+				PlayerHpBarFill->SetVisibility(ESlateVisibility::HitTestInvisible);
+				if (UCanvasPanelSlot* S = Cast<UCanvasPanelSlot>(PlayerHpBarFill->Slot))
+				{
+					S->SetPosition(PlayerBarTopLeft);
+					S->SetSize(FVector2D(56.f * PlayerRatio, 7.f));
+				}
+			}
 		}
 		else
 		{
@@ -943,8 +1074,15 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 			EnemyAimTimer = 0.f;
 			EnemyShakeTimer = 0.f;
 			bProjectileActive = false;
+			PlayerAttackCooldownTimer = 0.f;
+			PlayerIFrameTimer = 0.f;
 			if (EnemyWarningLine) EnemyWarningLine->SetVisibility(ESlateVisibility::Collapsed);
 			if (EnemyProjectileImage) EnemyProjectileImage->SetVisibility(ESlateVisibility::Collapsed);
+			if (EnemyHpBarBg) EnemyHpBarBg->SetVisibility(ESlateVisibility::Collapsed);
+			if (EnemyHpBarFill) EnemyHpBarFill->SetVisibility(ESlateVisibility::Collapsed);
+			if (EnemyNameLabel) EnemyNameLabel->SetVisibility(ESlateVisibility::Collapsed);
+			if (PlayerHpBarBg) PlayerHpBarBg->SetVisibility(ESlateVisibility::Collapsed);
+			if (PlayerHpBarFill) PlayerHpBarFill->SetVisibility(ESlateVisibility::Collapsed);
 		}
 	}
 	// ==========================================

@@ -44,8 +44,15 @@ public:
 	// 房间状态变化后(开局/外部移动)由 HUD 调用, 重读当前格并重绘。
 	void SyncToCurrentCell(bool bCenterPlayer);
 
+	// 玩家挥砍冷却闸门(对齐 Combat.lua playerAttackCooldown): 冷却到则起冷却并返回 true 放行攻击。
+	// HUD 的 F 攻击分支调用, 防 F 自动重复连发秒杀。
+	bool TryConsumePlayerAttack();
+
 	// WASD 过门移动成功后通知 HUD 刷新信息面板(不含房间视图自身)。
 	FSimpleDelegate OnRoomChanged;
+
+	// 实时战斗中玩家血量/战斗状态变化后, 通知 HUD 轻量刷新(血量/协议/失败界面, 不抢焦点)。
+	FSimpleDelegate OnCombatStateChanged;
 
 	// F 键搜索/开箱(对齐原版快捷键), 由 HUD 绑定到 OnSearch。
 	FSimpleDelegate OnSearchRequested;
@@ -99,6 +106,12 @@ private:
 	UPROPERTY(Transient) UTextBlock* BurstPartsText = nullptr;
 	UPROPERTY(Transient) UImage* EnemyImage = nullptr;
 	UPROPERTY(Transient) UImage* PlayerImage = nullptr;
+	// 实时战斗血条(怪物/玩家)+ 怪物名牌。
+	UPROPERTY(Transient) UImage* EnemyHpBarBg = nullptr;
+	UPROPERTY(Transient) UImage* EnemyHpBarFill = nullptr;
+	UPROPERTY(Transient) UTextBlock* EnemyNameLabel = nullptr;
+	UPROPERTY(Transient) UImage* PlayerHpBarBg = nullptr;
+	UPROPERTY(Transient) UImage* PlayerHpBarFill = nullptr;
 
 	// 贴图资产缓存(防 GC): key = /Game 包路径。
 	UPROPERTY(Transient) TMap<FString, UTexture2D*> TextureCache;
@@ -143,5 +156,9 @@ private:
 	FVector2D AimDirection = FVector2D::ZeroVector;
 	FVector2D ProjectilePos = FVector2D::ZeroVector;
 	float ProjectileSpeed = 0.8f;
+
+	// 玩家实时战斗计时(表现层门控, 对齐 Combat.lua): 挥砍冷却 + 受击无敌帧。
+	float PlayerAttackCooldownTimer = 0.f;
+	float PlayerIFrameTimer = 0.f;
 
 };

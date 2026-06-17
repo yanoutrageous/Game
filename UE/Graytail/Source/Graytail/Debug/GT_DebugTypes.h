@@ -66,6 +66,19 @@ struct GRAYTAIL_API FGT_DebugRunSnapshot
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
 	int32 DummyEnemyHp = 0;
 
+	// Standard 实时战斗怪物信息(BasicDebug 占位战斗为 0/空)。
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	int32 EnemyHp = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	int32 EnemyMaxHp = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	FString EnemyName;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	int32 EnemyPower = 0;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
 	FName LastCombatResultId = NAME_None;
 

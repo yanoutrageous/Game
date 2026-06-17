@@ -33,7 +33,8 @@ namespace
 	const FLinearColor GTColGold(0.95f, 0.72f, 0.30f);
 	const FLinearColor GTColName(FColor(236, 232, 222));          // 物品名 暖白(最亮一层)
 	const FLinearColor GTColWhite(0.90f, 0.90f, 0.92f);
-	const FLinearColor GTColEffect(FColor(196, 206, 224));        // 效果行 冷白(中亮)
+	const FLinearColor GTColEffect(FColor(150, 205, 160));        // 效果行 柔绿(=机制收益, 与名/类型/说明分色)
+	const FLinearColor GTColInfo(FColor(208, 182, 138));         // 价格/拥有行 暖琥珀(=经济信息)
 	const FLinearColor GTColDim(0.34f, 0.37f, 0.45f);
 	const FLinearColor GTColFaint(0.23f, 0.25f, 0.31f);          // flavor 最暗一层
 	const FLinearColor GTColBg(0.010f, 0.014f, 0.024f, 1.0f);     // 根背景 深灰蓝
@@ -603,7 +604,7 @@ void UGT_DeployTerminalWidget::AddItemCard(int32 Index, UTexture2D* Icon, const 
 
 	USizeBox* CardSize = WidgetTree->ConstructWidget<USizeBox>();
 	CardSize->SetWidthOverride(330.f);
-	CardSize->SetHeightOverride(196.f);
+	CardSize->SetHeightOverride(212.f);   // 像素字体行高更大, 加高给各行留呼吸空间
 	if (UWrapBoxSlot* WSlot = ContentWrap->AddChildToWrapBox(CardSize)) { WSlot->SetPadding(FMargin(6.f)); }
 
 	// 圆角卡片(RoundedBox): 底色 (21,29,40), 描边暗金/高亮金。
@@ -654,7 +655,7 @@ void UGT_DeployTerminalWidget::AddItemCard(int32 Index, UTexture2D* Icon, const 
 	EffTxt->SetFont(GTFont(13));
 	EffTxt->SetColorAndOpacity(FSlateColor(GTColEffect));
 	EffTxt->SetAutoWrapText(true);
-	if (UVerticalBoxSlot* S = Col->AddChildToVerticalBox(EffTxt)) { S->SetPadding(FMargin(0, 7, 0, 0)); }
+	if (UVerticalBoxSlot* S = Col->AddChildToVerticalBox(EffTxt)) { S->SetPadding(FMargin(0, 10, 0, 0)); }
 
 	// flavor 描述(暗色小字, 可换行)
 	if (!Flavor.IsEmpty())
@@ -664,15 +665,15 @@ void UGT_DeployTerminalWidget::AddItemCard(int32 Index, UTexture2D* Icon, const 
 		FlavorTxt->SetFont(GTFont(11));
 		FlavorTxt->SetColorAndOpacity(FSlateColor(GTColFaint));
 		FlavorTxt->SetAutoWrapText(true);
-		if (UVerticalBoxSlot* S = Col->AddChildToVerticalBox(FlavorTxt)) { S->SetPadding(FMargin(0, 4, 0, 0)); }
+		if (UVerticalBoxSlot* S = Col->AddChildToVerticalBox(FlavorTxt)) { S->SetPadding(FMargin(0, 7, 0, 0)); }
 	}
 
 	// 拥有/价格行
 	UTextBlock* InfoTxt = WidgetTree->ConstructWidget<UTextBlock>();
 	InfoTxt->SetText(FText::FromString(InfoLine));
 	InfoTxt->SetFont(GTFont(12));
-	InfoTxt->SetColorAndOpacity(FSlateColor(GTColDim));
-	if (UVerticalBoxSlot* S = Col->AddChildToVerticalBox(InfoTxt)) { S->SetPadding(FMargin(0, 5, 0, 0)); }
+	InfoTxt->SetColorAndOpacity(FSlateColor(GTColInfo));
+	if (UVerticalBoxSlot* S = Col->AddChildToVerticalBox(InfoTxt)) { S->SetPadding(FMargin(0, 8, 0, 0)); }
 
 	// 底部: 状态(左) + 动作按钮(右)
 	UHorizontalBox* Foot = WidgetTree->ConstructWidget<UHorizontalBox>();

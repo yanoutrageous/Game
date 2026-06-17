@@ -1273,8 +1273,8 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 	{
 		struct FBoxObstacle { FVector2D Center; float Half; bool bActive; };
 		const FBoxObstacle Obstacles[] = {
-			{ FVector2D(0.5f, 0.5f),  GTChestCollideHalf, ChestImage && ChestImage->GetVisibility() == ESlateVisibility::HitTestInvisible },
-			{ FVector2D(0.5f, 0.32f), GTEventCollideHalf, EventBodyImage && EventBodyImage->GetVisibility() == ESlateVisibility::HitTestInvisible },
+			{ FVector2D(0.5f, 0.47f), GTChestCollideHalf, ChestImage && ChestImage->GetVisibility() == ESlateVisibility::HitTestInvisible },
+			{ FVector2D(0.5f, 0.35f), GTEventCollideHalf, EventBodyImage && EventBodyImage->GetVisibility() == ESlateVisibility::HitTestInvisible },
 		};
 		for (const FBoxObstacle& Ob : Obstacles)
 		{

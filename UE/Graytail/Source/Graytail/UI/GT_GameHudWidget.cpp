@@ -255,7 +255,12 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	LogText = MakePanelText(UpperBox, 11, FLinearColor(0.6f, 0.65f, 0.72f, 1.f));
 	LogText->SetAutoWrapText(true);
 
-	// 道具选择面板: 放在下半块顶部(LowerBox 第一个子元素 = 分隔线下沿, 与上面信息分开)。
+	// 道具选择面板放在下半块里; 顶部留一点间距往下挪, 不贴分隔线(用户反馈钉在分隔线正下沿偏上)。PIE 可调。
+	{
+		USpacer* LowerTopGap = WidgetTree->ConstructWidget<USpacer>(USpacer::StaticClass());
+		LowerTopGap->SetSize(FVector2D(1.f, 48.f));
+		LowerBox->AddChildToVerticalBox(LowerTopGap);
+	}
 	UTextBlock* BagItemTitle = MakePanelText(LowerBox, 13, FLinearColor(0.65f, 0.75f, 0.95f, 1.f));
 	BagItemTitle->SetText(FText::FromString(TEXT("道具 (数字键选 · Q 使用)")));
 	ConsumableList = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());

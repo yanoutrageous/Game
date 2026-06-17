@@ -12,6 +12,7 @@
 #include "Components/ProgressBar.h"
 #include "Components/ScaleBox.h"
 #include "Components/SizeBox.h"
+#include "Components/Spacer.h"
 #include "Components/TextBlock.h"
 #include "Components/UniformGridPanel.h"
 #include "Components/UniformGridSlot.h"
@@ -25,6 +26,7 @@
 #include "Engine/GameInstance.h"
 #include "Engine/Texture2D.h"
 #include "Fonts/SlateFontInfo.h"
+#include "UI/GT_UIStyle.h"
 #include "Input/Events.h"
 #include "Misc/PackageName.h"
 #include "Styling/CoreStyle.h"
@@ -135,6 +137,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		RoomView->OnExtractRequested.BindUObject(this, &UGT_GameHudWidget::OnExtract);
 		RoomView->OnEventRequested.BindUObject(this, &UGT_GameHudWidget::OpenEventPanel);
 		RoomView->OnConsumableRequested.BindUObject(this, &UGT_GameHudWidget::OnUseConsumable);
+		RoomView->OnItemSlotRequested.BindUObject(this, &UGT_GameHudWidget::SelectConsumableSlot);
 
 		UScaleBox* RoomScale = WidgetTree->ConstructWidget<UScaleBox>(UScaleBox::StaticClass());
 		RoomScale->SetStretch(EStretch::ScaleToFit);
@@ -166,7 +169,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		RiskBorder->SetPadding(FMargin(59.f, 3.f, 12.f, 2.f));
 		RiskBorder->SetVerticalAlignment(VAlign_Center);
 		MineRiskText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		MineRiskText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 16));
+		MineRiskText->SetFont(GT_UIStyle::Font(16));
 		MineRiskText->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(232, 222, 198))));
 		RiskBorder->SetContent(MineRiskText);
 
@@ -186,7 +189,14 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	UVerticalBox* Panel = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	LeftPanel->SetContent(Panel);
 
-	UTextBlock* MapTitle = MakePanelText(Panel, 15, FLinearColor(0.85f, 0.88f, 0.95f, 1.f));
+	// 左面板背景图 ~68% 处有分隔线分上下两块: 上半大块放信息, 下半小块放道具面板。
+	// 两个 Fill 子区(权重 2.1 : 1.0 ≈ 68% : 32%)切分; 上区内容自顶向下排, 道具面板钉在下区顶部(分隔线下沿, 即用户要的位置)。
+	UVerticalBox* UpperBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+	if (UVerticalBoxSlot* US = Panel->AddChildToVerticalBox(UpperBox)) { FSlateChildSize Sz(ESlateSizeRule::Fill); Sz.Value = 2.1f; US->SetSize(Sz); }
+	UVerticalBox* LowerBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+	if (UVerticalBoxSlot* LS = Panel->AddChildToVerticalBox(LowerBox)) { FSlateChildSize Sz(ESlateSizeRule::Fill); Sz.Value = 1.0f; LS->SetSize(Sz); }
+
+	UTextBlock* MapTitle = MakePanelText(UpperBox, 15, FLinearColor(0.85f, 0.88f, 0.95f, 1.f));
 	MapTitle->SetText(FText::FromString(TEXT("区域扫描图")));
 
 	MiniMapGrid = WidgetTree->ConstructWidget<UUniformGridPanel>(UUniformGridPanel::StaticClass());
@@ -200,50 +210,68 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	USizeBox* MapArea = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
 	MapArea->SetHeightOverride(300.f);
 	MapArea->SetContent(MapScale);
-	if (UVerticalBoxSlot* GridSlot = Panel->AddChildToVerticalBox(MapArea))
+	if (UVerticalBoxSlot* GridSlot = UpperBox->AddChildToVerticalBox(MapArea))
 	{
 		GridSlot->SetHorizontalAlignment(HAlign_Fill);
 		GridSlot->SetPadding(FMargin(0.f, 6.f, 0.f, 0.f));
 	}
 
-	UTextBlock* Legend = MakePanelText(Panel, 10, FLinearColor(0.55f, 0.60f, 0.70f, 1.f));
+	UTextBlock* Legend = MakePanelText(UpperBox, 10, FLinearColor(0.55f, 0.60f, 0.70f, 1.f));
 	Legend->SetText(FText::FromString(TEXT("数字 = 周围8格雷险 · 蓝点 = 可点击回传")));
 
 	// 生命条(原版红条)。
-	UTextBlock* HpTitle = MakePanelText(Panel, 13, FLinearColor(0.9f, 0.45f, 0.40f, 1.f));
+	UTextBlock* HpTitle = MakePanelText(UpperBox, 13, FLinearColor(0.9f, 0.45f, 0.40f, 1.f));
 	HpTitle->SetText(FText::FromString(TEXT("生命")));
 	HpBar = WidgetTree->ConstructWidget<UProgressBar>(UProgressBar::StaticClass());
-	HpBar->SetFillColorAndOpacity(FLinearColor(0.78f, 0.16f, 0.14f, 1.f));
-	if (UVerticalBoxSlot* HpSlot = Panel->AddChildToVerticalBox(HpBar))
+	HpBar->SetFillColorAndOpacity(FLinearColor(0.70f, 0.02f, 0.02f, 1.f));   // 鲜红(降 G/B 去粉调)
+	if (UVerticalBoxSlot* HpSlot = UpperBox->AddChildToVerticalBox(HpBar))
 	{
 		HpSlot->SetPadding(FMargin(0.f, 2.f, 0.f, 2.f));
 	}
-	HpText = MakePanelText(Panel, 12, FLinearColor(0.9f, 0.9f, 0.9f, 1.f));
+	HpText = MakePanelText(UpperBox, 12, FLinearColor(0.9f, 0.9f, 0.9f, 1.f));
 
 	// 属性行分色(对齐原版面板配色)。
-	PowerText = MakePanelText(Panel, 13, FLinearColor(0.92f, 0.93f, 0.95f, 1.f));
-	PendingText = MakePanelText(Panel, 13, FLinearColor(FColor(255, 226, 120)));
-	SafeText = MakePanelText(Panel, 13, FLinearColor(FColor(120, 220, 170)));
-	PartsText = MakePanelText(Panel, 13, FLinearColor(FColor(130, 200, 255)));
-	SearchedText = MakePanelText(Panel, 11, FLinearColor(0.55f, 0.60f, 0.70f, 1.f));
-	StateText = MakePanelText(Panel, 13, FLinearColor(0.95f, 0.85f, 0.5f, 1.f));
+	PowerText = MakePanelText(UpperBox, 13, FLinearColor(0.92f, 0.93f, 0.95f, 1.f));
+	PendingText = MakePanelText(UpperBox, 13, FLinearColor(FColor(255, 226, 120)));
+	SafeText = MakePanelText(UpperBox, 13, FLinearColor(FColor(120, 220, 170)));
+	PartsText = MakePanelText(UpperBox, 13, FLinearColor(FColor(130, 200, 255)));
+	SearchedText = MakePanelText(UpperBox, 11, FLinearColor(0.55f, 0.60f, 0.70f, 1.f));
+	StateText = MakePanelText(UpperBox, 13, FLinearColor(0.95f, 0.85f, 0.5f, 1.f));
 
-	UTextBlock* BagTitle = MakePanelText(Panel, 13, FLinearColor(0.65f, 0.75f, 0.95f, 1.f));
+	// 作业包摘要前空开一两行, 与上面的属性信息分隔(别和上面挤在一起)。
+	{
+		USpacer* BagGap = WidgetTree->ConstructWidget<USpacer>(USpacer::StaticClass());
+		BagGap->SetSize(FVector2D(1.f, 16.f));
+		UpperBox->AddChildToVerticalBox(BagGap);
+	}
+
+	UTextBlock* BagTitle = MakePanelText(UpperBox, 13, FLinearColor(0.65f, 0.75f, 0.95f, 1.f));
 	BagTitle->SetText(FText::FromString(TEXT("作业包摘要")));
 
 	ItemsList = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
-	Panel->AddChildToVerticalBox(ItemsList);
+	UpperBox->AddChildToVerticalBox(ItemsList);
 
 	// 动作按钮已移除: F=搜索/攻击, E=撤离, 重开走局终弹窗。
-	LogText = MakePanelText(Panel, 11, FLinearColor(0.6f, 0.65f, 0.72f, 1.f));
+	LogText = MakePanelText(UpperBox, 11, FLinearColor(0.6f, 0.65f, 0.72f, 1.f));
 	LogText->SetAutoWrapText(true);
+
+	// 道具选择面板放在下半块里; 顶部留一点间距往下挪, 不贴分隔线(用户反馈钉在分隔线正下沿偏上)。PIE 可调。
+	{
+		USpacer* LowerTopGap = WidgetTree->ConstructWidget<USpacer>(USpacer::StaticClass());
+		LowerTopGap->SetSize(FVector2D(1.f, 48.f));
+		LowerBox->AddChildToVerticalBox(LowerTopGap);
+	}
+	UTextBlock* BagItemTitle = MakePanelText(LowerBox, 13, FLinearColor(0.65f, 0.75f, 0.95f, 1.f));
+	BagItemTitle->SetText(FText::FromString(TEXT("道具 (数字键选 · Q 使用)")));
+	ConsumableList = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+	LowerBox->AddChildToVerticalBox(ConsumableList);
 
 	// 第 3 层: 右上协议面板(占位, 数值待协议系统迁入)。
 	UBorder* ProtocolPanel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 	ProtocolPanel->SetBrushColor(FLinearColor(0.05f, 0.03f, 0.03f, 0.9f));
 	ProtocolPanel->SetPadding(FMargin(12.f, 8.f));
 	ProtocolText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	ProtocolText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 16));
+	ProtocolText->SetFont(GT_UIStyle::Font(16));
 	ProtocolText->SetColorAndOpacity(FSlateColor(FLinearColor(0.95f, 0.55f, 0.45f, 1.f)));
 	ProtocolText->SetText(FText::FromString(TEXT("协议 5")));
 	ProtocolPanel->SetContent(ProtocolText);
@@ -296,7 +324,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 			KeyCap->SetBrushColor(FLinearColor(0.13f, 0.12f, 0.10f, 1.f));
 			KeyCap->SetPadding(FMargin(6.f, 3.f));
 			UTextBlock* KeyText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-			KeyText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 10));
+			KeyText->SetFont(GT_UIStyle::Font(10));
 			KeyText->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(214, 178, 92))));
 			KeyText->SetText(FText::FromString(KeyLabel));
 			KeyCap->SetContent(KeyText);
@@ -308,7 +336,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		}
 
 		UTextBlock* ActionText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		ActionText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 13));
+		ActionText->SetFont(GT_UIStyle::Font(13));
 		ActionText->SetColorAndOpacity(FSlateColor(FLinearColor(0.78f, 0.80f, 0.86f, 1.f)));
 		ActionText->SetText(FText::FromString(Action));
 		if (UHorizontalBoxSlot* ActionSlot = Block->AddChildToHorizontalBox(ActionText))
@@ -321,7 +349,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_f"), TEXT("F"), TEXT("搜索/攻击"));
 	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_e"), TEXT("E"), TEXT("撤离"));
 	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_t"), TEXT("T"), TEXT("事件"));
-	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_q"), TEXT("Q"), TEXT("止血"));
+	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_q"), TEXT("Q"), TEXT("用道具"));
 	// 底栏背景用无分隔的连续金属条(ui_bar_blank_dark): 原版 ui_bottom_bar 是死画的 4 格,
 	// 与 6 个键位项数量不匹配会错位, 换成连续条让键帽均分对齐。
 	if (UVerticalBoxSlot* HotbarSlot = CenterCol->AddChildToVerticalBox(MakeSkinnedPanel(Hotbar, TEXT("/Game/Graytail/UI/common/ui_bar_blank_dark"))))
@@ -401,12 +429,12 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		EndWidth->SetContent(EndColumn);
 
 		RunEndTitle = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		RunEndTitle->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 24));
+		RunEndTitle->SetFont(GT_UIStyle::Font(24));
 		RunEndTitle->SetJustification(ETextJustify::Center);
 		EndColumn->AddChildToVerticalBox(RunEndTitle);
 
 		RunEndBody = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		RunEndBody->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 13));
+		RunEndBody->SetFont(GT_UIStyle::Font(13));
 		RunEndBody->SetColorAndOpacity(FSlateColor(FLinearColor(0.88f, 0.86f, 0.84f, 1.f)));
 		RunEndBody->SetJustification(ETextJustify::Center);
 		if (UVerticalBoxSlot* BodySlot = EndColumn->AddChildToVerticalBox(RunEndBody))
@@ -484,7 +512,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 UTextBlock* UGT_GameHudWidget::MakePanelText(UVerticalBox* Panel, int32 FontSize, const FLinearColor& Color)
 {
 	UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	Text->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", FontSize));
+	Text->SetFont(GT_UIStyle::Font(FontSize));
 	Text->SetColorAndOpacity(FSlateColor(Color));
 	if (UVerticalBoxSlot* TextSlot = Panel->AddChildToVerticalBox(Text))
 	{
@@ -498,7 +526,7 @@ UButton* UGT_GameHudWidget::MakeButton(UHorizontalBox* Row, const FString& Label
 	UButton* Button = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
 	UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	Text->SetText(FText::FromString(Label));
-	Text->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 12));
+	Text->SetFont(GT_UIStyle::Font(12));
 	Text->SetColorAndOpacity(FSlateColor(FLinearColor(0.05f, 0.05f, 0.08f, 1.f)));
 	Button->AddChild(Text);
 	Row->AddChild(Button);
@@ -533,6 +561,7 @@ void UGT_GameHudWidget::RefreshPanels()
 	RefreshMiniMapGrid();
 	RefreshMineRiskTag();
 	RefreshItemsList();
+	RefreshConsumableList();
 
 	FString RoomText;
 	FString Hint;
@@ -612,6 +641,10 @@ void UGT_GameHudWidget::RefreshRunEndPanel()
 	else if (Reason == FName(TEXT("Protocol")))
 	{
 		ReasonLine = TEXT("协议压力满载, 调度台强制中断作业。");
+	}
+	else if (Reason == FName(TEXT("ProtocolDrain")))
+	{
+		ReasonLine = TEXT("信号持续高压侵蚀, 血量耗尽, 作业体信号丢失。");
 	}
 	else if (Reason == FName(TEXT("CombatDeath")))
 	{
@@ -814,7 +847,7 @@ void UGT_GameHudWidget::RefreshMiniMapGrid()
 						Badge->SetBrushColor(FLinearColor(0.02f, 0.03f, 0.06f, 0.88f));
 						Badge->SetPadding(FMargin(2.f, 0.f));
 						UTextBlock* BadgeText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-						BadgeText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 8));
+						BadgeText->SetFont(GT_UIStyle::Font(8));
 						BadgeText->SetText(FText::FromString(FString::FromInt(Cell.DisplayedNumber)));
 						BadgeText->SetColorAndOpacity(FSlateColor(NumberColors[FMath::Clamp(Cell.DisplayedNumber, 0, 3)]));
 						Badge->SetContent(BadgeText);
@@ -833,7 +866,7 @@ void UGT_GameHudWidget::RefreshMiniMapGrid()
 					{
 						// 0 与 4+: 文本数字(0 也显示, 用户要求)。
 						UTextBlock* NumberText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-						NumberText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 13));
+						NumberText->SetFont(GT_UIStyle::Font(13));
 						NumberText->SetText(FText::FromString(FString::FromInt(Cell.DisplayedNumber)));
 						NumberText->SetColorAndOpacity(FSlateColor(NumberColors[FMath::Clamp(Cell.DisplayedNumber, 0, 3)]));
 						if (UOverlaySlot* NumberSlot = CellOverlay->AddChildToOverlay(NumberText))
@@ -887,7 +920,7 @@ void UGT_GameHudWidget::RefreshItemsList()
 	{
 		// 空态占位, 面板不留白(对齐原版摘要区始终有内容)。
 		UTextBlock* EmptyText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		EmptyText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 11));
+		EmptyText->SetFont(GT_UIStyle::Font(11));
 		EmptyText->SetColorAndOpacity(FSlateColor(FLinearColor(0.5f, 0.54f, 0.62f, 1.f)));
 		EmptyText->SetText(FText::FromString(TEXT("(回收包为空, 搜索房间获取物资)")));
 		ItemsList->AddChildToVerticalBox(EmptyText);
@@ -901,7 +934,7 @@ void UGT_GameHudWidget::RefreshItemsList()
 		if (ShownRows >= MaxItemRows)
 		{
 			UTextBlock* MoreText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-			MoreText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 11));
+			MoreText->SetFont(GT_UIStyle::Font(11));
 			MoreText->SetColorAndOpacity(FSlateColor(FLinearColor(0.5f, 0.54f, 0.62f, 1.f)));
 			MoreText->SetText(FText::FromString(FString::Printf(TEXT("  另有 %d 项"), CarriedItems.Num() - MaxItemRows)));
 			ItemsList->AddChildToVerticalBox(MoreText);
@@ -925,12 +958,77 @@ void UGT_GameHudWidget::RefreshItemsList()
 		}
 
 		UTextBlock* ItemText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		ItemText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 12));
+		ItemText->SetFont(GT_UIStyle::Font(12));
 		ItemText->SetColorAndOpacity(FSlateColor(FLinearColor(0.85f, 0.85f, 0.9f, 1.f)));
 		ItemText->SetText(FText::FromString(FString::Printf(TEXT(" %s x%d"),
 			Def ? *Def->DisplayName : *Stack.ItemId.ToString(),
 			Stack.Count)));
 		ItemRow->AddChild(ItemText);
+	}
+}
+
+TArray<FName> UGT_GameHudWidget::GetUsableConsumableIds() const
+{
+	TArray<FName> Ids;
+	const UGT_RunContext* RunContext = GetRunContext();
+	if (!RunContext)
+	{
+		return Ids;
+	}
+	for (const FGT_ItemStack& Stack : RunContext->GetRunInventory().CarriedItems)
+	{
+		if (Stack.Count <= 0) { continue; }
+		const FGT_ItemCatalogEntry* Def = GT_ItemCatalog::FindItemDef(Stack.ItemId);
+		if (Def && Def->Kind == EGT_ItemKind::Consumable) { Ids.Add(Stack.ItemId); }
+	}
+	return Ids;
+}
+
+void UGT_GameHudWidget::SelectConsumableSlot(int32 InSlot)
+{
+	SelectedConsumableSlot = FMath::Max(1, InSlot);
+	RefreshConsumableList();
+}
+
+void UGT_GameHudWidget::RefreshConsumableList()
+{
+	if (!ConsumableList)
+	{
+		return;
+	}
+	ConsumableList->ClearChildren();
+
+	const TArray<FName> Ids = GetUsableConsumableIds();
+	if (Ids.Num() == 0)
+	{
+		UTextBlock* Empty = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		Empty->SetFont(GT_UIStyle::Font(11));
+		Empty->SetColorAndOpacity(FSlateColor(FLinearColor(0.5f, 0.54f, 0.62f, 1.f)));
+		Empty->SetText(FText::FromString(TEXT("(无可用道具)")));
+		ConsumableList->AddChildToVerticalBox(Empty);
+		return;
+	}
+
+	SelectedConsumableSlot = FMath::Clamp(SelectedConsumableSlot, 1, Ids.Num());
+	const UGT_RunContext* RunContext = GetRunContext();
+	for (int32 i = 0; i < Ids.Num(); ++i)
+	{
+		const FName Id = Ids[i];
+		const FGT_ItemCatalogEntry* Def = GT_ItemCatalog::FindItemDef(Id);
+		const int32 Count = RunContext ? RunContext->GetRunInventory().GetItemCount(Id) : 0;
+		const bool bSel = (i + 1 == SelectedConsumableSlot);
+
+		UTextBlock* Row = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		Row->SetFont(GT_UIStyle::Font(12));
+		Row->SetColorAndOpacity(FSlateColor(bSel
+			? FLinearColor(FColor(255, 226, 120))            // 选中: 亮金
+			: FLinearColor(0.78f, 0.80f, 0.86f, 1.f)));
+		Row->SetText(FText::FromString(FString::Printf(TEXT("%s【%d】%s x%d"),
+			bSel ? TEXT("▶") : TEXT("  "),
+			i + 1,
+			Def ? *Def->DisplayName : *Id.ToString(),
+			Count)));
+		ConsumableList->AddChildToVerticalBox(Row);
 	}
 }
 
@@ -1150,18 +1248,27 @@ void UGT_GameHudWidget::OnExtract()
 
 void UGT_GameHudWidget::OnUseConsumable()
 {
-	// Q = 止血(默认应急止血贴)。满血/无库存由内核拒绝, 这里只发命令并刷新。
+	// Q = 使用左下道具栏【选中】的道具(数字键 1-9 切换选中)。满血/无库存由内核拒绝。
+	// 显式选中=玩家清楚要用哪件, 不会误用硬币; 用后面板物品数变化即反馈。
 	UGT_DebugSubsystem* Debug = GetDebugSubsystem();
 	if (!Debug)
 	{
 		return;
 	}
+	const TArray<FName> Ids = GetUsableConsumableIds();
+	if (Ids.Num() == 0)
+	{
+		return;   // 背包无可用道具, 静默
+	}
+	const int32 Index = FMath::Clamp(SelectedConsumableSlot - 1, 0, Ids.Num() - 1);
+	const FName PickId = Ids[Index];
+
 	FGT_DebugRunSnapshot Snapshot;
-	const bool bUsed = Debug->DebugUseConsumable(FName(TEXT("emergency_bandage")), Snapshot);
+	const bool bUsed = Debug->DebugUseConsumable(PickId, Snapshot);
 	RefreshAll();
 
-	// 用成功(回血)才播绿光反馈; 满血/无库存被拒不播。
-	if (bUsed && RoomView)
+	// 回血道具(止血贴)用成功才播绿光; 其它道具(如幸运硬币)效果由面板物品数 + HUD 金币/小地图体现。
+	if (bUsed && PickId == FName(TEXT("emergency_bandage")) && RoomView)
 	{
 		RoomView->PlayHealGlow();
 	}

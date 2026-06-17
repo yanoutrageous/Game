@@ -15,12 +15,13 @@
 #include "Fonts/SlateFontInfo.h"
 #include "Input/Events.h"
 #include "Styling/CoreStyle.h"
+#include "UI/GT_UIStyle.h"
 
 namespace
 {
 	const FName GTEventPanelOption_Leave(TEXT("leave"));
-	const FLinearColor GTEventRowSelected(0.32f, 0.26f, 0.14f, 0.92f);
-	const FLinearColor GTEventRowNormal(0.12f, 0.11f, 0.10f, 0.78f);
+	const FLinearColor GTEventRowSelected(0.24f, 0.19f, 0.10f, 0.96f);   // 选中行加深加饱和, 让文字更跳
+	const FLinearColor GTEventRowNormal(0.10f, 0.095f, 0.085f, 0.82f);
 }
 
 TSharedRef<SWidget> UGT_EventPanelWidget::RebuildWidget()
@@ -69,12 +70,12 @@ void UGT_EventPanelWidget::BuildWidgetTree()
 	WidthBox->SetContent(Column);
 
 	TitleText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	TitleText->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 20));
+	TitleText->SetFont(GT_UIStyle::Font(20));
 	TitleText->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(240, 210, 140))));
 	Column->AddChildToVerticalBox(TitleText);
 
 	DescText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	DescText->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 12));
+	DescText->SetFont(GT_UIStyle::Font(13));
 	DescText->SetColorAndOpacity(FSlateColor(FLinearColor(0.78f, 0.76f, 0.70f, 1.f)));
 	DescText->SetAutoWrapText(true);
 	if (UVerticalBoxSlot* DescSlot = Column->AddChildToVerticalBox(DescText))
@@ -89,7 +90,7 @@ void UGT_EventPanelWidget::BuildWidgetTree()
 	}
 
 	MessageText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	MessageText->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 12));
+	MessageText->SetFont(GT_UIStyle::Font(13));
 	MessageText->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(255, 186, 150))));
 	MessageText->SetAutoWrapText(true);
 	if (UVerticalBoxSlot* MessageSlot = Column->AddChildToVerticalBox(MessageText))
@@ -98,7 +99,7 @@ void UGT_EventPanelWidget::BuildWidgetTree()
 	}
 
 	UTextBlock* Footer = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	Footer->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 10));
+	Footer->SetFont(GT_UIStyle::Font(11));
 	Footer->SetColorAndOpacity(FSlateColor(FLinearColor(0.52f, 0.50f, 0.46f, 1.f)));
 	Footer->SetText(FText::FromString(TEXT("W/S 选择 · Enter/T 确认 · Esc/右键 离开")));
 	if (UVerticalBoxSlot* FooterSlot = Column->AddChildToVerticalBox(Footer))
@@ -191,20 +192,20 @@ void UGT_EventPanelWidget::RebuildOptionRows()
 		Row->SetContent(RowColumn);
 
 		UTextBlock* Label = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		Label->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 14));
+		Label->SetFont(GT_UIStyle::Font(15));
 		Label->SetColorAndOpacity(FSlateColor(!Option.bEnabled
-			? FLinearColor(FColor(125, 122, 112))
+			? FLinearColor(FColor(182, 176, 162))
 			: bSelected ? FLinearColor(FColor(255, 235, 170)) : FLinearColor(FColor(222, 218, 204))));
 		Label->SetText(FText::FromString(Option.Label));
 		RowColumn->AddChildToVerticalBox(Label);
 
 		// 第二行: 可用选项给 代价/收益/风险 摘要, 不可用选项给原因。
 		FString DetailLine;
-		FLinearColor DetailColor(0.55f, 0.53f, 0.48f, 1.f);
+		FLinearColor DetailColor(0.70f, 0.67f, 0.60f, 1.f);
 		if (!Option.bEnabled && !Option.DisabledReason.IsEmpty())
 		{
 			DetailLine = Option.DisabledReason;
-			DetailColor = FLinearColor(FColor(190, 110, 100));
+			DetailColor = FLinearColor(FColor(240, 162, 150));
 		}
 		else if (Option.CostText != TEXT("无") || Option.RewardText != TEXT("无") || Option.RiskText != TEXT("无"))
 		{
@@ -214,7 +215,7 @@ void UGT_EventPanelWidget::RebuildOptionRows()
 		if (!DetailLine.IsEmpty())
 		{
 			UTextBlock* Detail = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-			Detail->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 10));
+			Detail->SetFont(GT_UIStyle::Font(11));
 			Detail->SetColorAndOpacity(FSlateColor(DetailColor));
 			Detail->SetAutoWrapText(true);
 			Detail->SetText(FText::FromString(DetailLine));
@@ -281,12 +282,9 @@ void UGT_EventPanelWidget::ConfirmSelection()
 		Close();
 		return;
 	}
-	if (Outcome.bOk && Outcome.bClosePanel)
-	{
-		Close();
-		return;
-	}
-	// 祭坛连续献祭/失败重选: 面板保持, 菜单按最新状态重建。
+	// 不在执行后立即关面板(原来 bClosePanel 类事件=机关/赌徒/旅商 会同帧关闭, 玩家看不到结果文案)。
+	// 改为统一保留面板 + 按最新状态重建菜单: 已完成事件(机关/赌徒)菜单会变成只剩"关闭",
+	// MessageText 显示判定结果(机关成功/失控、赌徒输赢), 玩家看清后再按键/Esc 关闭。祭坛连续献祭沿用此路径。
 	RefreshMenu();
 }
 

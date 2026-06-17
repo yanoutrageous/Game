@@ -25,6 +25,7 @@
 #include "Domains/Inventory/GT_ItemCatalog.h"
 #include "Domains/Inventory/GT_InventoryTypes.h"
 #include "UI/GT_IndexedButton.h"
+#include "UI/GT_UIStyle.h"
 
 namespace
 {
@@ -32,7 +33,8 @@ namespace
 	const FLinearColor GTColGold(0.95f, 0.72f, 0.30f);
 	const FLinearColor GTColName(FColor(236, 232, 222));          // 物品名 暖白(最亮一层)
 	const FLinearColor GTColWhite(0.90f, 0.90f, 0.92f);
-	const FLinearColor GTColEffect(FColor(196, 206, 224));        // 效果行 冷白(中亮)
+	const FLinearColor GTColEffect(FColor(150, 205, 160));        // 效果行 柔绿(=机制收益, 与名/类型/说明分色)
+	const FLinearColor GTColInfo(FColor(208, 182, 138));         // 价格/拥有行 暖琥珀(=经济信息)
 	const FLinearColor GTColDim(0.34f, 0.37f, 0.45f);
 	const FLinearColor GTColFaint(0.23f, 0.25f, 0.31f);          // flavor 最暗一层
 	const FLinearColor GTColBg(0.010f, 0.014f, 0.024f, 1.0f);     // 根背景 深灰蓝
@@ -72,7 +74,7 @@ namespace
 
 	FSlateFontInfo GTFont(int32 Size)
 	{
-		return FCoreStyle::GetDefaultFontStyle("Regular", Size);
+		return GT_UIStyle::Font(Size);
 	}
 
 	FString EquipEffectText(const FGT_EquipDef& Def)
@@ -83,6 +85,20 @@ namespace
 		if (Def.MineDmgReduce > 0) { return FString::Printf(TEXT("雷险伤害 -%d"), Def.MineDmgReduce); }
 		if (Def.bShowExitHint) { return TEXT("撤离信标方向提示"); }
 		if (Def.SearchBonus > 0) { return FString::Printf(TEXT("搜索奖励 +%d%%"), Def.SearchBonus); }
+		// S6 触发型装备(效果已实现, 走 EGT_ItemTrigger, 不是静态加成, 故单列描述)。
+		switch (Def.Trigger)
+		{
+		case EGT_ItemTrigger::KillPowerStack:
+			return FString::Printf(TEXT("击败异常体后 战斗力 +%d(至多叠 %d 层)"), Def.TriggerAmount, Def.TriggerCap);
+		case EGT_ItemTrigger::ProtocolHeal:
+			return FString::Printf(TEXT("协议每升一级 回复 %d 生命(至多 %d 次)"), Def.TriggerAmount, Def.TriggerCap);
+		case EGT_ItemTrigger::SettleGoldBonus:
+			return FString::Printf(TEXT("撤离结算 金币 +%d%%"), Def.TriggerAmount);
+		case EGT_ItemTrigger::ChestBonusLoot:
+			return FString::Printf(TEXT("进入宝箱房 额外掉落 %d 件低价值回收物(每房一次)"), Def.TriggerAmount);
+		default:
+			break;
+		}
 		return TEXT("");
 	}
 
@@ -90,10 +106,18 @@ namespace
 	{
 		if (Def.bMapHighlight) { return TEXT("小地图邻域威胁高亮"); }
 		if (Def.MineDmgReduce > 0) { return FString::Printf(TEXT("雷险伤害 -%d"), Def.MineDmgReduce); }
-		if (Def.MonsterFleeBonus > 0) { return FString::Printf(TEXT("怪物避让窗口 +%ds"), Def.MonsterFleeBonus); }
+		if (Def.MonsterFleeBonus > 0) { return TEXT("怪物面对持有者时更易犹疑"); }
 		if (Def.FailureGoldBonus > 0) { return FString::Printf(TEXT("撤离失败保留 +%d 金"), Def.FailureGoldBonus); }
 		if (Def.TradePrice > 0) { return FString::Printf(TEXT("旅商收购价 +%d%%"), Def.TradePrice); }
 		return TEXT("");
+	}
+
+	// 消耗品效果文案(按物品真效果, 非一律"回复 N 生命"——幸运硬币 Heal=0 不该显示"回复0生命")。
+	FString ConsumableEffectText(const FGT_ConsumableDef& Def)
+	{
+		if (Def.Id == FName(TEXT("lucky_coin"))) { return TEXT("局内使用: 50% 得 30 结算币 / 50% 揭示相邻未知房"); }
+		if (Def.Heal > 0) { return FString::Printf(TEXT("局内使用: 回复 %d 生命"), Def.Heal); }
+		return TEXT("局内使用");
 	}
 
 	// 仓库条目来源 -> 中文类型行。
@@ -372,12 +396,12 @@ namespace
 	struct FFilterPill { const TCHAR* Key; const TCHAR* Label; };
 	const FFilterPill GTReqPills[] = {
 		{ TEXT("all"), TEXT("全部") }, { TEXT("tier_common"), TEXT("一般") }, { TEXT("tier_rare"), TEXT("稀有") },
-		{ TEXT("type_equip"), TEXT("作业装备") }, { TEXT("type_consumable"), TEXT("消耗") },
+		{ TEXT("type_equip"), TEXT("作业装备") }, { TEXT("type_consumable"), TEXT("消耗品") },
 	};
 	const FFilterPill GTWarehousePills[] = {
 		{ TEXT("all"), TEXT("全部") }, { TEXT("tier_common"), TEXT("一般") }, { TEXT("tier_rare"), TEXT("稀有") },
 		{ TEXT("tier_precious"), TEXT("史诗") }, { TEXT("tier_abnormal"), TEXT("异常") },
-		{ TEXT("type_equip"), TEXT("作业装备") }, { TEXT("type_consumable"), TEXT("消耗") }, { TEXT("type_recovered"), TEXT("回收") },
+		{ TEXT("type_equip"), TEXT("作业装备") }, { TEXT("type_consumable"), TEXT("消耗品") }, { TEXT("type_recovered"), TEXT("回收") },
 	};
 }
 
@@ -534,9 +558,9 @@ void UGT_DeployTerminalWidget::BuildWidgetTree()
 	FilterRow = WidgetTree->ConstructWidget<UHorizontalBox>();
 	if (UVerticalBoxSlot* S = MainCol->AddChildToVerticalBox(FilterRow)) { S->SetPadding(FMargin(0, 0, 0, 12)); }
 
-	// -- 卡片网格(滚动) --
+	// -- 卡片网格(滚动): 卡片只铺在背景图上半大块内, 超出由 ScrollBox 滚动(不向下溢出盖住下半块) --
 	ContentScroll = WidgetTree->ConstructWidget<UScrollBox>();
-	if (UVerticalBoxSlot* S = MainCol->AddChildToVerticalBox(ContentScroll)) { S->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); }
+	if (UVerticalBoxSlot* S = MainCol->AddChildToVerticalBox(ContentScroll)) { FSlateChildSize Sz(ESlateSizeRule::Fill); Sz.Value = 1.0f; S->SetSize(Sz); }
 	ContentWrap = WidgetTree->ConstructWidget<UWrapBox>();
 	ContentScroll->AddChild(ContentWrap);
 
@@ -546,6 +570,11 @@ void UGT_DeployTerminalWidget::BuildWidgetTree()
 	DetailText->SetColorAndOpacity(FSlateColor(GTColDim));
 	DetailText->SetAutoWrapText(true);
 	if (UVerticalBoxSlot* S = MainCol->AddChildToVerticalBox(DetailText)) { S->SetPadding(FMargin(2, 10, 0, 0)); }
+
+	// -- 底部留空区: 背景图 ~76% 处有分隔线分上下两块, 这块 Fill Spacer 占住下半小块使其留空,
+	//    把内容区(卡片+选中条)压在上半大块内。与 ContentScroll 同为 Fill, 按权重 1.0 : 0.33 ≈ 76% : 24% 分配剩余高度。PIE 可调。
+	USpacer* BottomReserve = WidgetTree->ConstructWidget<USpacer>();
+	if (UVerticalBoxSlot* S = MainCol->AddChildToVerticalBox(BottomReserve)) { FSlateChildSize Sz(ESlateSizeRule::Fill); Sz.Value = 0.33f; S->SetSize(Sz); }
 
 	// 右侧 出勤摘要
 	USizeBox* SummarySize = WidgetTree->ConstructWidget<USizeBox>();
@@ -575,7 +604,7 @@ void UGT_DeployTerminalWidget::AddItemCard(int32 Index, UTexture2D* Icon, const 
 
 	USizeBox* CardSize = WidgetTree->ConstructWidget<USizeBox>();
 	CardSize->SetWidthOverride(330.f);
-	CardSize->SetHeightOverride(196.f);
+	CardSize->SetHeightOverride(212.f);   // 像素字体行高更大, 加高给各行留呼吸空间
 	if (UWrapBoxSlot* WSlot = ContentWrap->AddChildToWrapBox(CardSize)) { WSlot->SetPadding(FMargin(6.f)); }
 
 	// 圆角卡片(RoundedBox): 底色 (21,29,40), 描边暗金/高亮金。
@@ -626,7 +655,7 @@ void UGT_DeployTerminalWidget::AddItemCard(int32 Index, UTexture2D* Icon, const 
 	EffTxt->SetFont(GTFont(13));
 	EffTxt->SetColorAndOpacity(FSlateColor(GTColEffect));
 	EffTxt->SetAutoWrapText(true);
-	if (UVerticalBoxSlot* S = Col->AddChildToVerticalBox(EffTxt)) { S->SetPadding(FMargin(0, 7, 0, 0)); }
+	if (UVerticalBoxSlot* S = Col->AddChildToVerticalBox(EffTxt)) { S->SetPadding(FMargin(0, 10, 0, 0)); }
 
 	// flavor 描述(暗色小字, 可换行)
 	if (!Flavor.IsEmpty())
@@ -636,15 +665,15 @@ void UGT_DeployTerminalWidget::AddItemCard(int32 Index, UTexture2D* Icon, const 
 		FlavorTxt->SetFont(GTFont(11));
 		FlavorTxt->SetColorAndOpacity(FSlateColor(GTColFaint));
 		FlavorTxt->SetAutoWrapText(true);
-		if (UVerticalBoxSlot* S = Col->AddChildToVerticalBox(FlavorTxt)) { S->SetPadding(FMargin(0, 4, 0, 0)); }
+		if (UVerticalBoxSlot* S = Col->AddChildToVerticalBox(FlavorTxt)) { S->SetPadding(FMargin(0, 7, 0, 0)); }
 	}
 
 	// 拥有/价格行
 	UTextBlock* InfoTxt = WidgetTree->ConstructWidget<UTextBlock>();
 	InfoTxt->SetText(FText::FromString(InfoLine));
 	InfoTxt->SetFont(GTFont(12));
-	InfoTxt->SetColorAndOpacity(FSlateColor(GTColDim));
-	if (UVerticalBoxSlot* S = Col->AddChildToVerticalBox(InfoTxt)) { S->SetPadding(FMargin(0, 5, 0, 0)); }
+	InfoTxt->SetColorAndOpacity(FSlateColor(GTColInfo));
+	if (UVerticalBoxSlot* S = Col->AddChildToVerticalBox(InfoTxt)) { S->SetPadding(FMargin(0, 8, 0, 0)); }
 
 	// 底部: 状态(左) + 动作按钮(右)
 	UHorizontalBox* Foot = WidgetTree->ConstructWidget<UHorizontalBox>();
@@ -711,7 +740,7 @@ void UGT_DeployTerminalWidget::RebuildContent()
 			const FString Status = !bOwned ? TEXT("未拥有") : (bEq ? TEXT("已装备") : TEXT("已拥有"));
 			const FString Action = !bOwned ? TEXT("申领") : (bEq ? TEXT("卸下") : TEXT("装备"));
 			const bool bEnabled = !bOwned ? bAfford : (bEq ? true : EquippedNum < GT_MetaCatalog::MaxEquipped);
-			AddItemCard(CurrentRows.Num(), IconForEquip(Def.Id), Def.DisplayName, TEXT("作业装备 · 后勤"),
+			AddItemCard(CurrentRows.Num(), IconForEquip(Def.Id), Def.DisplayName, TEXT("装备"),
 				EquipEffectText(Def), EquipFlavor(Def.Id), Info, Status, Action, bEnabled, bEq);
 			CurrentRows.Add({ Def.Id, ERowKind::Equip });
 		}
@@ -720,8 +749,8 @@ void UGT_DeployTerminalWidget::RebuildContent()
 			if (!PassesFilter(FName(TEXT("type_consumable")), FName(TEXT("tier_common")))) { continue; }
 			const bool bAfford = Gold >= Def.Price;
 			const int32 Have = Meta->GetConsumableCount(Def.Id);
-			AddItemCard(CurrentRows.Num(), IconForConsumable(Def.Id), Def.DisplayName, TEXT("作业消耗品 · 后勤"),
-				FString::Printf(TEXT("局内使用: 回复 %d 生命"), Def.Heal), ConsumableFlavor(Def.Id),
+			AddItemCard(CurrentRows.Num(), IconForConsumable(Def.Id), Def.DisplayName, TEXT("消耗品"),
+				ConsumableEffectText(Def), ConsumableFlavor(Def.Id),
 				FString::Printf(TEXT("价格 %d 结算币"), Def.Price), FString::Printf(TEXT("持有 %d"), Have),
 				TEXT("申领"), bAfford, false);
 			CurrentRows.Add({ Def.Id, ERowKind::Consumable });
@@ -737,7 +766,7 @@ void UGT_DeployTerminalWidget::RebuildContent()
 			if (!PassesFilter(FName(TEXT("type_equip")), EquipTierKey(Def.Id))) { continue; }
 			bAny = true;
 			const bool bEq = Meta->IsEquipped(Def.Id);
-			AddItemCard(CurrentRows.Num(), IconForEquip(Def.Id), Def.DisplayName, TEXT("作业装备 · 后勤"),
+			AddItemCard(CurrentRows.Num(), IconForEquip(Def.Id), Def.DisplayName, TEXT("装备"),
 				EquipEffectText(Def), EquipFlavor(Def.Id), TEXT("拥有 x1"), bEq ? TEXT("已装备") : TEXT("已拥有"),
 				bEq ? TEXT("卸下") : TEXT("装备"), bEq ? true : EquippedNum < GT_MetaCatalog::MaxEquipped, bEq);
 			CurrentRows.Add({ Def.Id, ERowKind::Equip });
@@ -749,8 +778,8 @@ void UGT_DeployTerminalWidget::RebuildContent()
 			if (!PassesFilter(FName(TEXT("type_consumable")), FName(TEXT("tier_common")))) { continue; }
 			bAny = true;
 			const int32 Carry = Meta->GetLoadout().FindRef(Def.Id);
-			AddItemCard(CurrentRows.Num(), IconForConsumable(Def.Id), Def.DisplayName, TEXT("作业消耗品 · 后勤"),
-				FString::Printf(TEXT("局内使用: 回复 %d 生命"), Def.Heal), ConsumableFlavor(Def.Id),
+			AddItemCard(CurrentRows.Num(), IconForConsumable(Def.Id), Def.DisplayName, TEXT("消耗品"),
+				ConsumableEffectText(Def), ConsumableFlavor(Def.Id),
 				FString::Printf(TEXT("库存 %d"), Stock), FString::Printf(TEXT("已带入 %d"), Carry),
 				FString::Printf(TEXT("带入 %d"), Carry), true, Carry > 0);
 			CurrentRows.Add({ Def.Id, ERowKind::Consumable });
@@ -798,7 +827,7 @@ void UGT_DeployTerminalWidget::RebuildContent()
 			const FString Info = bOwned ? TEXT("已解锁 · 永久生效") : FString::Printf(TEXT("解锁 %d 结算币"), Def.Price);
 			const FString Status = bOwned ? TEXT("已解锁") : TEXT("未解锁");
 			const FString Action = bOwned ? TEXT("已解锁") : TEXT("解锁");
-			AddItemCard(CurrentRows.Num(), IconForTalent(Def.Id), Def.DisplayName, TEXT("作业天赋 · 资历"),
+			AddItemCard(CurrentRows.Num(), IconForTalent(Def.Id), Def.DisplayName, TEXT("天赋"),
 				TalentEffectText(Def), TalentFlavor(Def.Id), Info, Status, Action, !bOwned && bAfford, bOwned);
 			CurrentRows.Add({ Def.Id, ERowKind::Talent });
 		}

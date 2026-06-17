@@ -13,6 +13,7 @@
 #include "Input/Events.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Styling/CoreStyle.h"
+#include "UI/GT_UIStyle.h"
 #include "UObject/Package.h"
 
 namespace
@@ -269,7 +270,7 @@ void UGT_MainMenuWidget::BuildWidgetTree()
 	// ---- 校准信息面板(最顶层, 仅 F10 校准模式可见). ----
 	{
 		TuneInfoText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		TuneInfoText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 13));
+		TuneInfoText->SetFont(GT_UIStyle::Font(13));
 		TuneInfoText->SetColorAndOpacity(FSlateColor(FLinearColor(0.95f, 0.95f, 0.85f, 1.f)));
 
 		UBorder* InfoBox = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
@@ -340,7 +341,7 @@ UBorder* UGT_MainMenuWidget::AddPageTitle(UCanvasPanel* Canvas, const FString& T
 	}
 
 	UTextBlock* Title = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	Title->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 96));
+	Title->SetFont(GT_UIStyle::Font(96));
 	Title->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(236, 205, 130))));
 	Title->SetShadowOffset(FVector2D(3.f, 3.f));
 	Title->SetShadowColorAndOpacity(FLinearColor(0.f, 0.f, 0.f, 0.55f));
@@ -366,7 +367,7 @@ UBorder* UGT_MainMenuWidget::MakePlank(UCanvasPanel* Canvas, const FAnchors& Anc
 	if (!LabelText.IsEmpty())
 	{
 		UTextBlock* Label = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		Label->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 52));
+		Label->SetFont(GT_UIStyle::Font(52));
 		Label->SetShadowOffset(FVector2D(2.f, 2.f));
 		Label->SetShadowColorAndOpacity(FLinearColor(0.f, 0.f, 0.f, 0.5f));
 		Label->SetText(FText::FromString(LabelText));
@@ -379,7 +380,7 @@ UBorder* UGT_MainMenuWidget::MakePlank(UCanvasPanel* Canvas, const FAnchors& Anc
 UTextBlock* UGT_MainMenuWidget::MakeHintLine(UCanvasPanel* Canvas, const FAnchors& Anchors, int32 FontSize)
 {
 	UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	Text->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", FontSize));
+	Text->SetFont(GT_UIStyle::Font(FontSize));
 	Text->SetColorAndOpacity(FSlateColor(GTMenuHintNormal));
 	Text->SetShadowOffset(FVector2D(2.f, 2.f));
 	Text->SetShadowColorAndOpacity(FLinearColor(0.f, 0.f, 0.f, 0.7f));

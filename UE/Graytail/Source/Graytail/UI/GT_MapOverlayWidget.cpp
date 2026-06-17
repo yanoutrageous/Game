@@ -19,6 +19,7 @@
 #include "Input/Events.h"
 #include "Misc/PackageName.h"
 #include "Styling/CoreStyle.h"
+#include "UI/GT_UIStyle.h"
 
 namespace
 {
@@ -82,7 +83,7 @@ void UGT_MapOverlayWidget::BuildWidgetTree()
 	}
 
 	UTextBlock* Title = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	Title->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 18));
+	Title->SetFont(GT_UIStyle::Font(18));
 	Title->SetColorAndOpacity(FSlateColor(FLinearColor(1.f, 1.f, 1.f, 0.94f)));
 	Title->SetJustification(ETextJustify::Center);
 	Title->SetText(FText::FromString(TEXT("区域扫描图 (点击格子标记雷险/回传)")));
@@ -109,7 +110,7 @@ void UGT_MapOverlayWidget::BuildWidgetTree()
 
 	// 操作被拒提示(战斗禁回传等), 默认隐藏占位(不顶动布局)。
 	StatusText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	StatusText->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 13));
+	StatusText->SetFont(GT_UIStyle::Font(13));
 	StatusText->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(255, 110, 100, 230))));
 	StatusText->SetJustification(ETextJustify::Center);
 	StatusText->SetVisibility(ESlateVisibility::Hidden);
@@ -120,7 +121,7 @@ void UGT_MapOverlayWidget::BuildWidgetTree()
 	}
 
 	UTextBlock* Hint = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	Hint->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 13));
+	Hint->SetFont(GT_UIStyle::Font(13));
 	Hint->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(180, 200, 220, 200))));
 	Hint->SetJustification(ETextJustify::Center);
 	Hint->SetText(FText::FromString(TEXT("左键: 未知格标记雷险/取消  |  已探索格回传  |  ESC/右键关闭")));
@@ -309,7 +310,7 @@ void UGT_MapOverlayWidget::RefreshGrid()
 						Badge->SetBrushColor(FLinearColor(0.02f, 0.03f, 0.06f, 0.88f));
 						Badge->SetPadding(FMargin(3.f, 1.f));
 						UTextBlock* BadgeText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-						BadgeText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 12));
+						BadgeText->SetFont(GT_UIStyle::Font(12));
 						BadgeText->SetText(FText::FromString(FString::FromInt(Cell.DisplayedNumber)));
 						BadgeText->SetColorAndOpacity(FSlateColor(GTOverlayNumberColor(Cell.DisplayedNumber)));
 						Badge->SetContent(BadgeText);
@@ -328,7 +329,7 @@ void UGT_MapOverlayWidget::RefreshGrid()
 					{
 						// 0 与 4+: 文本数字(0 也显示)。
 						UTextBlock* NumberText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-						NumberText->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 26));
+						NumberText->SetFont(GT_UIStyle::Font(26));
 						NumberText->SetText(FText::FromString(FString::FromInt(Cell.DisplayedNumber)));
 						NumberText->SetColorAndOpacity(FSlateColor(GTOverlayNumberColor(Cell.DisplayedNumber)));
 						if (UOverlaySlot* NumberSlot = CellOverlay->AddChildToOverlay(NumberText))

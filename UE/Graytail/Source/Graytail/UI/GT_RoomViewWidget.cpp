@@ -15,6 +15,7 @@
 #include "Engine/GameInstance.h"
 #include "Engine/Texture2D.h"
 #include "Fonts/SlateFontInfo.h"
+#include "UI/GT_UIStyle.h"
 #include "Input/Events.h"
 #include "Misc/PackageName.h"
 #include "Styling/CoreStyle.h"
@@ -35,6 +36,11 @@ namespace
 	constexpr float GTMineFlashDuration = 0.6f;    // 踩雷红闪时长
 	constexpr float GTPlayerAttackCooldown = 0.45f;     // 玩家挥砍冷却(Combat.lua playerAttackCooldown)
 	constexpr float GTPlayerInvincibleDuration = 0.9f;  // 受击无敌帧(Combat.lua playerInvincibleDuration)
+	constexpr float GTEdgeHintDuration = 1.4f;          // 撞地图边缘提示显示+淡出时长
+	// 道具方形空气墙(AABB)归一化半边长 = (道具半宽 + 玩家碰撞半宽)/房宽。撞墙即停(不绕不抽搐);
+	// 宝藏房宝箱墙较大(对应箱体)、一般事件房 NPC 墙较小。PIE 可微调。怪物会动+影响走位风筝, 不做碰撞。
+	constexpr float GTChestCollideHalf = 0.060f;        // 宝藏房宝箱(贴箱体, 碰到才挡)
+	constexpr float GTEventCollideHalf = 0.055f;        // 一般事件房 NPC(更小)
 
 	const FLinearColor GTFloor_Normal(0.16f, 0.17f, 0.20f, 1.f);
 	const FLinearColor GTFloor_Mine(0.45f, 0.12f, 0.10f, 1.f);
@@ -157,7 +163,7 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 		PartsSlot->SetSize(FVector2D(28.f, 28.f));
 	}
 	ChestCaption = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	ChestCaption->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 12));
+	ChestCaption->SetFont(GT_UIStyle::Font(12));
 	ChestCaption->SetJustification(ETextJustify::Center);
 	ChestCaption->SetVisibility(ESlateVisibility::Collapsed);
 	if (UCanvasPanelSlot* CaptionSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(ChestCaption)))
@@ -190,7 +196,7 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 		EventEyeRight = MakeEventImage(NpcCenter + FVector2D(6.f, -3.f), 6.f);
 
 		EventNameLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		EventNameLabel->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 13));
+		EventNameLabel->SetFont(GT_UIStyle::Font(13));
 		EventNameLabel->SetJustification(ETextJustify::Center);
 		EventNameLabel->SetVisibility(ESlateVisibility::Collapsed);
 		if (UCanvasPanelSlot* NameSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(EventNameLabel)))
@@ -200,7 +206,7 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 		}
 
 		EventCaption = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		EventCaption->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 12));
+		EventCaption->SetFont(GT_UIStyle::Font(12));
 		EventCaption->SetJustification(ETextJustify::Center);
 		EventCaption->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(255, 255, 255, 230))));
 		EventCaption->SetVisibility(ESlateVisibility::Collapsed);
@@ -225,7 +231,7 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 	auto MakeBurstText = [this](const FColor& Color) -> UTextBlock*
 	{
 		UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		Text->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 15));
+		Text->SetFont(GT_UIStyle::Font(15));
 		Text->SetColorAndOpacity(FSlateColor(FLinearColor(Color)));
 		Text->SetJustification(ETextJustify::Center);
 		Text->SetVisibility(ESlateVisibility::Collapsed);
@@ -346,7 +352,7 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 	// 怪物名牌(怪头顶, 显示名称 + 战力)。
 	EnemyNameLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	EnemyNameLabel->SetVisibility(ESlateVisibility::Collapsed);
-	EnemyNameLabel->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 11));
+	EnemyNameLabel->SetFont(GT_UIStyle::Font(11));
 	EnemyNameLabel->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(255, 210, 200, 240))));
 	EnemyNameLabel->SetJustification(ETextJustify::Center);
 	if (UCanvasPanelSlot* NameSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(EnemyNameLabel)))
@@ -392,7 +398,7 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 	// 战斗提示(玩家未进入攻击射程时提示"靠近 F 攻击")。
 	CombatHintLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	CombatHintLabel->SetVisibility(ESlateVisibility::Collapsed);
-	CombatHintLabel->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 13));
+	CombatHintLabel->SetFont(GT_UIStyle::Font(13));
 	CombatHintLabel->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(255, 225, 150, 235))));
 	CombatHintLabel->SetJustification(ETextJustify::Center);
 	CombatHintLabel->SetText(FText::FromString(TEXT("靠近怪物 · F 攻击")));
@@ -400,6 +406,19 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 	{
 		HintSlot->SetSize(FVector2D(220.f, 20.f));
 		HintSlot->SetPosition(FVector2D(GTRoomSize * 0.5f - 110.f, GTRoomSize - 40.f));
+	}
+
+	// 撞地图边缘提示(房顶中央, 推向无相邻格的边被内核拒时短暂显示, 然后淡出)。
+	EdgeHintLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+	EdgeHintLabel->SetVisibility(ESlateVisibility::Collapsed);
+	EdgeHintLabel->SetFont(GT_UIStyle::Font(13));
+	EdgeHintLabel->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(255, 180, 150, 240))));
+	EdgeHintLabel->SetJustification(ETextJustify::Center);
+	EdgeHintLabel->SetText(FText::FromString(TEXT("已到地图边缘, 无法继续前进")));
+	if (UCanvasPanelSlot* EdgeSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(EdgeHintLabel)))
+	{
+		EdgeSlot->SetSize(FVector2D(260.f, 20.f));
+		EdgeSlot->SetPosition(FVector2D(GTRoomSize * 0.5f - 130.f, 22.f));
 	}
 }
 
@@ -712,12 +731,26 @@ FReply UGT_RoomViewWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FK
 	}
 	if (Key == EKeys::Q)
 	{
-		// Q = 使用消耗品/止血(对齐原版底栏; 默认应急止血贴, 满血/无库存由内核拒绝)。
+		// Q = 使用左下道具栏选中的道具(满血/无库存由内核拒绝)。
 		if (OnConsumableRequested.IsBound())
 		{
 			OnConsumableRequested.Execute();
 		}
 		return FReply::Handled();
+	}
+	// 数字键 1-9 = 选择左下道具栏对应槽位(配合 Q 使用)。
+	{
+		static const FKey NumberKeys[9] = {
+			EKeys::One, EKeys::Two, EKeys::Three, EKeys::Four, EKeys::Five,
+			EKeys::Six, EKeys::Seven, EKeys::Eight, EKeys::Nine };
+		for (int32 SlotIdx = 0; SlotIdx < 9; ++SlotIdx)
+		{
+			if (Key == NumberKeys[SlotIdx])
+			{
+				if (OnItemSlotRequested.IsBound()) { OnItemSlotRequested.Execute(SlotIdx + 1); }
+				return FReply::Handled();
+			}
+		}
 	}
 	return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
 }
@@ -889,6 +922,14 @@ void UGT_RoomViewWidget::UpdateChestBurstAnim(float DeltaTime)
 		const float Pulse = FMath::Abs(FMath::Sin(Frac * PI * 3.f));
 		MineFlash->SetRenderOpacity(0.5f * Frac * Pulse);
 		MineFlash->SetVisibility(MineFlashTimer > 0.f ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	}
+
+	// 撞地图边缘提示: 保持后线性淡出(最后约 0.4s 渐隐)。
+	if (EdgeHintTimer > 0.f && EdgeHintLabel)
+	{
+		EdgeHintTimer = FMath::Max(0.f, EdgeHintTimer - DeltaTime);
+		EdgeHintLabel->SetRenderOpacity(FMath::Clamp(EdgeHintTimer / 0.4f, 0.f, 1.f));
+		EdgeHintLabel->SetVisibility(EdgeHintTimer > 0.f ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 	}
 }
 
@@ -1225,6 +1266,36 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 
 	FVector2D NewPos = PlayerPos + MoveVelocity * InDeltaTime;
 
+	// 道具碰撞(中间宝箱 / 事件房 NPC): 方形空气墙(AABB) + 分轴阻挡 —— 撞墙即停, 横移自然贴墙滑过,
+	// 不再做切向 nudge(那是圆形墙顶死的补丁, 会让直撞时人物抽搐/横偏)。
+	// 只挡"越来越深入方块"的移动, 已重叠(如在门口生成于箱体内)时仍可移出, 避免卡死。
+	// 怪物会动+影响走位风筝, 不做碰撞。
+	{
+		struct FBoxObstacle { FVector2D Center; float Half; bool bActive; };
+		const FBoxObstacle Obstacles[] = {
+			{ FVector2D(0.5f, 0.47f), GTChestCollideHalf, ChestImage && ChestImage->GetVisibility() == ESlateVisibility::HitTestInvisible },
+			{ FVector2D(0.5f, 0.35f), GTEventCollideHalf, EventBodyImage && EventBodyImage->GetVisibility() == ESlateVisibility::HitTestInvisible },
+		};
+		for (const FBoxObstacle& Ob : Obstacles)
+		{
+			if (!Ob.bActive) { continue; }
+			// X 轴: 候选 X 落入方块 X 跨度 且 当前 Y 落入方块 Y 跨度 且 X 比原来更靠近中心 -> 挡住 X(贴 X 面停)。
+			if (FMath::Abs(NewPos.X - Ob.Center.X) < Ob.Half
+				&& FMath::Abs(PlayerPos.Y - Ob.Center.Y) < Ob.Half
+				&& FMath::Abs(NewPos.X - Ob.Center.X) < FMath::Abs(PlayerPos.X - Ob.Center.X))
+			{
+				NewPos.X = PlayerPos.X;
+			}
+			// Y 轴: 用已修正的 X 复判, 同理挡 Y(贴 Y 面停)。
+			if (FMath::Abs(NewPos.X - Ob.Center.X) < Ob.Half
+				&& FMath::Abs(NewPos.Y - Ob.Center.Y) < Ob.Half
+				&& FMath::Abs(NewPos.Y - Ob.Center.Y) < FMath::Abs(PlayerPos.Y - Ob.Center.Y))
+			{
+				NewPos.Y = PlayerPos.Y;
+			}
+		}
+	}
+
 	// 越界 + 对准门 -> 尝试过门(对齐 Lua isAlignedWithDoor)。
 	// 刚被内核拒绝过(地图边界等)的冷却内不重试, 落到下方撞墙逻辑: 人物贴墙原地踏步, 不来回闪现。
 	const float EdgeMargin = GTPlayerSize * 0.5f / GTRoomSize;
@@ -1267,6 +1338,17 @@ void UGT_RoomViewWidget::TryCrossDoor(int32 DirX, int32 DirY)
 		// 内核拒绝(地图边界/死亡等): 当作撞墙 — 人物留在门口, 进入重试冷却,
 		// 冷却内持续推门走撞墙逻辑(贴墙原地踏步)。状态没变, 不刷 HUD。
 		CrossRetryCooldown = 0.4f;
+		// 仅当该方向是地图边界(无相邻格)时弹"到边缘"提示; 死亡等其它拒绝不弹。
+		const UGT_RunContext* RC = GetRunContext();
+		if (RC && !RC->IsValidMapCoord(CurrentCellX + DirX, CurrentCellY + DirY))
+		{
+			EdgeHintTimer = GTEdgeHintDuration;
+			if (EdgeHintLabel)
+			{
+				EdgeHintLabel->SetRenderOpacity(1.f);
+				EdgeHintLabel->SetVisibility(ESlateVisibility::HitTestInvisible);
+			}
+		}
 		return;
 	}
 

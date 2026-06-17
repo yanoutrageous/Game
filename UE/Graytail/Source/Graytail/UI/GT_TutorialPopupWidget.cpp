@@ -1,6 +1,7 @@
 #include "UI/GT_TutorialPopupWidget.h"
 
 #include "UI/GT_TutorialContent.h"
+#include "UI/GT_UIStyle.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
@@ -69,12 +70,12 @@ void UGT_TutorialPopupWidget::BuildWidgetTree()
 	Card->SetContent(Column);
 
 	TitleText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	TitleText->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 18));
+	TitleText->SetFont(GT_UIStyle::Font(18));
 	TitleText->SetColorAndOpacity(FSlateColor(GTTutorialTitle));
 	Column->AddChildToVerticalBox(TitleText);
 
 	BodyText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	BodyText->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 13));
+	BodyText->SetFont(GT_UIStyle::Font(13));
 	BodyText->SetColorAndOpacity(FSlateColor(GTTutorialBody));
 	BodyText->SetAutoWrapText(true);
 	if (UVerticalBoxSlot* BodySlot = Column->AddChildToVerticalBox(BodyText))
@@ -83,7 +84,7 @@ void UGT_TutorialPopupWidget::BuildWidgetTree()
 	}
 
 	ConfirmHint = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	ConfirmHint->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 11));
+	ConfirmHint->SetFont(GT_UIStyle::Font(11));
 	ConfirmHint->SetColorAndOpacity(FSlateColor(GTTutorialHint));
 	if (UVerticalBoxSlot* HintSlot = Column->AddChildToVerticalBox(ConfirmHint))
 	{

@@ -7,6 +7,7 @@
 #include "Domains/Map/GT_MapTypes.h"
 #include "Domains/Inventory/GT_InventoryTypes.h"
 #include "Domains/Combat/GT_CombatRules.h"
+#include "Domains/Combat/GT_MonsterCatalog.h"
 #include "Domains/Events/GT_EventTypes.h"
 #include "Domains/Meta/GT_MetaTypes.h"
 #include "GT_RunContext.generated.h"
@@ -63,7 +64,11 @@ struct GRAYTAIL_API FGT_CombatRuntimeState
 	int32 EnemyPower = 0;
 
 	// Standard 实时战斗怪物状态(对齐 Combat.lua ensureMonsterState)。
-	// monsterMaxHP = 18 + power; monsterDamage = max(4, power/3)。BasicDebug 不用(走 DummyEnemyHp)。
+	// monsterMaxHP = HpBase + power; monsterDamage = max(4, power/3)。BasicDebug 不用(走 DummyEnemyHp)。
+	// EnemyType = 行为原型(决定移动/攻击模式/数值基底, 见 GT_MonsterCatalog)。
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat")
+	EGT_MonsterType EnemyType = EGT_MonsterType::Slime;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat")
 	int32 EnemyHp = 0;
 

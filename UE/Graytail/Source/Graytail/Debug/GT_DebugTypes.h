@@ -80,6 +80,9 @@ struct GRAYTAIL_API FGT_DebugRunSnapshot
 	int32 EnemyPower = 0;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	EGT_MonsterType EnemyType = EGT_MonsterType::Slime;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
 	FName LastCombatResultId = NAME_None;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")

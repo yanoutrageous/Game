@@ -555,6 +555,7 @@ bool UGT_DebugSubsystem::GetDebugRunSnapshot(FGT_DebugRunSnapshot& OutSnapshot) 
 		OutSnapshot.EnemyMaxHp = CombatState.EnemyMaxHp;
 		OutSnapshot.EnemyName = CombatState.EnemyName;
 		OutSnapshot.EnemyPower = CombatState.EnemyPower;
+		OutSnapshot.EnemyType = CombatState.EnemyType;
 		OutSnapshot.LastCombatResultId = CombatState.LastCombatResultId;
 	}
 

@@ -10,6 +10,7 @@
 #include "Core/GT_RunContext.h"
 #include "Core/GT_RunSubsystem.h"
 #include "Debug/GT_DebugSubsystem.h"
+#include "Domains/Combat/GT_MonsterCatalog.h"
 #include "Domains/Events/GT_EventRules.h"
 #include "Engine/GameInstance.h"
 #include "Engine/Texture2D.h"
@@ -239,6 +240,26 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 
 	// 周围雷险标牌已挪到 HUD 中央列(房间正下方), 不再占用房间画布。
 
+	// 近战预警圈(地面图层, 在怪/人之下): 对齐原版 DungeonRoom 的判定圈。
+	// 固定按史莱姆 AttackRadius=0.20 的直径建(=0.40*560=224px), 逐帧重定位 + 改透明度表达 warning/active。
+	EnemyAttackCircle = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+	EnemyAttackCircle->SetVisibility(ESlateVisibility::Collapsed);
+	{
+		const float Diameter = 0.20f * 2.f * GTRoomSize;
+		FSlateBrush CircleBrush;
+		CircleBrush.DrawAs = ESlateBrushDrawType::RoundedBox;
+		CircleBrush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+		CircleBrush.OutlineSettings.CornerRadii = FVector4(Diameter * 0.5f, Diameter * 0.5f, Diameter * 0.5f, Diameter * 0.5f);
+		CircleBrush.OutlineSettings.Color = FSlateColor(FLinearColor(FColor(255, 150, 40, 230)));
+		CircleBrush.OutlineSettings.Width = 3.f;
+		CircleBrush.TintColor = FSlateColor(FLinearColor(FColor(255, 120, 30)));
+		EnemyAttackCircle->SetBrush(CircleBrush);
+		if (UCanvasPanelSlot* CircleSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(EnemyAttackCircle)))
+		{
+			CircleSlot->SetSize(FVector2D(Diameter, Diameter));
+		}
+	}
+
 	// 怪物(史莱姆), 战斗激活时显示在房间偏左上(对齐 Lua monsterPosition 0.35/0.45)。
 	EnemyImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
 	EnemyImage->SetVisibility(ESlateVisibility::Collapsed);
@@ -364,6 +385,19 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 	if (UCanvasPanelSlot* PFillSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(PlayerHpBarFill)))
 	{
 		PFillSlot->SetSize(FVector2D(56.f, 7.f));
+	}
+
+	// 战斗提示(玩家未进入攻击射程时提示"靠近 F 攻击")。
+	CombatHintLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+	CombatHintLabel->SetVisibility(ESlateVisibility::Collapsed);
+	CombatHintLabel->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 13));
+	CombatHintLabel->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(255, 225, 150, 235))));
+	CombatHintLabel->SetJustification(ETextJustify::Center);
+	CombatHintLabel->SetText(FText::FromString(TEXT("靠近怪物 · F 攻击")));
+	if (UCanvasPanelSlot* HintSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(CombatHintLabel)))
+	{
+		HintSlot->SetSize(FVector2D(220.f, 20.f));
+		HintSlot->SetPosition(FVector2D(GTRoomSize * 0.5f - 110.f, GTRoomSize - 40.f));
 	}
 }
 
@@ -876,6 +910,11 @@ void UGT_RoomViewWidget::PlayMineFlash()
 
 bool UGT_RoomViewWidget::TryConsumePlayerAttack()
 {
+	// 攻击射程门控(对齐 Combat.lua playerAttackRange): 玩家必须在怪物攻击射程内才能挥砍。
+	if (FVector2D::Distance(PlayerPos, EnemyNormPos) > CurrentPlayerAttackRange)
+	{
+		return false;
+	}
 	// 挥砍冷却未到则拒绝(防 F 自动重复连发秒杀); 就绪则起冷却并放行。
 	if (PlayerAttackCooldownTimer > 0.f)
 	{
@@ -908,9 +947,10 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 
 		if (bIsCombatRoom && EnemyImage->GetVisibility() == ESlateVisibility::HitTestInvisible)
 		{
-			FVector2D EnemyNormalizedPos(0.35f, 0.45f);
-			float Distance = FVector2D::Distance(PlayerPos, EnemyNormalizedPos);
-			float MeleeRadius = 0.2f; // 近战触发半径
+			// 行为原型(决定移动/攻击模式/数值; 见 GT_MonsterCatalog)。
+			const FGT_MonsterArchetype& Arch = GT_MonsterCatalog::GetArchetype(Snapshot.EnemyType);
+			CurrentPlayerAttackRange = Arch.PlayerAttackRange;
+			CombatAnimTime += InDeltaTime;
 
 			// 玩家挥砍冷却 / 受击无敌帧逐帧倒计时(表现层门控, 对齐 Combat.lua)。
 			if (PlayerAttackCooldownTimer > 0.f) PlayerAttackCooldownTimer = FMath::Max(0.f, PlayerAttackCooldownTimer - InDeltaTime);
@@ -931,116 +971,163 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 				}
 			};
 
-			// 状态 1：冷却倒计时与攻击抉择
-			// 只有在没发射子弹，且没在瞄准时，才进行冷却和下一轮攻击的判定
-			if (!bProjectileActive && EnemyAimTimer <= 0.f)
+			// 移动: 追击型朝玩家逼近, 进攻击圈(略内)即停 -> 形成走位风筝。
+			float Distance = FVector2D::Distance(PlayerPos, EnemyNormPos);
+			if (Arch.MovePattern == EGT_MonsterMovePattern::ChasePlayer)
 			{
-				if (EnemyAttackCooldownTimer > 0.f)
+				const float StopDist = Arch.AttackRadius * 0.85f;
+				if (Distance > StopDist)
 				{
-					EnemyAttackCooldownTimer -= InDeltaTime;
+					const FVector2D Dir = (PlayerPos - EnemyNormPos).GetSafeNormal();
+					EnemyNormPos += Dir * Arch.MoveSpeed * InDeltaTime;
+					EnemyNormPos.X = FMath::Clamp(EnemyNormPos.X, 0.08f, 0.92f);
+					EnemyNormPos.Y = FMath::Clamp(EnemyNormPos.Y, 0.08f, 0.92f);
+					Distance = FVector2D::Distance(PlayerPos, EnemyNormPos);
 				}
-				else
+			}
+			bPlayerInAttackRange = Distance <= CurrentPlayerAttackRange;
+
+			if (Arch.AttackPattern == EGT_MonsterAttackPattern::MeleeCircle)
+			{
+				// 近战预警圈相位机(对齐原版 DungeonRoom): idle -> warning(脉动圈) -> active(填充判定, 圈内命中) -> cooldown。
+				EnemyMeleePhaseTimer -= InDeltaTime;
+				if (EnemyMeleePhaseTimer <= 0.f)
 				{
-					// 冷却完毕！根据距离决定用哪种攻击
-					if (Distance <= MeleeRadius)
+					switch (EnemyMeleePhase)
 					{
-						// 【近战攻击】直接触发
-						EnemyAttackCooldownTimer = 2.0f; // 重置冷却
-						EnemyShakeTimer = 0.3f;          // 触发近战冲撞动画
-						TryApplyMonsterHit();            // 近战命中: 真扣血(无敌帧门控)
+					case 0: EnemyMeleePhase = 1; EnemyMeleePhaseTimer = Arch.WarningDuration; bEnemyMeleeHitResolved = false; break; // idle->warning
+					case 1: // warning->active: 圈内判定一次命中
+						EnemyMeleePhase = 2; EnemyMeleePhaseTimer = Arch.ActiveDuration;
+						EnemyShakeTimer = 0.3f;
+						if (!bEnemyMeleeHitResolved && Distance <= Arch.AttackRadius) { TryApplyMonsterHit(); }
+						bEnemyMeleeHitResolved = true;
+						break;
+					case 2: EnemyMeleePhase = 3; EnemyMeleePhaseTimer = Arch.CooldownDuration; break; // active->cooldown
+					default: EnemyMeleePhase = 0; EnemyMeleePhaseTimer = Arch.IdleDuration; break;     // cooldown->idle
+					}
+				}
+
+				// 预警圈表现: warning=脉动橙圈(低透明), active=亮填充。
+				if (EnemyAttackCircle)
+				{
+					const bool bShowCircle = (EnemyMeleePhase == 1 || EnemyMeleePhase == 2);
+					EnemyAttackCircle->SetVisibility(bShowCircle ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+					if (bShowCircle)
+					{
+						const float Diameter = Arch.AttackRadius * 2.f * GTRoomSize;
+						if (UCanvasPanelSlot* CircleSlot = Cast<UCanvasPanelSlot>(EnemyAttackCircle->Slot))
+						{
+							CircleSlot->SetPosition(FVector2D(EnemyNormPos.X * GTRoomSize - Diameter * 0.5f, EnemyNormPos.Y * GTRoomSize - Diameter * 0.5f));
+						}
+						const float Pulse = (FMath::Sin(CombatAnimTime * 11.f) + 1.f) * 0.5f;
+						const float Alpha = (EnemyMeleePhase == 2) ? 0.82f : (0.28f + 0.18f * Pulse);
+						EnemyAttackCircle->SetColorAndOpacity(FLinearColor(1.f, 1.f, 1.f, Alpha));
+					}
+				}
+			}
+			else // RangedProjectile: 红线瞄准 -> 飞弹(PR#9 远程, 留给未来远程怪类型)。
+			{
+				if (!bProjectileActive && EnemyAimTimer <= 0.f)
+				{
+					if (EnemyAttackCooldownTimer > 0.f)
+					{
+						EnemyAttackCooldownTimer -= InDeltaTime;
 					}
 					else
 					{
-						// 【远程攻击】进入瞄准状态
-						EnemyAimTimer = 1.0f; // 出现红线，瞄准持续 1 秒
+						EnemyAimTimer = 1.0f;
 						EnemyWarningLine->SetVisibility(ESlateVisibility::HitTestInvisible);
+					}
+				}
+
+				if (EnemyAimTimer > 0.f)
+				{
+					EnemyAimTimer -= InDeltaTime;
+					AimDirection = (PlayerPos - EnemyNormPos).GetSafeNormal();
+					if (UCanvasPanelSlot* LineSlot = Cast<UCanvasPanelSlot>(EnemyWarningLine->Slot))
+					{
+						LineSlot->SetPosition(FVector2D(EnemyNormPos.X * GTRoomSize, EnemyNormPos.Y * GTRoomSize) - FVector2D(0.f, 2.f));
+					}
+					float AngleDegrees = FMath::RadiansToDegrees(FMath::Atan2(AimDirection.Y, AimDirection.X));
+					EnemyWarningLine->SetRenderTransform(FWidgetTransform(FVector2D::ZeroVector, FVector2D(1.f, 1.f), FVector2D::ZeroVector, AngleDegrees));
+					if (EnemyAimTimer <= 0.f)
+					{
+						EnemyWarningLine->SetVisibility(ESlateVisibility::Collapsed);
+						bProjectileActive = true;
+						ProjectilePos = EnemyNormPos;
+						EnemyProjectileImage->SetVisibility(ESlateVisibility::HitTestInvisible);
+						EnemyShakeTimer = 0.3f;
+						EnemyAttackCooldownTimer = 2.0f;
+					}
+				}
+
+				if (bProjectileActive)
+				{
+					ProjectilePos += AimDirection * ProjectileSpeed * InDeltaTime;
+					if (UCanvasPanelSlot* ProjSlot = Cast<UCanvasPanelSlot>(EnemyProjectileImage->Slot))
+					{
+						ProjSlot->SetPosition(FVector2D(ProjectilePos.X * GTRoomSize - 8.f, ProjectilePos.Y * GTRoomSize - 8.f));
+					}
+					if (FVector2D::Distance(ProjectilePos, PlayerPos) < 0.06f)
+					{
+						bProjectileActive = false;
+						EnemyProjectileImage->SetVisibility(ESlateVisibility::Collapsed);
+						TryApplyMonsterHit();
+					}
+					else if (ProjectilePos.X < 0.f || ProjectilePos.X > 1.f || ProjectilePos.Y < 0.f || ProjectilePos.Y > 1.f)
+					{
+						bProjectileActive = false;
+						EnemyProjectileImage->SetVisibility(ESlateVisibility::Collapsed);
 					}
 				}
 			}
 
-			// 状态 2：远程预警瞄准中
-			if (EnemyAimTimer > 0.f)
+			// 怪物图像: 跟随 EnemyNormPos(逐帧移动)+ 攻击抖动偏移。
 			{
-				EnemyAimTimer -= InDeltaTime;
-
-				// 锁定玩家当前方向并更新红线
-				AimDirection = (PlayerPos - EnemyNormalizedPos).GetSafeNormal();
-				if (UCanvasPanelSlot* LineSlot = Cast<UCanvasPanelSlot>(EnemyWarningLine->Slot))
+				const FVector2D BasePx(EnemyNormPos.X * GTRoomSize - 40.f, EnemyNormPos.Y * GTRoomSize - 40.f);
+				FVector2D Offset = FVector2D::ZeroVector;
+				if (EnemyShakeTimer > 0.f)
 				{
-					LineSlot->SetPosition(FVector2D(EnemyNormalizedPos.X * 560.f, EnemyNormalizedPos.Y * 560.f) - FVector2D(0.f, 2.f));
+					EnemyShakeTimer -= InDeltaTime;
+					Offset.X = FMath::Sin(EnemyShakeTimer * 60.f) * 8.f;
 				}
-				float AngleDegrees = FMath::RadiansToDegrees(FMath::Atan2(AimDirection.Y, AimDirection.X));
-				EnemyWarningLine->SetRenderTransform(FWidgetTransform(FVector2D::ZeroVector, FVector2D(1.f, 1.f), FVector2D::ZeroVector, AngleDegrees));
-
-				// 瞄准结束 -> 开火
-				if (EnemyAimTimer <= 0.f)
-				{
-					EnemyWarningLine->SetVisibility(ESlateVisibility::Collapsed); // 隐藏红线
-					bProjectileActive = true;                                     // 激活子弹
-					ProjectilePos = EnemyNormalizedPos;                           // 子弹起点
-					EnemyProjectileImage->SetVisibility(ESlateVisibility::HitTestInvisible);
-
-					EnemyShakeTimer = 0.3f;          // 触发开火后坐力动画
-					EnemyAttackCooldownTimer = 2.0f; // 重置下一轮攻击间隔
-					UE_LOG(LogTemp, Warning, TEXT("怪物开火！"));
-				}
-			}
-
-			// 状态 3：子弹飞行与碰撞检测
-			if (bProjectileActive)
-			{
-				ProjectilePos += AimDirection * ProjectileSpeed * InDeltaTime;
-
-				if (UCanvasPanelSlot* ProjSlot = Cast<UCanvasPanelSlot>(EnemyProjectileImage->Slot))
-				{
-					ProjSlot->SetPosition(FVector2D(ProjectilePos.X * 560.f - 8.f, ProjectilePos.Y * 560.f - 8.f));
-				}
-
-				if (FVector2D::Distance(ProjectilePos, PlayerPos) < 0.06f)
-				{
-					bProjectileActive = false;
-					EnemyProjectileImage->SetVisibility(ESlateVisibility::Collapsed);
-					TryApplyMonsterHit();            // 子弹命中: 真扣血(无敌帧门控)
-				}
-				else if (ProjectilePos.X < 0.f || ProjectilePos.X > 1.f || ProjectilePos.Y < 0.f || ProjectilePos.Y > 1.f)
-				{
-					bProjectileActive = false;
-					EnemyProjectileImage->SetVisibility(ESlateVisibility::Collapsed);
-				}
-			}
-
-			// 状态 4：通用的抖动动画 (近战冲撞 / 远程后坐力 共享此表现)
-			if (EnemyShakeTimer > 0.f)
-			{
-				EnemyShakeTimer -= InDeltaTime;
-				float ShakeOffset = FMath::Sin(EnemyShakeTimer * 60.f) * 8.f;
 				if (UCanvasPanelSlot* EnemySlot = Cast<UCanvasPanelSlot>(EnemyImage->Slot))
 				{
-					EnemySlot->SetPosition(EnemyBasePos + FVector2D(ShakeOffset, 0.f));
-				}
-				if (EnemyShakeTimer <= 0.f)
-				{
-					if (UCanvasPanelSlot* EnemySlot = Cast<UCanvasPanelSlot>(EnemyImage->Slot))
-						EnemySlot->SetPosition(EnemyBasePos);
+					EnemySlot->SetPosition(BasePx + Offset);
 				}
 			}
 
-			// 怪物血条 + 名牌(头顶固定)。
+			// 攻击射程提示: 未进入射程时提示靠近(怪物会追击, 射程很快闭合)。
+			if (CombatHintLabel)
+			{
+				CombatHintLabel->SetVisibility(bPlayerInAttackRange ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
+			}
+
+			// 怪物血条 + 名牌(头顶跟随移动)。
 			const float EnemyRatio = Snapshot.EnemyMaxHp > 0
 				? FMath::Clamp(static_cast<float>(Snapshot.EnemyHp) / Snapshot.EnemyMaxHp, 0.f, 1.f)
 				: 0.f;
-			if (EnemyHpBarBg) EnemyHpBarBg->SetVisibility(ESlateVisibility::HitTestInvisible);
+			const FVector2D EnemyCenterPx = EnemyNormPos * GTRoomSize;
+			const FVector2D EnemyBarTopLeft(EnemyCenterPx.X - 36.f, EnemyCenterPx.Y - 40.f - 16.f);
+			if (EnemyHpBarBg)
+			{
+				EnemyHpBarBg->SetVisibility(ESlateVisibility::HitTestInvisible);
+				if (UCanvasPanelSlot* S = Cast<UCanvasPanelSlot>(EnemyHpBarBg->Slot)) S->SetPosition(EnemyBarTopLeft);
+			}
 			if (EnemyHpBarFill)
 			{
 				EnemyHpBarFill->SetVisibility(ESlateVisibility::HitTestInvisible);
 				if (UCanvasPanelSlot* FillSlot = Cast<UCanvasPanelSlot>(EnemyHpBarFill->Slot))
 				{
+					FillSlot->SetPosition(EnemyBarTopLeft);
 					FillSlot->SetSize(FVector2D(72.f * EnemyRatio, 8.f));
 				}
 			}
 			if (EnemyNameLabel)
 			{
 				EnemyNameLabel->SetVisibility(ESlateVisibility::HitTestInvisible);
+				if (UCanvasPanelSlot* S = Cast<UCanvasPanelSlot>(EnemyNameLabel->Slot))
+					S->SetPosition(FVector2D(EnemyCenterPx.X - 80.f, EnemyCenterPx.Y - 40.f - 34.f));
 				EnemyNameLabel->SetText(FText::FromString(Snapshot.EnemyName.IsEmpty()
 					? FString::Printf(TEXT("敌人  战力%d"), Snapshot.EnemyPower)
 					: FString::Printf(TEXT("%s  战力%d"), *Snapshot.EnemyName, Snapshot.EnemyPower)));
@@ -1069,15 +1156,22 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 		}
 		else
 		{
-			// 清理逻辑
+			// 清理 + 重置(下一场战斗从头开始)。
 			EnemyAttackCooldownTimer = 0.f;
 			EnemyAimTimer = 0.f;
 			EnemyShakeTimer = 0.f;
 			bProjectileActive = false;
 			PlayerAttackCooldownTimer = 0.f;
 			PlayerIFrameTimer = 0.f;
+			EnemyNormPos = FVector2D(0.35f, 0.45f);
+			EnemyMeleePhase = 0;
+			EnemyMeleePhaseTimer = 0.f;
+			bEnemyMeleeHitResolved = false;
+			bPlayerInAttackRange = false;
 			if (EnemyWarningLine) EnemyWarningLine->SetVisibility(ESlateVisibility::Collapsed);
 			if (EnemyProjectileImage) EnemyProjectileImage->SetVisibility(ESlateVisibility::Collapsed);
+			if (EnemyAttackCircle) EnemyAttackCircle->SetVisibility(ESlateVisibility::Collapsed);
+			if (CombatHintLabel) CombatHintLabel->SetVisibility(ESlateVisibility::Collapsed);
 			if (EnemyHpBarBg) EnemyHpBarBg->SetVisibility(ESlateVisibility::Collapsed);
 			if (EnemyHpBarFill) EnemyHpBarFill->SetVisibility(ESlateVisibility::Collapsed);
 			if (EnemyNameLabel) EnemyNameLabel->SetVisibility(ESlateVisibility::Collapsed);

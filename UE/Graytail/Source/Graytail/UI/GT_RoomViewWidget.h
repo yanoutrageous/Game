@@ -106,12 +106,14 @@ private:
 	UPROPERTY(Transient) UTextBlock* BurstPartsText = nullptr;
 	UPROPERTY(Transient) UImage* EnemyImage = nullptr;
 	UPROPERTY(Transient) UImage* PlayerImage = nullptr;
-	// 实时战斗血条(怪物/玩家)+ 怪物名牌。
+	// 实时战斗血条(怪物/玩家)+ 怪物名牌 + 近战预警圈 + 攻击射程提示。
 	UPROPERTY(Transient) UImage* EnemyHpBarBg = nullptr;
 	UPROPERTY(Transient) UImage* EnemyHpBarFill = nullptr;
 	UPROPERTY(Transient) UTextBlock* EnemyNameLabel = nullptr;
 	UPROPERTY(Transient) UImage* PlayerHpBarBg = nullptr;
 	UPROPERTY(Transient) UImage* PlayerHpBarFill = nullptr;
+	UPROPERTY(Transient) UImage* EnemyAttackCircle = nullptr;
+	UPROPERTY(Transient) UTextBlock* CombatHintLabel = nullptr;
 
 	// 贴图资产缓存(防 GC): key = /Game 包路径。
 	UPROPERTY(Transient) TMap<FString, UTexture2D*> TextureCache;
@@ -160,5 +162,14 @@ private:
 	// 玩家实时战斗计时(表现层门控, 对齐 Combat.lua): 挥砍冷却 + 受击无敌帧。
 	float PlayerAttackCooldownTimer = 0.f;
 	float PlayerIFrameTimer = 0.f;
+
+	// 怪物实时战斗状态(表现层): 归一化位置(追击移动)、近战相位机、攻击射程缓存。
+	FVector2D EnemyNormPos = FVector2D(0.35f, 0.45f);
+	int32 EnemyMeleePhase = 0;          // 0 idle / 1 warning / 2 active / 3 cooldown
+	float EnemyMeleePhaseTimer = 0.f;
+	bool bEnemyMeleeHitResolved = false;
+	bool bPlayerInAttackRange = false;
+	float CurrentPlayerAttackRange = 0.21f;  // 当前怪原型的玩家挥砍射程(逐帧从原型表刷新)
+	float CombatAnimTime = 0.f;              // 战斗内累计时间(预警圈脉动用)
 
 };

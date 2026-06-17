@@ -341,18 +341,22 @@ bool UGT_RunContext::StartDummyCombat(int32 X, int32 Y, FName RoomContentId, FNa
 	CombatRuntimeState.bStandardEnemy = false;
 	CombatRuntimeState.EnemyName.Reset();
 	CombatRuntimeState.EnemyPower = 0;
+	CombatRuntimeState.EnemyType = EGT_MonsterType::Slime;
 	CombatRuntimeState.EnemyHp = 0;
 	CombatRuntimeState.EnemyMaxHp = 0;
 	CombatRuntimeState.EnemyDamage = 0;
 
 	// Standard 模式: 用确定性规则生成真怪(对齐 Combat.TrySpawnEnemy + ensureMonsterState), 替换 1 血 dummy。
+	// 行为原型由 GT_MonsterCatalog 选型(决定 HP 基底/移动/攻击模式); 战力缩放沿用共享公式。
 	if (MapMode == EGT_MapMode::Standard)
 	{
 		int32 AdjacentMineCount = 0;
 		TruthMap.CountAdjacentMines8(X, Y, AdjacentMineCount);
 		CombatRuntimeState.bStandardEnemy = true;
 		GT_CombatRules::MakeEnemyForCell(Seed, X, Y, AdjacentMineCount, CombatRuntimeState.EnemyName, CombatRuntimeState.EnemyPower);
-		CombatRuntimeState.EnemyMaxHp = GT_CombatRules::MonsterMaxHpForPower(CombatRuntimeState.EnemyPower);
+		CombatRuntimeState.EnemyType = GT_MonsterCatalog::PickTypeForCell(Seed, X, Y, AdjacentMineCount);
+		const FGT_MonsterArchetype& Archetype = GT_MonsterCatalog::GetArchetype(CombatRuntimeState.EnemyType);
+		CombatRuntimeState.EnemyMaxHp = Archetype.HpBase + FMath::Max(0, CombatRuntimeState.EnemyPower);
 		CombatRuntimeState.EnemyHp = CombatRuntimeState.EnemyMaxHp;
 		CombatRuntimeState.EnemyDamage = GT_CombatRules::MonsterDamageForPower(CombatRuntimeState.EnemyPower);
 		// DummyEnemyHp 镜像真血量, 供仍读旧字段的快照/UI 平滑过渡。

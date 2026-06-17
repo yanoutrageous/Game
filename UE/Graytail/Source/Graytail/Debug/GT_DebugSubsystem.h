@@ -58,6 +58,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
 	bool DebugAttack(FGT_DebugRunSnapshot& OutSnapshot);
 
+	// 怪物对玩家落地一次攻击(Standard 实时战斗, 由 RoomView 在命中时机调用)。
+	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
+	bool DebugMonsterHit(FGT_DebugRunSnapshot& OutSnapshot);
+
 	// 使用玩家背包里的消耗品(默认应急止血贴)。经命令管线走真规则。
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
 	bool DebugUseConsumable(FName ItemId, FGT_DebugRunSnapshot& OutSnapshot);

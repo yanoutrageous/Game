@@ -27,6 +27,7 @@ void UGT_RunContext::InitializeRunStandard(int32 InSeed, EGT_Difficulty Difficul
 {
 	// 新路径: 按难度档位生成 Standard 随机地图。
 	InitializeFromSpec(UGT_MapGenerator::MakeSpecForDifficulty(Difficulty, InSeed));
+	CurrentDifficulty = Difficulty;   // 记录难度供满压惩罚分档(InitializeFromSpec 不知难度, 故在此设)。
 }
 
 void UGT_RunContext::InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec)
@@ -340,14 +341,26 @@ bool UGT_RunContext::StartDummyCombat(int32 X, int32 Y, FName RoomContentId, FNa
 	CombatRuntimeState.bStandardEnemy = false;
 	CombatRuntimeState.EnemyName.Reset();
 	CombatRuntimeState.EnemyPower = 0;
+	CombatRuntimeState.EnemyType = EGT_MonsterType::Slime;
+	CombatRuntimeState.EnemyHp = 0;
+	CombatRuntimeState.EnemyMaxHp = 0;
+	CombatRuntimeState.EnemyDamage = 0;
 
-	// Standard 模式: 用确定性规则生成真怪(对齐 Combat.TrySpawnEnemy), 替换 1 血 dummy。
+	// Standard 模式: 用确定性规则生成真怪(对齐 Combat.TrySpawnEnemy + ensureMonsterState), 替换 1 血 dummy。
+	// 行为原型由 GT_MonsterCatalog 选型(决定 HP 基底/移动/攻击模式); 战力缩放沿用共享公式。
 	if (MapMode == EGT_MapMode::Standard)
 	{
 		int32 AdjacentMineCount = 0;
 		TruthMap.CountAdjacentMines8(X, Y, AdjacentMineCount);
 		CombatRuntimeState.bStandardEnemy = true;
 		GT_CombatRules::MakeEnemyForCell(Seed, X, Y, AdjacentMineCount, CombatRuntimeState.EnemyName, CombatRuntimeState.EnemyPower);
+		CombatRuntimeState.EnemyType = GT_MonsterCatalog::PickTypeForCell(Seed, X, Y, AdjacentMineCount);
+		const FGT_MonsterArchetype& Archetype = GT_MonsterCatalog::GetArchetype(CombatRuntimeState.EnemyType);
+		CombatRuntimeState.EnemyMaxHp = Archetype.HpBase + FMath::Max(0, CombatRuntimeState.EnemyPower);
+		CombatRuntimeState.EnemyHp = CombatRuntimeState.EnemyMaxHp;
+		CombatRuntimeState.EnemyDamage = GT_CombatRules::MonsterDamageForPower(CombatRuntimeState.EnemyPower);
+		// DummyEnemyHp 镜像真血量, 供仍读旧字段的快照/UI 平滑过渡。
+		CombatRuntimeState.DummyEnemyHp = CombatRuntimeState.EnemyHp;
 	}
 	return true;
 }
@@ -360,28 +373,34 @@ bool UGT_RunContext::AttackDummyCombat(FGT_CombatRuntimeState& OutState)
 		return false;
 	}
 
-	// Standard 模式: 一击整场结算(对齐 Combat.FightEnemy):
-	// 战力 >= 怪则无伤胜; 不够则扣差值血, 怪同样死。存活才拿奖励(金币+战力成长)。
+	// Standard 模式: 实时战斗一次挥砍(对齐 Combat.PlayerAttackEnemy):
+	// 扣怪 EnemyHp = Power, 怪未死则战斗继续; 血尽才结算(标记已击杀 + 金币 + 战力成长)。
+	// 玩家反伤不在此处 —— 真伤害来自怪物实时攻击(MonsterHitPlayer)。
 	if (CombatRuntimeState.bStandardEnemy)
 	{
-		const int32 Damage = FMath::Max(0, CombatRuntimeState.EnemyPower - PlayerCombatState.Power);
-		PlayerCombatState.ApplyDamage(Damage);
+		const int32 Damage = FMath::Max(1, PlayerCombatState.Power);
+		CombatRuntimeState.EnemyHp = FMath::Max(0, CombatRuntimeState.EnemyHp - Damage);
+		CombatRuntimeState.DummyEnemyHp = CombatRuntimeState.EnemyHp;   // 镜像供旧读者
 
-		CombatRuntimeState.DummyEnemyHp = 0;
+		if (CombatRuntimeState.EnemyHp > 0)
+		{
+			// 仅一次命中, 怪还活着: 战斗保持激活, 不结算。
+			OutState = CombatRuntimeState;
+			return true;
+		}
+
+		// 击杀: 结算战斗 + 奖励。
 		CombatRuntimeState.bCombatActive = false;
 		CombatRuntimeState.bCombatResolved = true;
 		CombatRuntimeState.LastCombatResultId = GTCombatResult_Success;
 		DefeatedCombatRooms.AddUnique(FIntPoint(CombatRuntimeState.CombatX, CombatRuntimeState.CombatY));
 
-		if (PlayerCombatState.IsAlive())
+		RunInventory.AddPendingGold(GT_CombatRules::KillRewardGold(CombatRuntimeState.EnemyPower));
+		const int32 PowerGain = FMath::Min(GT_CombatRules::PowerGainPerKill, GT_CombatRules::PowerGainCap - PlayerCombatState.MonsterPowerBonus);
+		if (PowerGain > 0)
 		{
-			RunInventory.AddPendingGold(GT_CombatRules::KillRewardGold(CombatRuntimeState.EnemyPower));
-			const int32 PowerGain = FMath::Min(GT_CombatRules::PowerGainPerKill, GT_CombatRules::PowerGainCap - PlayerCombatState.MonsterPowerBonus);
-			if (PowerGain > 0)
-			{
-				PlayerCombatState.Power += PowerGain;
-				PlayerCombatState.MonsterPowerBonus += PowerGain;
-			}
+			PlayerCombatState.Power += PowerGain;
+			PlayerCombatState.MonsterPowerBonus += PowerGain;
 		}
 
 		OutState = CombatRuntimeState;
@@ -397,6 +416,27 @@ bool UGT_RunContext::AttackDummyCombat(FGT_CombatRuntimeState& OutState)
 	}
 
 	OutState = CombatRuntimeState;
+	return true;
+}
+
+bool UGT_RunContext::MonsterHitPlayer(int32& OutDamage, bool& bOutDead)
+{
+	OutDamage = 0;
+	bOutDead = false;
+
+	// 仅 Standard 实时战斗、战斗激活、怪还活着时生效(无敌帧由表现层门控)。
+	if (!IsRunActive()
+		|| MapMode != EGT_MapMode::Standard
+		|| !CombatRuntimeState.bStandardEnemy
+		|| !CombatRuntimeState.bCombatActive
+		|| CombatRuntimeState.EnemyHp <= 0)
+	{
+		return false;
+	}
+
+	const int32 Damage = FMath::Max(0, CombatRuntimeState.EnemyDamage);
+	OutDamage = PlayerCombatState.ApplyDamage(Damage);
+	bOutDead = !PlayerCombatState.IsAlive();
 	return true;
 }
 
@@ -568,13 +608,52 @@ UGT_RunContext::FProtocolPressureResult UGT_RunContext::AddProtocolPressure(int3
 	Result.Pressure = ProtocolState.Pressure;
 	Result.bLevelChanged = ProtocolState.bLevelChanged;
 
-	// 满压强制败北(对齐协议 1 时的"撤离是建议, 不撤离是选择"): 压力到顶 = 信号中断。
-	if (ProtocolState.Pressure >= ProtocolState.MaxPressure)
+	// 满压处理:
+	//  - BasicDebug 测试夹具: 保持"满压即信号中断败北"老行为(护 163, 永不改)。
+	//  - Standard: 不再直接败北, 改由"满压后每进新房按难度扣血"惩罚(见 ApplyMaxPressureRoomPenalty)。
+	if (ProtocolState.Pressure >= ProtocolState.MaxPressure && MapMode == EGT_MapMode::BasicDebug)
 	{
 		Result.bForcedFail = MarkRunFailed(FName(TEXT("Protocol")));
 	}
 
 	return Result;
+}
+
+namespace
+{
+	// 满压后每进一个新房的扣血(难度分档): 简单档 2 / 中档 3 / 困难档 5。
+	int32 MaxPressureRoomDamageForDifficulty(EGT_Difficulty Difficulty)
+	{
+		switch (Difficulty)
+		{
+		case EGT_Difficulty::Tutorial:
+		case EGT_Difficulty::Easy:      return 2;
+		case EGT_Difficulty::Standard:
+		case EGT_Difficulty::Veteran:   return 3;
+		case EGT_Difficulty::Hard:
+		case EGT_Difficulty::Elite:
+		case EGT_Difficulty::Nightmare: return 5;
+		default:                        return 3;
+		}
+	}
+}
+
+bool UGT_RunContext::ApplyMaxPressureRoomPenalty(int32& OutDamage, bool& bOutDead)
+{
+	OutDamage = 0;
+	bOutDead = false;
+	// 仅 Standard、运行中、且压力已满时生效(BasicDebug 由 AddProtocolPressure 的 insta-fail 处理)。
+	if (MapMode != EGT_MapMode::Standard || !IsRunActive())
+	{
+		return false;
+	}
+	if (ProtocolState.Pressure < ProtocolState.MaxPressure)
+	{
+		return false;
+	}
+	OutDamage = PlayerCombatState.ApplyDamage(MaxPressureRoomDamageForDifficulty(CurrentDifficulty));
+	bOutDead = !PlayerCombatState.IsAlive();
+	return OutDamage > 0;
 }
 
 const FGT_ProtocolState& UGT_RunContext::GetProtocolState() const

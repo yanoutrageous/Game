@@ -20,6 +20,7 @@ namespace
 	const FName GTDebugCommandType_ChooseEventOption(TEXT("ChooseEventOption"));
 	const FName GTDebugCommandType_ResolveCombat(TEXT("ResolveCombat"));
 	const FName GTDebugCommandType_Attack(TEXT("Attack"));
+	const FName GTDebugCommandType_MonsterHit(TEXT("MonsterHit"));
 	const FName GTDebugCommandType_UseConsumable(TEXT("UseConsumable"));
 	const FName GTDebugActorId_Player(TEXT("Player"));
 	const FName GTEventOption_DefaultContinue(TEXT("Event_DebugOption_Continue"));
@@ -453,6 +454,23 @@ bool UGT_DebugSubsystem::DebugAttack(FGT_DebugRunSnapshot& OutSnapshot)
 	return bAccepted;
 }
 
+bool UGT_DebugSubsystem::DebugMonsterHit(FGT_DebugRunSnapshot& OutSnapshot)
+{
+	// 怪物对玩家落地一次攻击(Standard 实时战斗)。无敌帧/命中时机由 RoomView 表现层判定后调入,
+	// 内核只在战斗激活、怪未死时扣血; 致死则判负。
+	int32 PlayerX = 0;
+	int32 PlayerY = 0;
+
+	const UGT_RunSubsystem* RunSubsystem = GetRunSubsystem();
+	const UGT_QueryFacade* QueryFacade = RunSubsystem ? RunSubsystem->GetQueryFacade() : nullptr;
+	if (QueryFacade)
+	{
+		QueryFacade->TryGetPlayerPosition(PlayerX, PlayerY);
+	}
+
+	return SubmitDebugCommand(GTDebugCommandType_MonsterHit, PlayerX, PlayerY, OutSnapshot);
+}
+
 bool UGT_DebugSubsystem::GetDebugRunSnapshot(FGT_DebugRunSnapshot& OutSnapshot) const
 {
 	OutSnapshot = FGT_DebugRunSnapshot();
@@ -533,7 +551,19 @@ bool UGT_DebugSubsystem::GetDebugRunSnapshot(FGT_DebugRunSnapshot& OutSnapshot) 
 		OutSnapshot.bCombatActive = CombatState.bCombatActive;
 		OutSnapshot.bCombatResolved = CombatState.bCombatResolved;
 		OutSnapshot.DummyEnemyHp = CombatState.DummyEnemyHp;
+		OutSnapshot.EnemyHp = CombatState.EnemyHp;
+		OutSnapshot.EnemyMaxHp = CombatState.EnemyMaxHp;
+		OutSnapshot.EnemyName = CombatState.EnemyName;
+		OutSnapshot.EnemyPower = CombatState.EnemyPower;
+		OutSnapshot.EnemyType = CombatState.EnemyType;
 		OutSnapshot.LastCombatResultId = CombatState.LastCombatResultId;
+	}
+
+	if (RunContext)
+	{
+		const FGT_PlayerCombatState& PlayerCombat = RunContext->GetPlayerCombatState();
+		OutSnapshot.PlayerHp = PlayerCombat.Hp;
+		OutSnapshot.PlayerMaxHp = PlayerCombat.MaxHp;
 	}
 
 	FGT_RunSummary RunSummary;
@@ -555,7 +585,7 @@ bool UGT_DebugSubsystem::GetDebugRunSnapshot(FGT_DebugRunSnapshot& OutSnapshot) 
 
 	OutSnapshot.EventCount = EventBus ? EventBus->GetEventCount() : 0;
 	OutSnapshot.Summary = FString::Printf(
-		TEXT("RunState=%d, Player=(%d,%d), Size=%dx%d, EventCount=%d, RoomBaseType=%d, RoomContentId=%s, RoomRuleId=%s, RoomContentName=%s, RoomRuleName=%s, AvailableEventOptions=%s, AvailableCombatResults=%s, CombatActive=%s, DummyEnemyHp=%d, CombatResolved=%s, LastCombatResult=%s, SummaryAvailable=%s, SummaryOutcome=%s, SummaryFinalPlayer=(%d,%d), SummaryTotalEventCount=%d, RoomTriggered=%s, RoomResolved=%s"),
+		TEXT("RunState=%d, Player=(%d,%d), Size=%dx%d, EventCount=%d, RoomBaseType=%d, RoomContentId=%s, RoomRuleId=%s, RoomContentName=%s, RoomRuleName=%s, AvailableEventOptions=%s, AvailableCombatResults=%s, CombatActive=%s, DummyEnemyHp=%d, EnemyHp=%d/%d, EnemyName=%s, PlayerHp=%d/%d, CombatResolved=%s, LastCombatResult=%s, SummaryAvailable=%s, SummaryOutcome=%s, SummaryFinalPlayer=(%d,%d), SummaryTotalEventCount=%d, RoomTriggered=%s, RoomResolved=%s"),
 		static_cast<int32>(OutSnapshot.RunState),
 		OutSnapshot.PlayerX,
 		OutSnapshot.PlayerY,
@@ -571,6 +601,11 @@ bool UGT_DebugSubsystem::GetDebugRunSnapshot(FGT_DebugRunSnapshot& OutSnapshot) 
 		OutSnapshot.CurrentRoomAvailableCombatResults.IsEmpty() ? TEXT("none") : *OutSnapshot.CurrentRoomAvailableCombatResults,
 		OutSnapshot.bCombatActive ? TEXT("true") : TEXT("false"),
 		OutSnapshot.DummyEnemyHp,
+		OutSnapshot.EnemyHp,
+		OutSnapshot.EnemyMaxHp,
+		OutSnapshot.EnemyName.IsEmpty() ? TEXT("none") : *OutSnapshot.EnemyName,
+		OutSnapshot.PlayerHp,
+		OutSnapshot.PlayerMaxHp,
 		OutSnapshot.bCombatResolved ? TEXT("true") : TEXT("false"),
 		*OutSnapshot.LastCombatResultId.ToString(),
 		OutSnapshot.bRunSummaryAvailable ? TEXT("true") : TEXT("false"),

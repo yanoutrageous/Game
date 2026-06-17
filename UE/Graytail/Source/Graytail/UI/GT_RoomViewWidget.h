@@ -44,8 +44,15 @@ public:
 	// 房间状态变化后(开局/外部移动)由 HUD 调用, 重读当前格并重绘。
 	void SyncToCurrentCell(bool bCenterPlayer);
 
+	// 玩家挥砍冷却闸门(对齐 Combat.lua playerAttackCooldown): 冷却到则起冷却并返回 true 放行攻击。
+	// HUD 的 F 攻击分支调用, 防 F 自动重复连发秒杀。
+	bool TryConsumePlayerAttack();
+
 	// WASD 过门移动成功后通知 HUD 刷新信息面板(不含房间视图自身)。
 	FSimpleDelegate OnRoomChanged;
+
+	// 实时战斗中玩家血量/战斗状态变化后, 通知 HUD 轻量刷新(血量/协议/失败界面, 不抢焦点)。
+	FSimpleDelegate OnCombatStateChanged;
 
 	// F 键搜索/开箱(对齐原版快捷键), 由 HUD 绑定到 OnSearch。
 	FSimpleDelegate OnSearchRequested;
@@ -99,12 +106,21 @@ private:
 	UPROPERTY(Transient) UTextBlock* BurstPartsText = nullptr;
 	UPROPERTY(Transient) UImage* EnemyImage = nullptr;
 	UPROPERTY(Transient) UImage* PlayerImage = nullptr;
+	// 实时战斗血条(怪物/玩家)+ 怪物名牌 + 近战预警圈 + 攻击射程提示。
+	UPROPERTY(Transient) UImage* EnemyHpBarBg = nullptr;
+	UPROPERTY(Transient) UImage* EnemyHpBarFill = nullptr;
+	UPROPERTY(Transient) UTextBlock* EnemyNameLabel = nullptr;
+	UPROPERTY(Transient) UImage* PlayerHpBarBg = nullptr;
+	UPROPERTY(Transient) UImage* PlayerHpBarFill = nullptr;
+	UPROPERTY(Transient) UImage* EnemyAttackCircle = nullptr;
+	UPROPERTY(Transient) UTextBlock* CombatHintLabel = nullptr;
 
 	// 贴图资产缓存(防 GC): key = /Game 包路径。
 	UPROPERTY(Transient) TMap<FString, UTexture2D*> TextureCache;
 
 	// 房间内归一化坐标(0-1), 对齐 Lua playerPos。
 	FVector2D PlayerPos = FVector2D(0.5, 0.5);
+	FVector2D MoveVelocity = FVector2D::ZeroVector;  // 方案B: 平滑后的移动速度(归一化/秒), 防瞬时开关感
 	FVector2D HeldInput = FVector2D::ZeroVector;
 	bool HeldKeys[4] = {};   // W A S D
 	float WalkAnimTime = 0.f;
@@ -127,6 +143,9 @@ private:
 	int32 CurrentCellX = -1;
 	int32 CurrentCellY = -1;
 
+	// 上一次已知的玩家血量(用于踩雷红闪门控: 仅本次真扣血才闪)。-1 = 未初始化。
+	int32 PrevPlayerHp = -1;
+
 	// --- 怪物混合攻击系统状态变量 ---
 	UPROPERTY(Transient) UImage* EnemyWarningLine = nullptr;
 	UPROPERTY(Transient) UImage* EnemyProjectileImage = nullptr;
@@ -140,5 +159,18 @@ private:
 	FVector2D AimDirection = FVector2D::ZeroVector;
 	FVector2D ProjectilePos = FVector2D::ZeroVector;
 	float ProjectileSpeed = 0.8f;
+
+	// 玩家实时战斗计时(表现层门控, 对齐 Combat.lua): 挥砍冷却 + 受击无敌帧。
+	float PlayerAttackCooldownTimer = 0.f;
+	float PlayerIFrameTimer = 0.f;
+
+	// 怪物实时战斗状态(表现层): 归一化位置(追击移动)、近战相位机、攻击射程缓存。
+	FVector2D EnemyNormPos = FVector2D(0.35f, 0.45f);
+	int32 EnemyMeleePhase = 0;          // 0 idle / 1 warning / 2 active / 3 cooldown
+	float EnemyMeleePhaseTimer = 0.f;
+	bool bEnemyMeleeHitResolved = false;
+	bool bPlayerInAttackRange = false;
+	float CurrentPlayerAttackRange = 0.21f;  // 当前怪原型的玩家挥砍射程(逐帧从原型表刷新)
+	float CombatAnimTime = 0.f;              // 战斗内累计时间(预警圈脉动用)
 
 };

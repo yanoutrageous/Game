@@ -60,6 +60,22 @@ namespace GT_CombatRules
 	constexpr int32 PowerGainPerKill = 1;   // Balance.monster.powerGain
 	constexpr int32 PowerGainCap = 5;       // Balance.monster.powerGainCap
 
+	// 实时战斗怪物数值(对齐 Combat.lua CONFIG / ensureMonsterState)。
+	constexpr int32 MonsterHpBase = 18;     // CONFIG.monsterHpBase, monsterMaxHP = base + power
+	constexpr int32 MonsterDamageMin = 4;   // CONFIG.monsterDamageMin, monsterDamage = max(min, power/3)
+
+	// 怪物最大血量(对齐 ensureMonsterState: monsterMaxHP = monsterHpBase + power)。
+	FORCEINLINE int32 MonsterMaxHpForPower(int32 EnemyPower)
+	{
+		return MonsterHpBase + FMath::Max(0, EnemyPower);
+	}
+
+	// 怪物单次攻击伤害(对齐 ensureMonsterState: max(monsterDamageMin, floor(power/3)))。
+	FORCEINLINE int32 MonsterDamageForPower(int32 EnemyPower)
+	{
+		return FMath::Max(MonsterDamageMin, FMath::Max(0, EnemyPower) / 3);
+	}
+
 	// 确定性生成怪物(对齐 Combat.TrySpawnEnemy): 战力由 seed+坐标哈希决定, 周围雷数 ×2 加成。
 	GRAYTAIL_API void MakeEnemyForCell(int32 Seed, int32 X, int32 Y, int32 AdjacentMineCount, FString& OutName, int32& OutPower);
 

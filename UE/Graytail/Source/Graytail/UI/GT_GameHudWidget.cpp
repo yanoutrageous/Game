@@ -129,6 +129,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	if (RoomView)
 	{
 		RoomView->OnRoomChanged.BindUObject(this, &UGT_GameHudWidget::HandleRoomChanged);
+		RoomView->OnCombatStateChanged.BindUObject(this, &UGT_GameHudWidget::RefreshPanels);
 		RoomView->OnSearchRequested.BindUObject(this, &UGT_GameHudWidget::OnSearch);
 		RoomView->OnMapRequested.BindUObject(this, &UGT_GameHudWidget::OpenMapOverlay);
 		RoomView->OnExtractRequested.BindUObject(this, &UGT_GameHudWidget::OnExtract);
@@ -1079,6 +1080,11 @@ void UGT_GameHudWidget::OnSearch()
 	FGT_DebugRunSnapshot Probe;
 	if (Debug->GetDebugRunSnapshot(Probe) && Probe.bCombatActive && Probe.CurrentRoomBaseType == EGT_RoomBaseType::Combat)
 	{
+		// 实时战斗: F = 挥砍, 受挥砍冷却门控(多刀削怪血, 不再一击必杀)。冷却未到则忽略本次。
+		if (RoomView && !RoomView->TryConsumePlayerAttack())
+		{
+			return;
+		}
 		FGT_DebugRunSnapshot AttackSnapshot;
 		Debug->DebugAttack(AttackSnapshot);
 		RefreshAll();

@@ -634,6 +634,31 @@ namespace
 		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.Attack %s: %s"), bAccepted ? TEXT("accepted") : TEXT("rejected"), *Snapshot.Summary);
 	}
 
+	void HandleMonsterHit(const TArray<FString>& Args, UWorld* World)
+	{
+		FString FailureReason;
+		UGT_DebugSubsystem* DebugSubsystem = FindDebugSubsystem(World, FailureReason);
+		if (!DebugSubsystem)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("gt.MonsterHit failed: %s"), *FailureReason);
+			return;
+		}
+
+		if (!Args.IsEmpty())
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("Usage: gt.MonsterHit"));
+			return;
+		}
+
+		FGT_DebugRunSnapshot Snapshot;
+		const bool bAccepted = DebugSubsystem->DebugMonsterHit(Snapshot);
+		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.MonsterHit %s: PlayerHp=%d/%d %s"),
+			bAccepted ? TEXT("accepted") : TEXT("rejected"),
+			Snapshot.PlayerHp,
+			Snapshot.PlayerMaxHp,
+			*Snapshot.Summary);
+	}
+
 	void HandleSummary(const TArray<FString>& Args, UWorld* World)
 	{
 		if (!Args.IsEmpty())
@@ -951,6 +976,11 @@ namespace
 		TEXT("gt.Attack"),
 		TEXT("Attacks active dummy combat through the existing command path. Usage: gt.Attack"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleAttack));
+
+	FAutoConsoleCommandWithWorldAndArgs GTMonsterHitCommand(
+		TEXT("gt.MonsterHit"),
+		TEXT("Standard real-time combat: applies one monster hit to the player (i-frames are presentation-gated, so this always lands when combat is active). Usage: gt.MonsterHit"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleMonsterHit));
 
 	FAutoConsoleCommandWithWorldAndArgs GTSummaryCommand(
 		TEXT("gt.Summary"),

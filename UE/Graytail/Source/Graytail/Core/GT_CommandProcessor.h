@@ -31,6 +31,7 @@ private:
 	bool ProcessChooseEventOptionCommand(const FGT_Command& Command);
 	bool ProcessResolveCombatCommand(const FGT_Command& Command);
 	bool ProcessAttackCommand(const FGT_Command& Command);
+	bool ProcessMonsterHitCommand(const FGT_Command& Command);
 	bool ProcessUseConsumableCommand(const FGT_Command& Command);
 	void PublishCommandEvent(FName EventType, FName SourceActorId, FName TargetActorId, int32 X, int32 Y, bool bSuccess) const;
 

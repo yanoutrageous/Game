@@ -24,7 +24,9 @@ namespace
 	constexpr float GTRoomSize = 560.f;        // 房间画布边长(px)
 	constexpr float GTPlayerSize = 64.f;
 	constexpr float GTDoorSize = 72.f;
-	constexpr float GTMoveSpeed = 0.385f;      // 归一化坐标/秒(Lua moveSpeed 手感的 70%, 用户调速)
+	constexpr float GTMoveSpeed = 0.385f;      // 归一化坐标/秒(原值, 横穿整间房≈2.6s)
+	constexpr float GTMoveAccel = 16.f;        // 方案B 起步加速平滑率(越大越跟手), PIE 可调
+	constexpr float GTMoveDecel = 22.f;        // 方案B 松手减速率(>Accel 防溜冰), PIE 可调
 	constexpr float GTDoorHalfWidth = 0.13f;   // 门对准判定半宽(归一化)
 	constexpr float GTWalkFrameTime = 0.18f;   // 走路两帧轮播间隔
 	constexpr float GTChestOpenDuration = 1.4f;    // 开箱金光时长(对齐 Lua CHEST_OPEN_DURATION)
@@ -458,6 +460,7 @@ void UGT_RoomViewWidget::SyncToCurrentCell(bool bCenterPlayer)
 	if (bCenterPlayer || bCellChanged)
 	{
 		PlayerPos = FVector2D(0.5, 0.5);
+		MoveVelocity = FVector2D::ZeroVector;
 	}
 	// 同步血量基准(开局/瞬移/外部移动后), 避免下次踩雷误判扣血。
 	PrevPlayerHp = Snapshot.PlayerHp;
@@ -1190,11 +1193,21 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 
 	const float InputX = (HeldKeys[3] ? 1.f : 0.f) - (HeldKeys[1] ? 1.f : 0.f);
 	const float InputY = (HeldKeys[2] ? 1.f : 0.f) - (HeldKeys[0] ? 1.f : 0.f);
-	if (InputX == 0.f && InputY == 0.f)
+	const bool bHasInput = (InputX != 0.f || InputY != 0.f);
+
+	// 方案B: 速度朝目标平滑(起步缓入 / 松手缓停滑行), 而非瞬时开关。
+	const FVector2D TargetVelocity = bHasInput
+		? FVector2D(InputX, InputY).GetSafeNormal() * GTMoveSpeed
+		: FVector2D::ZeroVector;
+	MoveVelocity = FMath::Vector2DInterpTo(MoveVelocity, TargetVelocity, InDeltaTime,
+		bHasInput ? GTMoveAccel : GTMoveDecel);
+
+	// 无输入且已滑停 -> 站立帧(对齐 Lua idleFrames)。
+	if (!bHasInput && MoveVelocity.IsNearlyZero(1.e-4f))
 	{
+		MoveVelocity = FVector2D::ZeroVector;
 		if (WalkAnimTime > 0.f)
 		{
-			// 停步 -> 站立帧(对齐 Lua idleFrames)。
 			if (UTexture2D* IdleFrame = GetIdleFrame(LastDirX, LastDirY))
 			{
 				PlayerImage->SetBrushFromTexture(IdleFrame);
@@ -1204,10 +1217,13 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 		return;
 	}
 
-	LastDirX = InputY != 0.f ? 0 : FMath::Sign(InputX);
-	LastDirY = FMath::Sign(InputY);
+	if (bHasInput)
+	{
+		LastDirX = InputY != 0.f ? 0 : FMath::Sign(InputX);
+		LastDirY = FMath::Sign(InputY);
+	}
 
-	FVector2D NewPos = PlayerPos + FVector2D(InputX, InputY).GetSafeNormal() * GTMoveSpeed * InDeltaTime;
+	FVector2D NewPos = PlayerPos + MoveVelocity * InDeltaTime;
 
 	// 越界 + 对准门 -> 尝试过门(对齐 Lua isAlignedWithDoor)。
 	// 刚被内核拒绝过(地图边界等)的冷却内不重试, 落到下方撞墙逻辑: 人物贴墙原地踏步, 不来回闪现。
@@ -1258,6 +1274,7 @@ void UGT_RoomViewWidget::TryCrossDoor(int32 DirX, int32 DirY)
 	CurrentCellY = Snapshot.PlayerY;
 	// 从新房间对面的门走进来。
 	PlayerPos = FVector2D(0.5 - DirX * 0.42, 0.5 - DirY * 0.42);
+	MoveVelocity = FVector2D::ZeroVector;
 	RefreshRoomDecor();
 	UpdatePlayerImagePosition();
 

@@ -120,6 +120,7 @@ private:
 
 	// 房间内归一化坐标(0-1), 对齐 Lua playerPos。
 	FVector2D PlayerPos = FVector2D(0.5, 0.5);
+	FVector2D MoveVelocity = FVector2D::ZeroVector;  // 方案B: 平滑后的移动速度(归一化/秒), 防瞬时开关感
 	FVector2D HeldInput = FVector2D::ZeroVector;
 	bool HeldKeys[4] = {};   // W A S D
 	float WalkAnimTime = 0.f;

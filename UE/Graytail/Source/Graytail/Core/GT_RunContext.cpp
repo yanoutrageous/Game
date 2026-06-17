@@ -600,6 +600,36 @@ void UGT_RunContext::ApplyMetaLoadout(const FGT_EquipBonus& Equip, const FGT_Tal
 	}
 }
 
+bool UGT_RunContext::TryGrantChestMagnetLoot(int32 X, int32 Y)
+{
+	if (!bLoadoutChestBonusLoot || !IsRunActive())
+	{
+		return false;
+	}
+
+	FGT_TruthCell Cell;
+	if (!GetTruthCellSnapshot(X, Y, Cell) || Cell.RoomBaseType != EGT_RoomBaseType::Chest)
+	{
+		return false;
+	}
+
+	const FIntPoint Coord(X, Y);
+	if (ChestBonusGrantedCells.Contains(Coord))
+	{
+		return false;   // 每格只发一次
+	}
+	ChestBonusGrantedCells.Add(Coord);
+
+	// 额外掉 1 件低价值回收物(取低档品质物品, 确定性)。
+	const FName ItemId = GT_ItemCatalog::GetQualityItemId(EGT_ItemQuality::Low);
+	if (ItemId.IsNone())
+	{
+		return false;
+	}
+	RunInventory.AddCarriedItem(ItemId, 1, FName(TEXT("recovered")));
+	return true;
+}
+
 bool UGT_RunContext::MarkExploredForPressure(int32 X, int32 Y)
 {
 	const FIntPoint Coord(X, Y);

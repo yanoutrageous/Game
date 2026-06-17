@@ -171,6 +171,9 @@ bool UGT_CommandProcessor::ProcessMoveCommand(const FGT_Command& Command)
 					}
 				}
 			}
+
+			// S6 回收磁石: 进宝箱房额外掉 1 件(内部判激活/宝箱房/去重)。
+			RunContext->TryGrantChestMagnetLoot(Command.TargetX, Command.TargetY);
 		}
 	}
 

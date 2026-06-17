@@ -212,6 +212,9 @@ public:
 	// EquippedItemIds = 已装备装备 id 列表(纯数据), 用于激活 S6 触发型物品(异常体犬牙/封锁区结晶/回收磁石)。
 	void ApplyMetaLoadout(const FGT_EquipBonus& Equip, const FGT_TalentEffects& Talents, const TMap<FName, int32>& Consumables, const TArray<FName>& EquippedItemIds);
 
+	// S6 回收磁石: 进宝箱房额外掉 1 件低价值回收物(每格一次)。内部判激活/宝箱房/去重; 返回是否真发了。
+	bool TryGrantChestMagnetLoot(int32 X, int32 Y);
+
 	// 协议压力系统(对齐 Protocol.lua): 压力随行动上升, 触发阈值时等级下降, 满压强制败北。
 	// 返回值包含 level/pressure/changed/bForcedFail(压力满时触发败北)。
 	// 已探索格子不会重复加压(对齐 Lua 里只在首次探索未知房时加压)。

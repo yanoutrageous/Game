@@ -281,12 +281,9 @@ void UGT_EventPanelWidget::ConfirmSelection()
 		Close();
 		return;
 	}
-	if (Outcome.bOk && Outcome.bClosePanel)
-	{
-		Close();
-		return;
-	}
-	// 祭坛连续献祭/失败重选: 面板保持, 菜单按最新状态重建。
+	// 不在执行后立即关面板(原来 bClosePanel 类事件=机关/赌徒/旅商 会同帧关闭, 玩家看不到结果文案)。
+	// 改为统一保留面板 + 按最新状态重建菜单: 已完成事件(机关/赌徒)菜单会变成只剩"关闭",
+	// MessageText 显示判定结果(机关成功/失控、赌徒输赢), 玩家看清后再按键/Esc 关闭。祭坛连续献祭沿用此路径。
 	RefreshMenu();
 }
 

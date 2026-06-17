@@ -321,7 +321,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_f"), TEXT("F"), TEXT("搜索/攻击"));
 	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_e"), TEXT("E"), TEXT("撤离"));
 	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_t"), TEXT("T"), TEXT("事件"));
-	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_q"), TEXT("Q"), TEXT("止血"));
+	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_q"), TEXT("Q"), TEXT("用道具"));
 	// 底栏背景用无分隔的连续金属条(ui_bar_blank_dark): 原版 ui_bottom_bar 是死画的 4 格,
 	// 与 6 个键位项数量不匹配会错位, 换成连续条让键帽均分对齐。
 	if (UVerticalBoxSlot* HotbarSlot = CenterCol->AddChildToVerticalBox(MakeSkinnedPanel(Hotbar, TEXT("/Game/Graytail/UI/common/ui_bar_blank_dark"))))
@@ -1150,18 +1150,40 @@ void UGT_GameHudWidget::OnExtract()
 
 void UGT_GameHudWidget::OnUseConsumable()
 {
-	// Q = 止血(默认应急止血贴)。满血/无库存由内核拒绝, 这里只发命令并刷新。
+	// Q = 使用道具: 用背包里第一个可用消耗品(满血时跳过纯回血绷带, 优先用其它道具)。
+	// 满血/无库存由内核拒绝; 管线本就按 itemId 通用, 这里只挑 id 并发命令。
 	UGT_DebugSubsystem* Debug = GetDebugSubsystem();
-	if (!Debug)
+	const UGT_RunContext* RunContext = GetRunContext();
+	if (!Debug || !RunContext)
 	{
 		return;
 	}
+
+	const FGT_PlayerCombatState& Combat = RunContext->GetPlayerCombatState();
+	const bool bFullHp = Combat.Hp >= Combat.MaxHp;
+
+	FName PickId = NAME_None;
+	for (const FGT_ItemStack& Stack : RunContext->GetRunInventory().CarriedItems)
+	{
+		if (Stack.Count <= 0) { continue; }
+		const FGT_ItemCatalogEntry* Def = GT_ItemCatalog::FindItemDef(Stack.ItemId);
+		if (!Def || Def->Kind != EGT_ItemKind::Consumable) { continue; }
+		// 满血时跳过纯回血绷带(会被内核以 hp_full 拒), 让 Q 去用其它消耗品。
+		if (bFullHp && Stack.ItemId == FName(TEXT("emergency_bandage"))) { continue; }
+		PickId = Stack.ItemId;
+		break;
+	}
+	if (PickId.IsNone())
+	{
+		return;   // 背包无可用道具, 静默
+	}
+
 	FGT_DebugRunSnapshot Snapshot;
-	const bool bUsed = Debug->DebugUseConsumable(FName(TEXT("emergency_bandage")), Snapshot);
+	const bool bUsed = Debug->DebugUseConsumable(PickId, Snapshot);
 	RefreshAll();
 
-	// 用成功(回血)才播绿光反馈; 满血/无库存被拒不播。
-	if (bUsed && RoomView)
+	// 仅回血道具(止血贴)用成功才播绿光; 其它消耗品(如幸运硬币)不回血不闪绿。
+	if (bUsed && PickId == FName(TEXT("emergency_bandage")) && RoomView)
 	{
 		RoomView->PlayHealGlow();
 	}

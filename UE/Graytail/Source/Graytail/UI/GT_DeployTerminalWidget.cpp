@@ -90,10 +90,18 @@ namespace
 	{
 		if (Def.bMapHighlight) { return TEXT("小地图邻域威胁高亮"); }
 		if (Def.MineDmgReduce > 0) { return FString::Printf(TEXT("雷险伤害 -%d"), Def.MineDmgReduce); }
-		if (Def.MonsterFleeBonus > 0) { return FString::Printf(TEXT("怪物避让窗口 +%ds"), Def.MonsterFleeBonus); }
+		if (Def.MonsterFleeBonus > 0) { return TEXT("怪物面对持有者时更易犹疑"); }
 		if (Def.FailureGoldBonus > 0) { return FString::Printf(TEXT("撤离失败保留 +%d 金"), Def.FailureGoldBonus); }
 		if (Def.TradePrice > 0) { return FString::Printf(TEXT("旅商收购价 +%d%%"), Def.TradePrice); }
 		return TEXT("");
+	}
+
+	// 消耗品效果文案(按物品真效果, 非一律"回复 N 生命"——幸运硬币 Heal=0 不该显示"回复0生命")。
+	FString ConsumableEffectText(const FGT_ConsumableDef& Def)
+	{
+		if (Def.Id == FName(TEXT("lucky_coin"))) { return TEXT("局内使用: 50% 得 30 结算币 / 50% 揭示相邻未知房"); }
+		if (Def.Heal > 0) { return FString::Printf(TEXT("局内使用: 回复 %d 生命"), Def.Heal); }
+		return TEXT("局内使用");
 	}
 
 	// 仓库条目来源 -> 中文类型行。
@@ -721,7 +729,7 @@ void UGT_DeployTerminalWidget::RebuildContent()
 			const bool bAfford = Gold >= Def.Price;
 			const int32 Have = Meta->GetConsumableCount(Def.Id);
 			AddItemCard(CurrentRows.Num(), IconForConsumable(Def.Id), Def.DisplayName, TEXT("作业消耗品 · 后勤"),
-				FString::Printf(TEXT("局内使用: 回复 %d 生命"), Def.Heal), ConsumableFlavor(Def.Id),
+				ConsumableEffectText(Def), ConsumableFlavor(Def.Id),
 				FString::Printf(TEXT("价格 %d 结算币"), Def.Price), FString::Printf(TEXT("持有 %d"), Have),
 				TEXT("申领"), bAfford, false);
 			CurrentRows.Add({ Def.Id, ERowKind::Consumable });
@@ -750,7 +758,7 @@ void UGT_DeployTerminalWidget::RebuildContent()
 			bAny = true;
 			const int32 Carry = Meta->GetLoadout().FindRef(Def.Id);
 			AddItemCard(CurrentRows.Num(), IconForConsumable(Def.Id), Def.DisplayName, TEXT("作业消耗品 · 后勤"),
-				FString::Printf(TEXT("局内使用: 回复 %d 生命"), Def.Heal), ConsumableFlavor(Def.Id),
+				ConsumableEffectText(Def), ConsumableFlavor(Def.Id),
 				FString::Printf(TEXT("库存 %d"), Stock), FString::Printf(TEXT("已带入 %d"), Carry),
 				FString::Printf(TEXT("带入 %d"), Carry), true, Carry > 0);
 			CurrentRows.Add({ Def.Id, ERowKind::Consumable });

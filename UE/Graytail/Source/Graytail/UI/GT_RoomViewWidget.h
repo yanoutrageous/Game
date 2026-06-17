@@ -69,6 +69,10 @@ public:
 	// Q 键使用消耗品/止血(对齐原版底栏), 由 HUD 绑定到 OnUseConsumable。
 	FSimpleDelegate OnConsumableRequested;
 
+	// 数字键 1-9 选择左下道具栏槽位(1-based), 由 HUD 绑定到 SelectConsumableSlot。
+	DECLARE_DELEGATE_OneParam(FGT_ItemSlotDelegate, int32);
+	FGT_ItemSlotDelegate OnItemSlotRequested;
+
 private:
 	void BuildWidgetTree();
 	UGT_DebugSubsystem* GetDebugSubsystem() const;

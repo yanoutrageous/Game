@@ -729,12 +729,26 @@ FReply UGT_RoomViewWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FK
 	}
 	if (Key == EKeys::Q)
 	{
-		// Q = 使用消耗品/止血(对齐原版底栏; 默认应急止血贴, 满血/无库存由内核拒绝)。
+		// Q = 使用左下道具栏选中的道具(满血/无库存由内核拒绝)。
 		if (OnConsumableRequested.IsBound())
 		{
 			OnConsumableRequested.Execute();
 		}
 		return FReply::Handled();
+	}
+	// 数字键 1-9 = 选择左下道具栏对应槽位(配合 Q 使用)。
+	{
+		static const FKey NumberKeys[9] = {
+			EKeys::One, EKeys::Two, EKeys::Three, EKeys::Four, EKeys::Five,
+			EKeys::Six, EKeys::Seven, EKeys::Eight, EKeys::Nine };
+		for (int32 SlotIdx = 0; SlotIdx < 9; ++SlotIdx)
+		{
+			if (Key == NumberKeys[SlotIdx])
+			{
+				if (OnItemSlotRequested.IsBound()) { OnItemSlotRequested.Execute(SlotIdx + 1); }
+				return FReply::Handled();
+			}
+		}
 	}
 	return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
 }

@@ -135,6 +135,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		RoomView->OnExtractRequested.BindUObject(this, &UGT_GameHudWidget::OnExtract);
 		RoomView->OnEventRequested.BindUObject(this, &UGT_GameHudWidget::OpenEventPanel);
 		RoomView->OnConsumableRequested.BindUObject(this, &UGT_GameHudWidget::OnUseConsumable);
+		RoomView->OnItemSlotRequested.BindUObject(this, &UGT_GameHudWidget::SelectConsumableSlot);
 
 		UScaleBox* RoomScale = WidgetTree->ConstructWidget<UScaleBox>(UScaleBox::StaticClass());
 		RoomScale->SetStretch(EStretch::ScaleToFit);
@@ -233,6 +234,12 @@ void UGT_GameHudWidget::BuildWidgetTree()
 
 	ItemsList = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	Panel->AddChildToVerticalBox(ItemsList);
+
+	// 左下道具面板: 列可用消耗品 + 【N】标号; 数字键选, Q 使用选中道具。
+	UTextBlock* BagItemTitle = MakePanelText(Panel, 13, FLinearColor(0.65f, 0.75f, 0.95f, 1.f));
+	BagItemTitle->SetText(FText::FromString(TEXT("道具 (数字键选 · Q 使用)")));
+	ConsumableList = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+	Panel->AddChildToVerticalBox(ConsumableList);
 
 	// 动作按钮已移除: F=搜索/攻击, E=撤离, 重开走局终弹窗。
 	LogText = MakePanelText(Panel, 11, FLinearColor(0.6f, 0.65f, 0.72f, 1.f));
@@ -533,6 +540,7 @@ void UGT_GameHudWidget::RefreshPanels()
 	RefreshMiniMapGrid();
 	RefreshMineRiskTag();
 	RefreshItemsList();
+	RefreshConsumableList();
 
 	FString RoomText;
 	FString Hint;
@@ -934,6 +942,71 @@ void UGT_GameHudWidget::RefreshItemsList()
 	}
 }
 
+TArray<FName> UGT_GameHudWidget::GetUsableConsumableIds() const
+{
+	TArray<FName> Ids;
+	const UGT_RunContext* RunContext = GetRunContext();
+	if (!RunContext)
+	{
+		return Ids;
+	}
+	for (const FGT_ItemStack& Stack : RunContext->GetRunInventory().CarriedItems)
+	{
+		if (Stack.Count <= 0) { continue; }
+		const FGT_ItemCatalogEntry* Def = GT_ItemCatalog::FindItemDef(Stack.ItemId);
+		if (Def && Def->Kind == EGT_ItemKind::Consumable) { Ids.Add(Stack.ItemId); }
+	}
+	return Ids;
+}
+
+void UGT_GameHudWidget::SelectConsumableSlot(int32 InSlot)
+{
+	SelectedConsumableSlot = FMath::Max(1, InSlot);
+	RefreshConsumableList();
+}
+
+void UGT_GameHudWidget::RefreshConsumableList()
+{
+	if (!ConsumableList)
+	{
+		return;
+	}
+	ConsumableList->ClearChildren();
+
+	const TArray<FName> Ids = GetUsableConsumableIds();
+	if (Ids.Num() == 0)
+	{
+		UTextBlock* Empty = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		Empty->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 11));
+		Empty->SetColorAndOpacity(FSlateColor(FLinearColor(0.5f, 0.54f, 0.62f, 1.f)));
+		Empty->SetText(FText::FromString(TEXT("(无可用道具)")));
+		ConsumableList->AddChildToVerticalBox(Empty);
+		return;
+	}
+
+	SelectedConsumableSlot = FMath::Clamp(SelectedConsumableSlot, 1, Ids.Num());
+	const UGT_RunContext* RunContext = GetRunContext();
+	for (int32 i = 0; i < Ids.Num(); ++i)
+	{
+		const FName Id = Ids[i];
+		const FGT_ItemCatalogEntry* Def = GT_ItemCatalog::FindItemDef(Id);
+		const int32 Count = RunContext ? RunContext->GetRunInventory().GetItemCount(Id) : 0;
+		const bool bSel = (i + 1 == SelectedConsumableSlot);
+
+		UTextBlock* Row = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		Row->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 12));
+		Row->SetColorAndOpacity(FSlateColor(bSel
+			? FLinearColor(FColor(255, 226, 120))            // 选中: 亮金
+			: FLinearColor(0.78f, 0.80f, 0.86f, 1.f)));
+		Row->SetText(FText::FromString(FString::Printf(TEXT("%s【%d】%s x%d"),
+			bSel ? TEXT("▶") : TEXT("  "),
+			i + 1,
+			Def ? *Def->DisplayName : *Id.ToString(),
+			Count)));
+		ConsumableList->AddChildToVerticalBox(Row);
+	}
+}
+
 UTexture2D* UGT_GameHudWidget::GetItemIcon(FName ItemId)
 {
 	// 逐物品图标映射在 GT_ItemCatalog(与战利品弹窗共用), 纹理缓存在 LoadUiTexture 里。
@@ -1150,39 +1223,26 @@ void UGT_GameHudWidget::OnExtract()
 
 void UGT_GameHudWidget::OnUseConsumable()
 {
-	// Q = 使用道具: 用背包里第一个可用消耗品(满血时跳过纯回血绷带, 优先用其它道具)。
-	// 满血/无库存由内核拒绝; 管线本就按 itemId 通用, 这里只挑 id 并发命令。
+	// Q = 使用左下道具栏【选中】的道具(数字键 1-9 切换选中)。满血/无库存由内核拒绝。
+	// 显式选中=玩家清楚要用哪件, 不会误用硬币; 用后面板物品数变化即反馈。
 	UGT_DebugSubsystem* Debug = GetDebugSubsystem();
-	const UGT_RunContext* RunContext = GetRunContext();
-	if (!Debug || !RunContext)
+	if (!Debug)
 	{
 		return;
 	}
-
-	const FGT_PlayerCombatState& Combat = RunContext->GetPlayerCombatState();
-	const bool bFullHp = Combat.Hp >= Combat.MaxHp;
-
-	FName PickId = NAME_None;
-	for (const FGT_ItemStack& Stack : RunContext->GetRunInventory().CarriedItems)
-	{
-		if (Stack.Count <= 0) { continue; }
-		const FGT_ItemCatalogEntry* Def = GT_ItemCatalog::FindItemDef(Stack.ItemId);
-		if (!Def || Def->Kind != EGT_ItemKind::Consumable) { continue; }
-		// 满血时跳过纯回血绷带(会被内核以 hp_full 拒), 让 Q 去用其它消耗品。
-		if (bFullHp && Stack.ItemId == FName(TEXT("emergency_bandage"))) { continue; }
-		PickId = Stack.ItemId;
-		break;
-	}
-	if (PickId.IsNone())
+	const TArray<FName> Ids = GetUsableConsumableIds();
+	if (Ids.Num() == 0)
 	{
 		return;   // 背包无可用道具, 静默
 	}
+	const int32 Index = FMath::Clamp(SelectedConsumableSlot - 1, 0, Ids.Num() - 1);
+	const FName PickId = Ids[Index];
 
 	FGT_DebugRunSnapshot Snapshot;
 	const bool bUsed = Debug->DebugUseConsumable(PickId, Snapshot);
 	RefreshAll();
 
-	// 仅回血道具(止血贴)用成功才播绿光; 其它消耗品(如幸运硬币)不回血不闪绿。
+	// 回血道具(止血贴)用成功才播绿光; 其它道具(如幸运硬币)效果由面板物品数 + HUD 金币/小地图体现。
 	if (bUsed && PickId == FName(TEXT("emergency_bandage")) && RoomView)
 	{
 		RoomView->PlayHealGlow();

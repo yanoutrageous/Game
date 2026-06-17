@@ -15,6 +15,7 @@
 #include "Fonts/SlateFontInfo.h"
 #include "Input/Events.h"
 #include "Styling/CoreStyle.h"
+#include "UI/GT_UIStyle.h"
 
 namespace
 {
@@ -69,12 +70,12 @@ void UGT_EventPanelWidget::BuildWidgetTree()
 	WidthBox->SetContent(Column);
 
 	TitleText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	TitleText->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 20));
+	TitleText->SetFont(GT_UIStyle::Font(20));
 	TitleText->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(240, 210, 140))));
 	Column->AddChildToVerticalBox(TitleText);
 
 	DescText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	DescText->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 12));
+	DescText->SetFont(GT_UIStyle::Font(13));
 	DescText->SetColorAndOpacity(FSlateColor(FLinearColor(0.78f, 0.76f, 0.70f, 1.f)));
 	DescText->SetAutoWrapText(true);
 	if (UVerticalBoxSlot* DescSlot = Column->AddChildToVerticalBox(DescText))
@@ -89,7 +90,7 @@ void UGT_EventPanelWidget::BuildWidgetTree()
 	}
 
 	MessageText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	MessageText->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 12));
+	MessageText->SetFont(GT_UIStyle::Font(13));
 	MessageText->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(255, 186, 150))));
 	MessageText->SetAutoWrapText(true);
 	if (UVerticalBoxSlot* MessageSlot = Column->AddChildToVerticalBox(MessageText))
@@ -98,7 +99,7 @@ void UGT_EventPanelWidget::BuildWidgetTree()
 	}
 
 	UTextBlock* Footer = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	Footer->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 10));
+	Footer->SetFont(GT_UIStyle::Font(11));
 	Footer->SetColorAndOpacity(FSlateColor(FLinearColor(0.52f, 0.50f, 0.46f, 1.f)));
 	Footer->SetText(FText::FromString(TEXT("W/S 选择 · Enter/T 确认 · Esc/右键 离开")));
 	if (UVerticalBoxSlot* FooterSlot = Column->AddChildToVerticalBox(Footer))
@@ -191,7 +192,7 @@ void UGT_EventPanelWidget::RebuildOptionRows()
 		Row->SetContent(RowColumn);
 
 		UTextBlock* Label = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		Label->SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 14));
+		Label->SetFont(GT_UIStyle::Font(15));
 		Label->SetColorAndOpacity(FSlateColor(!Option.bEnabled
 			? FLinearColor(FColor(125, 122, 112))
 			: bSelected ? FLinearColor(FColor(255, 235, 170)) : FLinearColor(FColor(222, 218, 204))));
@@ -214,7 +215,7 @@ void UGT_EventPanelWidget::RebuildOptionRows()
 		if (!DetailLine.IsEmpty())
 		{
 			UTextBlock* Detail = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-			Detail->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 10));
+			Detail->SetFont(GT_UIStyle::Font(11));
 			Detail->SetColorAndOpacity(FSlateColor(DetailColor));
 			Detail->SetAutoWrapText(true);
 			Detail->SetText(FText::FromString(DetailLine));

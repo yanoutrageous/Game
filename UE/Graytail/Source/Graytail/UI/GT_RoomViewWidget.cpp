@@ -36,9 +36,10 @@ namespace
 	constexpr float GTPlayerAttackCooldown = 0.45f;     // 玩家挥砍冷却(Combat.lua playerAttackCooldown)
 	constexpr float GTPlayerInvincibleDuration = 0.9f;  // 受击无敌帧(Combat.lua playerInvincibleDuration)
 	constexpr float GTEdgeHintDuration = 1.4f;          // 撞地图边缘提示显示+淡出时长
-	// 道具碰撞圈(归一化半径 = 道具半径+玩家半径, PIE 可微调)。怪物会动+影响走位风筝, 不做碰撞。
-	constexpr float GTChestCollideRadius = 0.10f;       // 中间宝箱
-	constexpr float GTEventCollideRadius = 0.09f;       // 事件房 NPC
+	// 道具方形空气墙(AABB)归一化半边长 = (道具半宽 + 玩家碰撞半宽)/房宽。撞墙即停(不绕不抽搐);
+	// 宝藏房宝箱墙较大(对应箱体)、一般事件房 NPC 墙较小。PIE 可微调。怪物会动+影响走位风筝, 不做碰撞。
+	constexpr float GTChestCollideHalf = 0.105f;        // 宝藏房宝箱(较大)
+	constexpr float GTEventCollideHalf = 0.072f;        // 一般事件房 NPC(较小)
 
 	const FLinearColor GTFloor_Normal(0.16f, 0.17f, 0.20f, 1.f);
 	const FLinearColor GTFloor_Mine(0.45f, 0.12f, 0.10f, 1.f);
@@ -1264,43 +1265,33 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 
 	FVector2D NewPos = PlayerPos + MoveVelocity * InDeltaTime;
 
-	// 道具碰撞(中间宝箱 / 事件房 NPC): 分轴阻挡 + 纯单轴撞心时切向 nudge 自动绕开(否则单键直走会顶死)。
-	// 只挡"越来越深"的移动, 已重叠时仍可移出, 避免卡死。怪物会动+影响走位风筝, 不做碰撞。
+	// 道具碰撞(中间宝箱 / 事件房 NPC): 方形空气墙(AABB) + 分轴阻挡 —— 撞墙即停, 横移自然贴墙滑过,
+	// 不再做切向 nudge(那是圆形墙顶死的补丁, 会让直撞时人物抽搐/横偏)。
+	// 只挡"越来越深入方块"的移动, 已重叠(如在门口生成于箱体内)时仍可移出, 避免卡死。
+	// 怪物会动+影响走位风筝, 不做碰撞。
 	{
-		struct FObstacle { FVector2D Center; float Radius; bool bActive; };
-		const FObstacle Obstacles[] = {
-			{ FVector2D(0.5f, 0.5f),  GTChestCollideRadius, ChestImage && ChestImage->GetVisibility() == ESlateVisibility::HitTestInvisible },
-			{ FVector2D(0.5f, 0.35f), GTEventCollideRadius, EventBodyImage && EventBodyImage->GetVisibility() == ESlateVisibility::HitTestInvisible },
+		struct FBoxObstacle { FVector2D Center; float Half; bool bActive; };
+		const FBoxObstacle Obstacles[] = {
+			{ FVector2D(0.5f, 0.5f),  GTChestCollideHalf, ChestImage && ChestImage->GetVisibility() == ESlateVisibility::HitTestInvisible },
+			{ FVector2D(0.5f, 0.35f), GTEventCollideHalf, EventBodyImage && EventBodyImage->GetVisibility() == ESlateVisibility::HitTestInvisible },
 		};
-		// 返回挡住该候选移动的障碍中心(只挡越来越深的移动)。
-		auto BlockingCenter = [&Obstacles](const FVector2D& Cand, const FVector2D& From, FVector2D& OutCenter) -> bool
+		for (const FBoxObstacle& Ob : Obstacles)
 		{
-			for (const FObstacle& Ob : Obstacles)
+			if (!Ob.bActive) { continue; }
+			// X 轴: 候选 X 落入方块 X 跨度 且 当前 Y 落入方块 Y 跨度 且 X 比原来更靠近中心 -> 挡住 X(贴 X 面停)。
+			if (FMath::Abs(NewPos.X - Ob.Center.X) < Ob.Half
+				&& FMath::Abs(PlayerPos.Y - Ob.Center.Y) < Ob.Half
+				&& FMath::Abs(NewPos.X - Ob.Center.X) < FMath::Abs(PlayerPos.X - Ob.Center.X))
 			{
-				if (!Ob.bActive) { continue; }
-				const float DNew = FVector2D::Distance(Cand, Ob.Center);
-				if (DNew < Ob.Radius && DNew < FVector2D::Distance(From, Ob.Center)) { OutCenter = Ob.Center; return true; }
+				NewPos.X = PlayerPos.X;
 			}
-			return false;
-		};
-		FVector2D HitCx;
-		const bool bBlockedX = BlockingCenter(FVector2D(NewPos.X, PlayerPos.Y), PlayerPos, HitCx);
-		if (bBlockedX) { NewPos.X = PlayerPos.X; }
-		FVector2D HitCy;
-		const bool bBlockedY = BlockingCenter(NewPos, FVector2D(NewPos.X, PlayerPos.Y), HitCy);
-		if (bBlockedY) { NewPos.Y = PlayerPos.Y; }
-
-		// 纯单轴撞心解卡: 被挡轴的另一轴此帧几乎没动(单键直走撞圆心)时, 沿切向给一点横移自动绕开。
-		const float Nudge = GTMoveSpeed * InDeltaTime;
-		if (bBlockedY && FMath::Abs(NewPos.X - PlayerPos.X) < 1.e-4f)
-		{
-			const float Side = !FMath::IsNearlyEqual(PlayerPos.X, HitCy.X) ? FMath::Sign(PlayerPos.X - HitCy.X) : 1.f;
-			NewPos.X = FMath::Clamp(PlayerPos.X + Side * Nudge, 0.f, 1.f);
-		}
-		else if (bBlockedX && FMath::Abs(NewPos.Y - PlayerPos.Y) < 1.e-4f)
-		{
-			const float Side = !FMath::IsNearlyEqual(PlayerPos.Y, HitCx.Y) ? FMath::Sign(PlayerPos.Y - HitCx.Y) : 1.f;
-			NewPos.Y = FMath::Clamp(PlayerPos.Y + Side * Nudge, 0.f, 1.f);
+			// Y 轴: 用已修正的 X 复判, 同理挡 Y(贴 Y 面停)。
+			if (FMath::Abs(NewPos.X - Ob.Center.X) < Ob.Half
+				&& FMath::Abs(NewPos.Y - Ob.Center.Y) < Ob.Half
+				&& FMath::Abs(NewPos.Y - Ob.Center.Y) < FMath::Abs(PlayerPos.Y - Ob.Center.Y))
+			{
+				NewPos.Y = PlayerPos.Y;
+			}
 		}
 	}
 

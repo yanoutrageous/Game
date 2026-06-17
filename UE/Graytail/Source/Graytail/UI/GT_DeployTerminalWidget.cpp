@@ -542,9 +542,9 @@ void UGT_DeployTerminalWidget::BuildWidgetTree()
 	FilterRow = WidgetTree->ConstructWidget<UHorizontalBox>();
 	if (UVerticalBoxSlot* S = MainCol->AddChildToVerticalBox(FilterRow)) { S->SetPadding(FMargin(0, 0, 0, 12)); }
 
-	// -- 卡片网格(滚动) --
+	// -- 卡片网格(滚动): 卡片只铺在背景图上半大块内, 超出由 ScrollBox 滚动(不向下溢出盖住下半块) --
 	ContentScroll = WidgetTree->ConstructWidget<UScrollBox>();
-	if (UVerticalBoxSlot* S = MainCol->AddChildToVerticalBox(ContentScroll)) { S->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); }
+	if (UVerticalBoxSlot* S = MainCol->AddChildToVerticalBox(ContentScroll)) { FSlateChildSize Sz(ESlateSizeRule::Fill); Sz.Value = 1.0f; S->SetSize(Sz); }
 	ContentWrap = WidgetTree->ConstructWidget<UWrapBox>();
 	ContentScroll->AddChild(ContentWrap);
 
@@ -554,6 +554,11 @@ void UGT_DeployTerminalWidget::BuildWidgetTree()
 	DetailText->SetColorAndOpacity(FSlateColor(GTColDim));
 	DetailText->SetAutoWrapText(true);
 	if (UVerticalBoxSlot* S = MainCol->AddChildToVerticalBox(DetailText)) { S->SetPadding(FMargin(2, 10, 0, 0)); }
+
+	// -- 底部留空区: 背景图 ~76% 处有分隔线分上下两块, 这块 Fill Spacer 占住下半小块使其留空,
+	//    把内容区(卡片+选中条)压在上半大块内。与 ContentScroll 同为 Fill, 按权重 1.0 : 0.33 ≈ 76% : 24% 分配剩余高度。PIE 可调。
+	USpacer* BottomReserve = WidgetTree->ConstructWidget<USpacer>();
+	if (UVerticalBoxSlot* S = MainCol->AddChildToVerticalBox(BottomReserve)) { FSlateChildSize Sz(ESlateSizeRule::Fill); Sz.Value = 0.33f; S->SetSize(Sz); }
 
 	// 右侧 出勤摘要
 	USizeBox* SummarySize = WidgetTree->ConstructWidget<USizeBox>();

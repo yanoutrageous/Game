@@ -209,7 +209,11 @@ public:
 
 	// 开局应用局外 loadout(S3): 设属性加成 + 存规则层加成 + 灌带入消耗品。
 	// 仅 Standard 局由 RunSubsystem 在初始化后调用(RunContext 不依赖 MetaProgress 子系统, 只收纯数据)。
-	void ApplyMetaLoadout(const FGT_EquipBonus& Equip, const FGT_TalentEffects& Talents, const TMap<FName, int32>& Consumables);
+	// EquippedItemIds = 已装备装备 id 列表(纯数据), 用于激活 S6 触发型物品(异常体犬牙/封锁区结晶/回收磁石)。
+	void ApplyMetaLoadout(const FGT_EquipBonus& Equip, const FGT_TalentEffects& Talents, const TMap<FName, int32>& Consumables, const TArray<FName>& EquippedItemIds);
+
+	// S6 回收磁石: 进宝箱房额外掉 1 件低价值回收物(每格一次)。内部判激活/宝箱房/去重; 返回是否真发了。
+	bool TryGrantChestMagnetLoot(int32 X, int32 Y);
 
 	// 协议压力系统(对齐 Protocol.lua): 压力随行动上升, 触发阈值时等级下降, 满压强制败北。
 	// 返回值包含 level/pressure/changed/bForcedFail(压力满时触发败北)。
@@ -343,6 +347,18 @@ private:
 	int32 LoadoutTradeBonusPercent = 0;   // S4: 议价天赋 → 旅商收购价 +N%(0 = 无议价, 基础 0.75 不变)
 	// 本局难度(Standard 满压惩罚按难度分档扣血; BasicDebug 不用)。
 	EGT_Difficulty CurrentDifficulty = EGT_Difficulty::Standard;
+
+	// S6 触发型物品本局状态(开局 ApplyMetaLoadout 按已装备物品激活; InitializeFromSpec/ResetRun 重置)。
+	bool bLoadoutKillPowerStack = false;   // 异常体犬牙: 战斗胜利叠攻
+	int32 KillPowerStackCap = 0;
+	int32 KillPowerStackAmount = 0;
+	int32 KillPowerStacksUsed = 0;
+	bool bLoadoutProtocolHeal = false;     // 封锁区结晶: 协议升级回血
+	int32 ProtocolHealCap = 0;
+	int32 ProtocolHealAmount = 0;
+	int32 ProtocolHealsUsed = 0;
+	bool bLoadoutChestBonusLoot = false;   // 回收磁石: 进宝箱房额外掉
+	TArray<FIntPoint> ChestBonusGrantedCells;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Protocol", meta = (AllowPrivateAccess = "true"))
 	FGT_ProtocolState ProtocolState;

@@ -6,6 +6,18 @@
 // MetaProgress.ITEMS/TALENTS/CONSUMABLES。纯 C++ 结构(不反射), 仅内部使用。
 // 回收物的 UGT_ItemDef 资产体系与此无关, 不受影响。
 
+// 物品触发标签(被动/主动效果在现有触发点派发)。**只往后追加**(守 UENUM 同款铁律)。
+// 纯 C++ 枚举(def 结构不反射), 不需 .generated。
+enum class EGT_ItemTrigger : uint8
+{
+	None = 0,
+	KillPowerStack,   // 战斗胜利: 本局攻击力叠加(异常体犬牙)
+	ProtocolHeal,     // 协议升级: 回血(封锁区结晶)
+	SettleGoldBonus,  // 撤离结算: 金币百分比加成(公司工牌, 在 Meta 侧算)
+	ChestBonusLoot,   // 进宝箱房: 额外掉 1 件低价值回收物(回收磁石)
+	LuckyCoin,        // 消耗品: RNG 得金/揭示相邻房(幸运硬币)
+};
+
 struct FGT_EquipDef
 {
 	FName Id;
@@ -18,6 +30,12 @@ struct FGT_EquipDef
 	int32 MineDmgReduce = 0;
 	bool bShowExitHint = false;
 	int32 SearchBonus = 0;
+	// S6 触发型效果(默认 None = 纯静态加成装备)。TriggerCap/TriggerAmount 含义随 Trigger 而定:
+	// KillPowerStack: Cap=最大叠加层数, Amount=每层 +攻击; ProtocolHeal: Cap=最大回血次数, Amount=每次回血;
+	// SettleGoldBonus: Amount=金币加成百分比。
+	EGT_ItemTrigger Trigger = EGT_ItemTrigger::None;
+	int32 TriggerCap = 0;
+	int32 TriggerAmount = 0;
 };
 
 struct FGT_TalentDef
@@ -40,6 +58,8 @@ struct FGT_ConsumableDef
 	int32 Price;
 	int32 Heal = 0;
 	int32 MaxCarry = 1;
+	// S6: 非回血消耗品的效果分派标签(默认 None = 纯回血, 走 Heal)。
+	EGT_ItemTrigger Trigger = EGT_ItemTrigger::None;
 };
 
 namespace GT_MetaCatalog

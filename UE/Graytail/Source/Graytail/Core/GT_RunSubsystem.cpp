@@ -149,7 +149,8 @@ void UGT_RunSubsystem::ApplyMetaLoadoutToRun()
 	const FGT_EquipBonus Equip = Meta->GetEquipBonus();
 	const FGT_TalentEffects Talents = Meta->GetTalentEffects();
 	TMap<FName, int32> Consumables = Meta->ConsumeLoadoutForRun();   // 扣库存, 返回本局携带量
-	CurrentRunContext->ApplyMetaLoadout(Equip, Talents, Consumables);
+	const TArray<FName> EquippedIds = Meta->GetEquippedItems();      // S6: 激活触发型装备
+	CurrentRunContext->ApplyMetaLoadout(Equip, Talents, Consumables, EquippedIds);
 }
 
 void UGT_RunSubsystem::HandleRunEvent(FGT_GameEvent Event)

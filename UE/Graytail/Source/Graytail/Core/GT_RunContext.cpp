@@ -5,6 +5,7 @@
 #include "Domains/Inventory/GT_ItemCatalog.h"
 #include "Domains/Inventory/GT_LootRules.h"
 #include "Domains/Map/GT_MapGenerator.h"
+#include "Domains/Meta/GT_MetaCatalog.h"
 
 namespace
 {
@@ -59,6 +60,9 @@ void UGT_RunContext::InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec)
 	bLoadoutMineImmunityAvailable = false;
 	LoadoutSearchBonusPercent = 0;
 	LoadoutTradeBonusPercent = 0;
+	bLoadoutKillPowerStack = false; KillPowerStackCap = 0; KillPowerStackAmount = 0; KillPowerStacksUsed = 0;
+	bLoadoutProtocolHeal = false; ProtocolHealCap = 0; ProtocolHealAmount = 0; ProtocolHealsUsed = 0;
+	bLoadoutChestBonusLoot = false; ChestBonusGrantedCells.Reset();
 
 	PlayerActorId = FName(TEXT("Player"));
 
@@ -133,6 +137,9 @@ void UGT_RunContext::ResetRun()
 	bLoadoutMineImmunityAvailable = false;
 	LoadoutSearchBonusPercent = 0;
 	LoadoutTradeBonusPercent = 0;
+	bLoadoutKillPowerStack = false; KillPowerStackCap = 0; KillPowerStackAmount = 0; KillPowerStacksUsed = 0;
+	bLoadoutProtocolHeal = false; ProtocolHealCap = 0; ProtocolHealAmount = 0; ProtocolHealsUsed = 0;
+	bLoadoutChestBonusLoot = false; ChestBonusGrantedCells.Reset();
 	MapMode = EGT_MapMode::Unknown;
 }
 
@@ -403,6 +410,13 @@ bool UGT_RunContext::AttackDummyCombat(FGT_CombatRuntimeState& OutState)
 			PlayerCombatState.MonsterPowerBonus += PowerGain;
 		}
 
+		// S6 异常体犬牙: 战斗胜利本局攻击叠加(≤Cap 层, 每层 +Amount)。
+		if (bLoadoutKillPowerStack && KillPowerStacksUsed < KillPowerStackCap)
+		{
+			PlayerCombatState.Power += KillPowerStackAmount;
+			++KillPowerStacksUsed;
+		}
+
 		OutState = CombatRuntimeState;
 		return true;
 	}
@@ -546,7 +560,7 @@ void UGT_RunContext::ApplyMineHitToPlayer(int32& OutDamage, bool& bOutDead)
 	bOutDead = !PlayerCombatState.IsAlive();
 }
 
-void UGT_RunContext::ApplyMetaLoadout(const FGT_EquipBonus& Equip, const FGT_TalentEffects& Talents, const TMap<FName, int32>& Consumables)
+void UGT_RunContext::ApplyMetaLoadout(const FGT_EquipBonus& Equip, const FGT_TalentEffects& Talents, const TMap<FName, int32>& Consumables, const TArray<FName>& EquippedItemIds)
 {
 	// 属性加成(开局直接设, 开局满血)。
 	PlayerCombatState.MaxHp += Equip.BonusHP;
@@ -567,6 +581,53 @@ void UGT_RunContext::ApplyMetaLoadout(const FGT_EquipBonus& Equip, const FGT_Tal
 			RunInventory.AddCarriedItem(Pair.Key, Pair.Value, FName(TEXT("loadout")));
 		}
 	}
+
+	// S6: 已装备的触发型装备 -> 激活本局触发态(SettleGoldBonus 在 Meta 侧算, 不需 RunContext 态)。
+	for (const FName& EquipId : EquippedItemIds)
+	{
+		const FGT_EquipDef* Def = GT_MetaCatalog::FindEquip(EquipId);
+		if (!Def) { continue; }
+		switch (Def->Trigger)
+		{
+		case EGT_ItemTrigger::KillPowerStack:
+			bLoadoutKillPowerStack = true; KillPowerStackCap = Def->TriggerCap; KillPowerStackAmount = Def->TriggerAmount; break;
+		case EGT_ItemTrigger::ProtocolHeal:
+			bLoadoutProtocolHeal = true; ProtocolHealCap = Def->TriggerCap; ProtocolHealAmount = Def->TriggerAmount; break;
+		case EGT_ItemTrigger::ChestBonusLoot:
+			bLoadoutChestBonusLoot = true; break;
+		default: break;
+		}
+	}
+}
+
+bool UGT_RunContext::TryGrantChestMagnetLoot(int32 X, int32 Y)
+{
+	if (!bLoadoutChestBonusLoot || !IsRunActive())
+	{
+		return false;
+	}
+
+	FGT_TruthCell Cell;
+	if (!GetTruthCellSnapshot(X, Y, Cell) || Cell.RoomBaseType != EGT_RoomBaseType::Chest)
+	{
+		return false;
+	}
+
+	const FIntPoint Coord(X, Y);
+	if (ChestBonusGrantedCells.Contains(Coord))
+	{
+		return false;   // 每格只发一次
+	}
+	ChestBonusGrantedCells.Add(Coord);
+
+	// 额外掉 1 件低价值回收物(取低档品质物品, 确定性)。
+	const FName ItemId = GT_ItemCatalog::GetQualityItemId(EGT_ItemQuality::Low);
+	if (ItemId.IsNone())
+	{
+		return false;
+	}
+	RunInventory.AddCarriedItem(ItemId, 1, FName(TEXT("recovered")));
+	return true;
 }
 
 bool UGT_RunContext::MarkExploredForPressure(int32 X, int32 Y)
@@ -603,6 +664,15 @@ UGT_RunContext::FProtocolPressureResult UGT_RunContext::AddProtocolPressure(int3
 	const int32 PrevLevel = ProtocolState.Level;
 	ProtocolState.Level = GT_ProtocolRules::ComputeLevel(ProtocolState.Pressure);
 	ProtocolState.bLevelChanged = ProtocolState.Level != PrevLevel;
+
+	// S6 封锁区结晶: 协议每升一级(等级下降, 压力跨阈值)回血, ≤Cap 次。
+	if (bLoadoutProtocolHeal && ProtocolState.Level < PrevLevel && ProtocolHealsUsed < ProtocolHealCap)
+	{
+		if (PlayerCombatState.Heal(ProtocolHealAmount) > 0)
+		{
+			++ProtocolHealsUsed;
+		}
+	}
 
 	Result.Level = ProtocolState.Level;
 	Result.Pressure = ProtocolState.Pressure;
@@ -825,6 +895,57 @@ bool UGT_RunContext::UseConsumableAtPlayer(FName ItemId, FGT_ConsumableOutcome& 
 		RunInventory.RemoveCarriedItem(ItemId, 1);
 		OutOutcome.bUsed = true;
 		OutOutcome.Status = FName(TEXT("used"));
+		OutOutcome.RemainingCount = RunInventory.GetItemCount(ItemId);
+		LastConsumableOutcome = OutOutcome;
+		return true;
+	}
+
+	// S6 幸运硬币: 确定性 RNG(seed,x,y)二选一 —— 50% 得 30 安全金 / 50% 揭示 1 个相邻未知房(免协议压力)。
+	if (ItemId == FName(TEXT("lucky_coin")))
+	{
+		int32 PX = 0;
+		int32 PY = 0;
+		TryGetPlayerPosition(PX, PY);
+		const uint32 Hash = static_cast<uint32>(Seed * 1103515245 + PX * 928371 + PY * 364479 + 7919);
+		const bool bGold = (Hash % 2u) == 0u;
+
+		bool bRevealed = false;
+		if (!bGold)
+		{
+			const int32 DX[4] = { 1, -1, 0, 0 };
+			const int32 DY[4] = { 0, 0, 1, -1 };
+			for (int32 Dir = 0; Dir < 4; ++Dir)
+			{
+				const int32 NX = PX + DX[Dir];
+				const int32 NY = PY + DY[Dir];
+				const FGT_IntelCell* Cell = PlayerIntelMap.GetCellConst(NX, NY);
+				if (IsValidMapCoord(NX, NY) && Cell && !Cell->bExplored)
+				{
+					// 揭示该相邻未知房(标已探索 + 亮雷数), 不加协议压力(免压)。
+					MarkPlayerIntelCellExplored(NX, NY);
+					int32 Adj = 0;
+					if (TruthMap.CountAdjacentMines8(NX, NY, Adj))
+					{
+						SetPlayerIntelCellScannedNumber(NX, NY, Adj);
+					}
+					bRevealed = true;
+					break;
+				}
+			}
+		}
+
+		if (bGold || !bRevealed)   // 选金, 或无未知相邻格可揭示时给金兜底
+		{
+			RunInventory.AddSafeGold(30);
+			OutOutcome.Status = FName(TEXT("lucky_gold"));
+		}
+		else
+		{
+			OutOutcome.Status = FName(TEXT("lucky_reveal"));
+		}
+
+		RunInventory.RemoveCarriedItem(ItemId, 1);
+		OutOutcome.bUsed = true;
 		OutOutcome.RemainingCount = RunInventory.GetItemCount(ItemId);
 		LastConsumableOutcome = OutOutcome;
 		return true;

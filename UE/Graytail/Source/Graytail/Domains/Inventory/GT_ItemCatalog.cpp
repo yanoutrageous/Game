@@ -45,6 +45,21 @@ namespace
 				UE_LOG(LogTemp, Error, TEXT("GT_ItemCatalog: missing item def asset %s (run create_item_defs.py?)"), AssetPath);
 			}
 		}
+
+		// S6 幸运硬币: 纯逻辑 RNG 消耗品, 无独立 UGT_ItemDef 资产, 以代码合成条目接入。
+		// (UseConsumableAtPlayer 按 Kind==Consumable 放行; 图标走消耗品兜底, 真图标见部署终端映射。)
+		{
+			FGT_ItemCatalogEntry Coin;
+			Coin.ItemId = FName(TEXT("lucky_coin"));
+			Coin.DisplayName = TEXT("幸运硬币");
+			Coin.Kind = EGT_ItemKind::Consumable;
+			Coin.Rarity = FName(TEXT("uncommon"));
+			Coin.Value = 50;
+			Coin.EffectText = TEXT("使用: 50% 得 30 金 / 50% 揭示相邻未知房");
+			Coin.Description = TEXT("一枚来历不明的硬币, 抛掷决定命运。");
+			Entries.Add(Coin);
+		}
+
 		return Entries;
 	}
 }

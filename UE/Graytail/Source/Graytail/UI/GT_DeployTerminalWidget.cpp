@@ -187,6 +187,11 @@ UTexture2D* UGT_DeployTerminalWidget::IconForEquip(FName Id) const
 	if (Id == FName(TEXT("medkit")))           { return Self->LoadUiTex(TEXT("/Game/Graytail/Items/Consumable/item_consumable_medkit")); }
 	if (Id == FName(TEXT("whetstone")))        { return Self->LoadUiTex(TEXT("/Game/Graytail/UI/deploy/ui_icon_whetstone")); }
 	if (Id == FName(TEXT("insulated_gloves"))) { return Self->LoadUiTex(TEXT("/Game/Graytail/UI/deploy/ui_icon_insulated_gloves")); }
+	// S6 局外组新装备图标(_import_loadout_icons.py 从 assets/item_loadout 导入)。
+	if (Id == FName(TEXT("anomaly_fang")))     { return Self->LoadUiTex(TEXT("/Game/Graytail/UI/deploy/ui_icon_anomaly_fang")); }
+	if (Id == FName(TEXT("lockdown_crystal"))) { return Self->LoadUiTex(TEXT("/Game/Graytail/UI/deploy/ui_icon_lockdown_crystal")); }
+	if (Id == FName(TEXT("company_badge")))    { return Self->LoadUiTex(TEXT("/Game/Graytail/UI/deploy/ui_icon_company_badge")); }
+	if (Id == FName(TEXT("salvage_magnet")))   { return Self->LoadUiTex(TEXT("/Game/Graytail/UI/deploy/ui_icon_salvage_magnet")); }
 	return nullptr;
 }
 
@@ -196,6 +201,11 @@ UTexture2D* UGT_DeployTerminalWidget::IconForConsumable(FName Id) const
 	if (Id == FName(TEXT("emergency_bandage")))
 	{
 		return Self->LoadUiTex(TEXT("/Game/Graytail/UI/deploy/ui_icon_bandage"));
+	}
+	// S6 幸运硬币图标。
+	if (Id == FName(TEXT("lucky_coin")))
+	{
+		return Self->LoadUiTex(TEXT("/Game/Graytail/UI/deploy/ui_icon_lucky_coin"));
 	}
 	return nullptr;
 }

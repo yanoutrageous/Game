@@ -635,6 +635,15 @@ UGT_RunContext::FProtocolPressureResult UGT_RunContext::AddProtocolPressure(int3
 	ProtocolState.Level = GT_ProtocolRules::ComputeLevel(ProtocolState.Pressure);
 	ProtocolState.bLevelChanged = ProtocolState.Level != PrevLevel;
 
+	// S6 封锁区结晶: 协议每升一级(等级下降, 压力跨阈值)回血, ≤Cap 次。
+	if (bLoadoutProtocolHeal && ProtocolState.Level < PrevLevel && ProtocolHealsUsed < ProtocolHealCap)
+	{
+		if (PlayerCombatState.Heal(ProtocolHealAmount) > 0)
+		{
+			++ProtocolHealsUsed;
+		}
+	}
+
 	Result.Level = ProtocolState.Level;
 	Result.Pressure = ProtocolState.Pressure;
 	Result.bLevelChanged = ProtocolState.bLevelChanged;

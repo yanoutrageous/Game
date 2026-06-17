@@ -13,7 +13,13 @@ namespace GT_MetaSettlement
 		const FGT_RunInventoryState& Inv = Run.GetRunInventory();
 
 		FGT_ExtractionReward Reward;
-		Reward.DirectGold = Inv.PendingGold + Inv.SafeGold;   // 对齐 Lua directGold = pending+safe
+		int32 DirectGold = Inv.PendingGold + Inv.SafeGold;   // 对齐 Lua directGold = pending+safe
+		// S6 公司工牌: 撤离结算金币 +15%。
+		if (Meta.IsEquipped(FName(TEXT("company_badge"))))
+		{
+			DirectGold = FMath::RoundToInt(DirectGold * 1.15f);
+		}
+		Reward.DirectGold = DirectGold;
 		Reward.LoosePartsGold = 0;                            // Lua GetExtractionReward 写死 0(零散零件不折金)
 		for (const FGT_ItemStack& Stack : Inv.CarriedItems)
 		{

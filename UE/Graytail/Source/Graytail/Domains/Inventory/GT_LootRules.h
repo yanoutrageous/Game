@@ -19,7 +19,7 @@ namespace GT_LootRules
 		constexpr int32 HighAdjacentRareBonus = 10;
 	}
 
-	// 宝箱数值(对齐 Balance.chest)。宝箱房本身待 TODO① 补枚举后才会出现。
+	// 宝箱数值(对齐 Balance.chest)。宝箱房已实现(EGT_RoomBaseType::Chest)。
 	namespace ChestBalance
 	{
 		constexpr int32 BaseMin = 3;

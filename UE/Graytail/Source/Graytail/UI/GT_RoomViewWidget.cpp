@@ -530,7 +530,9 @@ void UGT_RoomViewWidget::SyncToCurrentCell(bool bCenterPlayer)
 	CurrentCellY = Snapshot.PlayerY;
 	if (bCenterPlayer || bCellChanged)
 	{
-		PlayerPos = FVector2D(0.5, 0.5);
+		// 将玩家默认出生点下移一点 (从 0.5 移到 0.65)
+		// 这样玩家进门时会站在宝箱/占卜桌的下方，避免被卡在实体内部
+		PlayerPos = FVector2D(0.5f, 0.65f);
 		MoveVelocity = FVector2D::ZeroVector;
 		// 换房时打断挥砍动画(防跨房残留)。
 		SwingAnimTimer = 0.f;
@@ -1377,7 +1379,7 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 
 	// 道具碰撞(中间宝箱 / 事件房 NPC): 方形空气墙(AABB) + 分轴阻挡 —— 撞墙即停, 横移自然贴墙滑过,
 	// 不再做切向 nudge(那是圆形墙顶死的补丁, 会让直撞时人物抽搐/横偏)。
-	// 只挡"越来越深入方块"的移动, 已重叠(如在门口生成于箱体内)时仍可移出, 避免卡死。
+	// 只挡”越来越深入方块”的移动, 已重叠(如在门口生成于箱体内)时仍可移出, 避免卡死。
 	// 怪物会动+影响走位风筝, 不做碰撞。
 	{
 		struct FBoxObstacle { FVector2D Center; float Half; bool bActive; };

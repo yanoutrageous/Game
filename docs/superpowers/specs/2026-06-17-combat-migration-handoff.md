@@ -1,6 +1,8 @@
 # 局内战斗迁移 + 局内 bug 修复 交接(2026-06-17)
 
-> compact 续接用。一次"紧急修复 5 个局内问题"会话: #1/#2 已修完提交; #3/#4/#5(战斗)= 真战斗模型迁移, 方案已与豪豪敲定、**尚未开工**。
+> ✅ **全部完成**。#1/#2 提交 87bd9a3; #3/#4/#5 实时战斗迁移提交 **b0c9a1c**。编译 exit 0 + 163 全过 + 无头实测三 bug 均修复。仅余 **PIE 目检实时手感** + 问豪豪 push/PR。
+>
+> compact 续接用。一次"紧急修复 5 个局内问题"会话: #1/#2 已修完提交; #3/#4/#5(战斗)= 真战斗模型迁移, 已实现并验证。
 
 ## 分支
 - 工作分支 `fix/run-combat-fixes`(基于 origin/main, 含战斗 PR#9 + S4/S5)。
@@ -38,3 +40,20 @@
 2. RunContext 加真战斗状态 + PlayerAttackMonster/MonsterHitPlayer(GetMapMode 分流护 163)。
 3. snapshot 补 EnemyHp/EnemyMaxHp; RoomView tick 把 0 伤害命中接到 RunContext, 加玩家/怪物血条。
 4. Build + 163 每步验; 提交到 fix/run-combat-fixes; 完成后问豪豪 push/PR。
+
+## ✅ 实现记录(b0c9a1c, 已全部完成)
+**分层**: 核心层(RunContext, 规则/状态, 走命令管线可测) + 表现层(RoomView, 相位/无敌帧/挥砍冷却门控)。
+- **核心**: FGT_CombatRuntimeState 加 EnemyHp/EnemyMaxHp/EnemyDamage; StartDummyCombat 的 Standard
+  分支按 ensureMonsterState 生成真怪(HP=18+战力, 伤害=max(4,战力/3)); AttackDummyCombat 的
+  Standard 分支改"每刀削战力点血、血尽才结算"(去一击必杀 + 去反伤); 新增 MonsterHitPlayer +
+  MonsterHit 命令(怪攻击扣血、致死判负 CombatDeath); ProcessAttackCommand 击杀压力只在击杀刀加。
+  GT_CombatRules 加 MonsterMaxHpForPower/MonsterDamageForPower。BasicDebug 仍走 1 血 DummyHp(163 未变)。
+- **表现(GT_RoomViewWidget)**: PR#9 近战/子弹命中接 DebugMonsterHit(无敌帧 0.9s 门控)+ 全屏红闪;
+  F 攻击受挥砍冷却 0.45s 门控(TryConsumePlayerAttack); 怪/我头顶血条 + 怪名牌; OnCombatStateChanged
+  通知 HUD 轻量刷新(RefreshPanels, 不抢焦点)。HUD OnSearch 战斗分支用 TryConsumePlayerAttack 闸门。
+- **调试**: 快照 + gt.Snapshot/gt.Status 增 EnemyHp/MaxHp/EnemyName/PlayerHp; 新增 gt.MonsterHit。
+- **验证**: 编译 exit 0; 163 Pass=163 Fail=0; 无头 seed 12345 战斗格"空壳巡工"28HP 三刀击杀
+  (28→18→8→0 玩家无反伤)、怪每击 -4、连击 25 刀致死转 Failed + RunFailed 事件。
+- **待办**: PIE 目检实时手感(相位/闪避/血条/红闪); 问豪豪是否 push fix/run-combat-fixes + 开 PR。
+- **简化取舍**: 玩家攻击不做距离门控(站位无关, 防 PIE 软锁), 仅冷却多刀; 怪相位时序沿用 PR#9
+  动画(非逐位对齐 Lua 的 idle/warning/active/cooldown), 因关键 bug 是 0 伤害/秒杀/无 HP, 已全修。

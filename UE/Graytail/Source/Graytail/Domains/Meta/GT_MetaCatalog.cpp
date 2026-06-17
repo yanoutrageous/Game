@@ -15,7 +15,7 @@ namespace GT_MetaCatalog
 			{ FName(TEXT("backpack")),         TEXT("大背包"),   220,   0,  0, false,  0, false, 50 },
 			// S6 新机制装备(末三列 Trigger / Cap / Amount)。购买价为初值, 待平衡。
 			{ FName(TEXT("anomaly_fang")),     TEXT("异常体犬牙"), 160, 0, 0, false, 0, false, 0, EGT_ItemTrigger::KillPowerStack,  5, 2 },
-			{ FName(TEXT("lockdown_crystal")), TEXT("封锁区结晶"), 320, 0, 0, false, 0, false, 0, EGT_ItemTrigger::ProtocolHeal,    4, 1 },
+			{ FName(TEXT("lockdown_crystal")), TEXT("封锁区结晶"), 320, 0, 0, false, 0, false, 0, EGT_ItemTrigger::ProtocolHeal,    4, 4 },
 			{ FName(TEXT("company_badge")),    TEXT("公司工牌"),   260, 0, 0, false, 0, false, 0, EGT_ItemTrigger::SettleGoldBonus, 0, 15 },
 			{ FName(TEXT("salvage_magnet")),   TEXT("回收磁石"),   180, 0, 0, false, 0, false, 0, EGT_ItemTrigger::ChestBonusLoot,  0, 1 },
 		};

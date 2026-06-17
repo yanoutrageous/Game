@@ -900,6 +900,57 @@ bool UGT_RunContext::UseConsumableAtPlayer(FName ItemId, FGT_ConsumableOutcome& 
 		return true;
 	}
 
+	// S6 幸运硬币: 确定性 RNG(seed,x,y)二选一 —— 50% 得 30 安全金 / 50% 揭示 1 个相邻未知房(免协议压力)。
+	if (ItemId == FName(TEXT("lucky_coin")))
+	{
+		int32 PX = 0;
+		int32 PY = 0;
+		TryGetPlayerPosition(PX, PY);
+		const uint32 Hash = static_cast<uint32>(Seed * 1103515245 + PX * 928371 + PY * 364479 + 7919);
+		const bool bGold = (Hash % 2u) == 0u;
+
+		bool bRevealed = false;
+		if (!bGold)
+		{
+			const int32 DX[4] = { 1, -1, 0, 0 };
+			const int32 DY[4] = { 0, 0, 1, -1 };
+			for (int32 Dir = 0; Dir < 4; ++Dir)
+			{
+				const int32 NX = PX + DX[Dir];
+				const int32 NY = PY + DY[Dir];
+				const FGT_IntelCell* Cell = PlayerIntelMap.GetCellConst(NX, NY);
+				if (IsValidMapCoord(NX, NY) && Cell && !Cell->bExplored)
+				{
+					// 揭示该相邻未知房(标已探索 + 亮雷数), 不加协议压力(免压)。
+					MarkPlayerIntelCellExplored(NX, NY);
+					int32 Adj = 0;
+					if (TruthMap.CountAdjacentMines8(NX, NY, Adj))
+					{
+						SetPlayerIntelCellScannedNumber(NX, NY, Adj);
+					}
+					bRevealed = true;
+					break;
+				}
+			}
+		}
+
+		if (bGold || !bRevealed)   // 选金, 或无未知相邻格可揭示时给金兜底
+		{
+			RunInventory.AddSafeGold(30);
+			OutOutcome.Status = FName(TEXT("lucky_gold"));
+		}
+		else
+		{
+			OutOutcome.Status = FName(TEXT("lucky_reveal"));
+		}
+
+		RunInventory.RemoveCarriedItem(ItemId, 1);
+		OutOutcome.bUsed = true;
+		OutOutcome.RemainingCount = RunInventory.GetItemCount(ItemId);
+		LastConsumableOutcome = OutOutcome;
+		return true;
+	}
+
 	OutOutcome.Status = FName(TEXT("not_implemented"));
 	LastConsumableOutcome = OutOutcome;
 	return false;

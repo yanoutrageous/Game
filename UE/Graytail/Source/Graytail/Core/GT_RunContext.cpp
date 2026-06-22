@@ -573,12 +573,12 @@ void UGT_RunContext::ApplyMetaLoadout(const FGT_EquipBonus& Equip, const FGT_Tal
 	LoadoutSearchBonusPercent = Equip.SearchBonus;
 	LoadoutTradeBonusPercent = Talents.TradePrice;   // 议价天赋: 0(无)/ 20(已解锁) = 收购价加成百分比
 
-	// 带入消耗品(替换原写死占位)。
+	// 带入消耗品(替换原写死占位, 开局强制入包不检查容量)。
 	for (const TPair<FName, int32>& Pair : Consumables)
 	{
 		if (!Pair.Key.IsNone() && Pair.Value > 0)
 		{
-			RunInventory.AddCarriedItem(Pair.Key, Pair.Value, FName(TEXT("loadout")));
+			RunInventory.ForceAddCarriedItem(Pair.Key, Pair.Value, FName(TEXT("loadout")));
 		}
 	}
 
@@ -626,8 +626,7 @@ bool UGT_RunContext::TryGrantChestMagnetLoot(int32 X, int32 Y)
 	{
 		return false;
 	}
-	RunInventory.AddCarriedItem(ItemId, 1, FName(TEXT("recovered")));
-	return true;
+	return RunInventory.AddCarriedItem(ItemId, 1, FName(TEXT("recovered")));
 }
 
 bool UGT_RunContext::MarkExploredForPressure(int32 X, int32 Y)
@@ -839,13 +838,27 @@ bool UGT_RunContext::SearchCurrentRoom(FGT_SearchOutcome& OutOutcome)
 	// 大背包搜索奖励 +SearchBonus%(无背包 = 0% 不变, 对齐 Lua RunInventory.searchBonus)。
 	RunInventory.AddPendingGold((Reward.Gold * (100 + LoadoutSearchBonusPercent)) / 100);
 	RunInventory.Parts += Reward.Parts;
+	int32 ItemsAdded = 0;
+	int32 ItemsSkipped = 0;
 	for (const FGT_ItemStack& Stack : Reward.Items)
 	{
-		RunInventory.AddCarriedItem(Stack.ItemId, Stack.Count, Stack.Source);
+		if (RunInventory.AddCarriedItem(Stack.ItemId, Stack.Count, Stack.Source))
+		{
+			++ItemsAdded;
+		}
+		else
+		{
+			++ItemsSkipped;
+		}
 	}
-
-	OutOutcome.bSearched = true;
-	OutOutcome.Status = FName(TEXT("searched"));
+	if (ItemsSkipped > 0)
+	{
+		OutOutcome.Status = FName(TEXT("searched_overweight"));
+	}
+	else
+	{
+		OutOutcome.Status = FName(TEXT("searched"));
+	}
 	OutOutcome.Reward = Reward;
 	LastSearchOutcome = OutOutcome;
 	return true;
@@ -1214,7 +1227,10 @@ bool UGT_RunContext::ExecuteEventOptionAtPlayer(FName OptionId, FGT_EventOutcome
 		{
 			return;
 		}
-		RunInventory.AddCarriedItem(ItemId, 1, GTEventItemSource);
+		if (!RunInventory.AddCarriedItem(ItemId, 1, GTEventItemSource))
+		{
+			return;
+		}
 		RunInventory.Parts += 1;
 		FGT_ItemStack& Granted = OutOutcome.GrantedItems.AddDefaulted_GetRef();
 		Granted.ItemId = ItemId;

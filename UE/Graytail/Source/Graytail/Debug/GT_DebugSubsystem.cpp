@@ -787,7 +787,7 @@ bool UGT_DebugSubsystem::GetDebugInventoryText(FString& OutInventoryText) const
 	const FGT_ProtocolState& Protocol = RunContext->GetProtocolState();
 
 	OutInventoryText = FString::Printf(
-		TEXT("gt.Bag: Hp=%d/%d Power=%d%s Protocol=L%d:%d/%d PendingGold=%d SafeGold=%d Parts=%d LooseParts=%d CarriedItemCount=%d CarriedItemValue=%d SearchedRooms=%d Items={%s}"),
+		TEXT("gt.Bag: Hp=%d/%d Power=%d%s Protocol=L%d:%d/%d PendingGold=%d SafeGold=%d Parts=%d LooseParts=%d CarriedItemCount=%d CarriedItemValue=%d BackpackWeight=%d/%d SearchedRooms=%d Items={%s}"),
 		PlayerCombat.Hp,
 		PlayerCombat.MaxHp,
 		PlayerCombat.Power,
@@ -801,6 +801,8 @@ bool UGT_DebugSubsystem::GetDebugInventoryText(FString& OutInventoryText) const
 		Inventory.GetLooseParts(),
 		Inventory.GetCarriedItemCount(),
 		GT_ItemCatalog::GetCarriedItemsValue(Inventory.CarriedItems),
+		Inventory.GetCurrentWeight(),
+		Inventory.BackpackCapacity,
 		Inventory.SearchedRooms.Num(),
 		ItemsText.IsEmpty() ? TEXT("none") : *ItemsText);
 	return true;

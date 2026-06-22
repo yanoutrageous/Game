@@ -49,6 +49,10 @@ struct GRAYTAIL_API FGT_ItemCatalogEntry
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Item")
 	int32 Value = 0;
 
+	// 单件重量(背包容量限制用)。
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Item")
+	int32 Weight = 1;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Item")
 	FString EffectText;
 
@@ -152,6 +156,10 @@ struct GRAYTAIL_API FGT_RunInventoryState
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Inventory")
 	int32 Parts = 0;
 
+	// 背包容量上限(开局初始化, Standard 局默认 20; BasicDebug 不设限制)。
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Inventory")
+	int32 BackpackCapacity = 20;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Inventory")
 	TArray<FGT_ItemStack> CarriedItems;
 
@@ -163,6 +171,7 @@ struct GRAYTAIL_API FGT_RunInventoryState
 		PendingGold = 0;
 		SafeGold = 0;
 		Parts = 0;
+		BackpackCapacity = 20;
 		CarriedItems.Reset();
 		SearchedRooms.Reset();
 	}
@@ -193,11 +202,20 @@ struct GRAYTAIL_API FGT_RunInventoryState
 		return true;
 	}
 
-	void AddCarriedItem(FName ItemId, int32 Count, FName Source)
+	// 尝试添加物品, 超重时返回 false(不添加)。
+	// 返回 true 表示成功入包; false 表示容量不足(物品未动)。
+	bool AddCarriedItem(FName ItemId, int32 Count, FName Source)
 	{
 		if (ItemId.IsNone() || Count < 1)
 		{
-			return;
+			return false;
+		}
+
+		const int32 WeightPerItem = GT_ItemCatalog::GetItemWeight(ItemId);
+		const int32 TotalWeight = WeightPerItem * Count;
+		if (GetCurrentWeight() + TotalWeight > BackpackCapacity)
+		{
+			return false;
 		}
 
 		FGT_ItemStack* Stack = CarriedItems.FindByPredicate([ItemId](const FGT_ItemStack& Existing)
@@ -211,6 +229,24 @@ struct GRAYTAIL_API FGT_RunInventoryState
 		}
 		Stack->Count += Count;
 		Stack->Source = Source;
+		return true;
+	}
+
+	// 当前背包总重量。
+	int32 GetCurrentWeight() const
+	{
+		int32 Total = 0;
+		for (const FGT_ItemStack& Stack : CarriedItems)
+		{
+			Total += GT_ItemCatalog::GetItemWeight(Stack.ItemId) * Stack.Count;
+		}
+		return Total;
+	}
+
+	// 剩余容量。
+	int32 GetRemainingCapacity() const
+	{
+		return FMath::Max(0, BackpackCapacity - GetCurrentWeight());
 	}
 
 	int32 GetCarriedItemCount() const

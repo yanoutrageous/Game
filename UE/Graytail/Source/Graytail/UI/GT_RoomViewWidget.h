@@ -12,6 +12,7 @@ class UTextBlock;
 class UTexture2D;
 class UGT_DebugSubsystem;
 class UGT_RunContext;
+class FGTMovementKeyProcessor;
 
 // 2D 房间视图(对齐 Lua DungeonRoom.lua / TapTap 版):
 // 一屏一个房间, 人物 WASD 实时行走, 对准四边的门走出边界 -> 发 Move 命令切相邻格。
@@ -24,6 +25,7 @@ class GRAYTAIL_API UGT_RoomViewWidget : public UUserWidget
 public:
 	virtual TSharedRef<SWidget> RebuildWidget() override;
 	virtual void NativeConstruct() override;
+	virtual void NativeDestruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 	virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 	virtual FReply NativeOnKeyUp(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
@@ -171,6 +173,13 @@ private:
 	// 玩家实时战斗计时(表现层门控, 对齐 Combat.lua): 挥砍冷却 + 受击无敌帧。
 	float PlayerAttackCooldownTimer = 0.f;
 	float PlayerIFrameTimer = 0.f;
+
+	// 怪物避让天赋(monsterFleeBonus): 战斗刚开始的"犹豫窗口", 期间怪不追不攻; 给玩家缓冲。
+	bool bPrevInCombat = false;
+	float CombatFleeTimer = 0.f;
+
+	// 全局键盘预处理器: 不受焦点/UIOnly 影响地维护 WASD 持键真值(防漏 KeyUp 卡键 / 关弹窗续走)。
+	TSharedPtr<FGTMovementKeyProcessor> MovementProcessor;
 
 	// 怪物实时战斗状态(表现层): 归一化位置(追击移动)、近战相位机、攻击射程缓存。
 	FVector2D EnemyNormPos = FVector2D(0.35f, 0.45f);

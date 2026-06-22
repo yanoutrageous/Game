@@ -40,6 +40,7 @@ public:
 	virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 	virtual FReply NativeOnKeyUp(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 	virtual FReply NativeOnFocusReceived(const FGeometry& InGeometry, const FFocusEvent& InFocusEvent) override;
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
 private:
 	void BuildWidgetTree();
@@ -104,6 +105,10 @@ private:
 	void HandleEventPanelClosed();
 	// Q 键使用消耗品(默认止血贴): 发命令走真规则, 刷新血条/背包。
 	void OnUseConsumable();
+	// 居中播报(对齐 Lua HUD.DrawCenterToast): 给无粒子/无显眼数值变化的动作一个明确反馈(如幸运硬币结果)。
+	void ShowToast(const FString& Message, float Duration = 2.2f);
+	// 罗盘装备: 开局播报撤离信标相对玩家的方位(对齐 Lua compass showExitHint)。无罗盘/无撤离点则静默。
+	void ShowCompassHintIfNeeded();
 
 	UPROPERTY(Transient) UGT_RoomViewWidget* RoomView = nullptr;
 	UPROPERTY(Transient) UGT_MapOverlayWidget* MapOverlay = nullptr;
@@ -146,6 +151,11 @@ private:
 
 	// 局内暂停菜单(最顶层): ESC / = 打开, 抢焦点暂停移动。
 	UPROPERTY(Transient) UGT_PauseMenuWidget* PauseMenu = nullptr;
+
+	// 居中播报 toast(最顶层, 默认隐藏): ShowToast 弹出, NativeTick 计时末段淡出。
+	UPROPERTY(Transient) UWidget* ToastRoot = nullptr;
+	UPROPERTY(Transient) UTextBlock* ToastText = nullptr;
+	float ToastTimer = 0.f;
 
 	// 新手教程教学弹窗(最顶层): blocking 模态抢焦点暂停移动, 非blocking 顶部提示条。
 	UPROPERTY(Transient) UGT_TutorialPopupWidget* TutorialPopup = nullptr;

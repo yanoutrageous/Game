@@ -65,9 +65,12 @@ private:
 	void AddRecoveryPanel();
 
 	// 卡片: 图标 + 名称 + 类型 + 效果 + flavor 描述 + 拥有/价格行 + (状态左 / 动作按钮右)。圆角 RoundedBox。
+	// bStepper=true 时底部用 [-] N [+] 步进器(出勤配置页带入数量), 此时 ActionLabel 不用,
+	// StepValue=当前带入数, StepMax=可带上限(库存与 MaxCarry 取小); 否则用单个动作按钮。
 	void AddItemCard(int32 Index, UTexture2D* Icon, const FString& Name, const FString& TypeLine,
 		const FString& Effect, const FString& Flavor, const FString& InfoLine, const FString& StatusLine,
-		const FString& ActionLabel, bool bActionEnabled, bool bHighlight);
+		const FString& ActionLabel, bool bActionEnabled, bool bHighlight,
+		bool bStepper = false, int32 StepValue = 0, int32 StepMax = 0);
 	// 顶栏导航/底栏按钮: 用 deploy 贴图(标签烤在图里), 显式传原生尺寸 1:1 不拉伸。
 	// (这些按钮图带 mipmap+流送, 运行时 Tex->GetSizeX() 早期返回 32 占位, 故尺寸不取运行时值, 用实测原生像素。)
 	// OutHighlight 非空时: 把按钮外包一层圆角 Border 当"当前页签"高亮框, 通过它回传(导航用)。
@@ -92,6 +95,10 @@ private:
 	UFUNCTION() void OnDepartClicked();
 	UFUNCTION() void HandleRowClicked(int32 Index);
 	UFUNCTION() void HandleFilterClicked(int32 Index);
+	// 出勤配置页 消耗品带入数量步进(-/+ 各一颗按钮, 复用 IndexedButton 的 row index)。
+	UFUNCTION() void HandleCarryInc(int32 Index);
+	UFUNCTION() void HandleCarryDec(int32 Index);
+	void AdjustCarry(int32 Index, int32 Delta);
 
 	UPROPERTY(Transient) UTextBlock* SectionTitleText = nullptr;
 	UPROPERTY(Transient) UHorizontalBox* FilterRow = nullptr;

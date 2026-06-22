@@ -5,6 +5,7 @@
 #include "Fonts/CompositeFont.h"
 #include "Fonts/SlateFontInfo.h"
 #include "Styling/CoreStyle.h"
+#include "Styling/SlateTypes.h"
 
 // 全 UI 共用的中文像素字体(FusionPixel)。
 // 引擎默认 Roboto/RobotoMono 无中文字形, 中文走平滑矢量回退字, 在像素美术 + 小字号下显糊;
@@ -36,5 +37,33 @@ namespace GT_UIStyle
 			return FSlateFontInfo(CompositeFont, Size);
 		}
 		return FCoreStyle::GetDefaultFontStyle("Regular", Size);
+	}
+
+	// 深色圆角按钮样式。
+	// 引擎默认 UButton 是浅灰白底, 我们的菜单/设置/作弊面板用浅色文字, 压上去对比极低 = 看不清;
+	// 统一套这个深底(圆角 + 细描边), 文字色仍由各按钮自定, 保证可读。各处 SetStyle(DarkButton()) 即可。
+	inline FButtonStyle DarkButton()
+	{
+		auto Brush = [](const FLinearColor& Fill, const FLinearColor& Outline)
+		{
+			FSlateBrush B;
+			B.DrawAs = ESlateBrushDrawType::RoundedBox;
+			B.TintColor = FSlateColor(Fill);
+			B.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+			B.OutlineSettings.CornerRadii = FVector4(6.f, 6.f, 6.f, 6.f);
+			B.OutlineSettings.Color = FSlateColor(Outline);
+			B.OutlineSettings.Width = 1.f;
+			return B;
+		};
+		// FColor 包一层 = 按所见 sRGB 取色(FLinearColor(FColor) 会转线性, 渲染再转回, 显示即此值)。
+		const FLinearColor Edge(FColor(92, 104, 130));
+		FButtonStyle S;
+		S.Normal = Brush(FLinearColor(FColor(38, 44, 58)), Edge);
+		S.Hovered = Brush(FLinearColor(FColor(56, 64, 84)), Edge);
+		S.Pressed = Brush(FLinearColor(FColor(28, 33, 44)), Edge);
+		S.Disabled = Brush(FLinearColor(FColor(30, 34, 42)), FLinearColor(FColor(52, 57, 68)));
+		S.NormalPadding = FMargin(14.f, 7.f);
+		S.PressedPadding = FMargin(14.f, 7.f);
+		return S;
 	}
 }

@@ -56,6 +56,17 @@ void UGT_LootResultWidget::NativeConstruct()
 	SetIsFocusable(true);
 }
 
+void UGT_LootResultWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+	Super::NativeTick(MyGeometry, InDeltaTime);
+	// 模态弹窗"粘焦点": 只要可见就保持键盘焦点。搜索后 RefreshAll 会把焦点抢回房间,
+	// 同帧 SetFocus 偶发不生效, 导致 F/Enter/Esc 关不掉; 这里每帧兜底夺回。
+	if (GetVisibility() == ESlateVisibility::Visible && !HasKeyboardFocus())
+	{
+		SetFocus();
+	}
+}
+
 void UGT_LootResultWidget::BuildWidgetTree()
 {
 	UOverlay* Root = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());

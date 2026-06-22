@@ -62,6 +62,9 @@ void UGT_RunContext::InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec)
 	bLoadoutMineImmunityAvailable = false;
 	LoadoutSearchBonusPercent = 0;
 	LoadoutTradeBonusPercent = 0;
+	bLoadoutShowExitHint = false;
+	bLoadoutMapHighlight = false;
+	LoadoutMonsterFleeBonus = 0;
 	bLoadoutKillPowerStack = false; KillPowerStackCap = 0; KillPowerStackAmount = 0; KillPowerStacksUsed = 0;
 	bLoadoutProtocolHeal = false; ProtocolHealCap = 0; ProtocolHealAmount = 0; ProtocolHealsUsed = 0;
 	bLoadoutChestBonusLoot = false; ChestBonusGrantedCells.Reset();
@@ -139,6 +142,9 @@ void UGT_RunContext::ResetRun()
 	bLoadoutMineImmunityAvailable = false;
 	LoadoutSearchBonusPercent = 0;
 	LoadoutTradeBonusPercent = 0;
+	bLoadoutShowExitHint = false;
+	bLoadoutMapHighlight = false;
+	LoadoutMonsterFleeBonus = 0;
 	bLoadoutKillPowerStack = false; KillPowerStackCap = 0; KillPowerStackAmount = 0; KillPowerStacksUsed = 0;
 	bLoadoutProtocolHeal = false; ProtocolHealCap = 0; ProtocolHealAmount = 0; ProtocolHealsUsed = 0;
 	bLoadoutChestBonusLoot = false; ChestBonusGrantedCells.Reset();
@@ -589,6 +595,9 @@ void UGT_RunContext::ApplyMetaLoadout(const FGT_EquipBonus& Equip, const FGT_Tal
 	bLoadoutMineImmunityAvailable = Equip.bMineImmunity;
 	LoadoutSearchBonusPercent = Equip.SearchBonus;
 	LoadoutTradeBonusPercent = Talents.TradePrice;   // 议价天赋: 0(无)/ 20(已解锁) = 收购价加成百分比
+	bLoadoutShowExitHint = Equip.bShowExitHint;          // 罗盘: 开局播报撤离信标方向
+	bLoadoutMapHighlight = Talents.bMapHighlight;        // 邻域感知: 进房高亮 8 邻域
+	LoadoutMonsterFleeBonus = Talents.MonsterFleeBonus;  // 怪物避让: 战斗开始犹豫窗口秒数
 
 	// 带入消耗品(替换原写死占位, 开局强制入包不检查容量)。
 	for (const TPair<FName, int32>& Pair : Consumables)
@@ -615,6 +624,22 @@ void UGT_RunContext::ApplyMetaLoadout(const FGT_EquipBonus& Equip, const FGT_Tal
 		default: break;
 		}
 	}
+}
+
+TArray<FIntPoint> UGT_RunContext::GetExitCells() const
+{
+	TArray<FIntPoint> Exits;
+	for (int32 Y = 0; Y < MapHeight; ++Y)
+	{
+		for (int32 X = 0; X < MapWidth; ++X)
+		{
+			if (TruthMap.IsExit(X, Y))
+			{
+				Exits.Add(FIntPoint(X, Y));
+			}
+		}
+	}
+	return Exits;
 }
 
 bool UGT_RunContext::TryGrantChestMagnetLoot(int32 X, int32 Y)

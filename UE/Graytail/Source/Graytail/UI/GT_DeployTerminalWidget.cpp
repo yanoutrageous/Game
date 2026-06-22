@@ -598,7 +598,7 @@ void UGT_DeployTerminalWidget::BuildWidgetTree()
 
 void UGT_DeployTerminalWidget::AddItemCard(int32 Index, UTexture2D* Icon, const FString& Name, const FString& TypeLine,
 	const FString& Effect, const FString& Flavor, const FString& InfoLine, const FString& StatusLine, const FString& ActionLabel,
-	bool bActionEnabled, bool bHighlight)
+	bool bActionEnabled, bool bHighlight, bool bStepper, int32 StepValue, int32 StepMax)
 {
 	if (!ContentWrap) { return; }
 
@@ -684,36 +684,81 @@ void UGT_DeployTerminalWidget::AddItemCard(int32 Index, UTexture2D* Icon, const 
 	StatusTxt->SetColorAndOpacity(FSlateColor(bHighlight ? GTColGold : GTColDim));
 	if (UHorizontalBoxSlot* S = Foot->AddChildToHorizontalBox(StatusTxt)) { S->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); S->SetVerticalAlignment(VAlign_Center); }
 
-	UGT_IndexedButton* ActBtn = WidgetTree->ConstructWidget<UGT_IndexedButton>();
-	ActBtn->Index = Index;
-	ActBtn->SetIsEnabled(bActionEnabled);
-	ActBtn->OnIndexClicked.AddDynamic(this, &UGT_DeployTerminalWidget::HandleRowClicked);
-	// 蓝底白字圆角按钮(原版风格); 不可用时灰底暗字。
+	// 圆角按钮刷(蓝底; 动作按钮与 -/+ 步进器共用)。
+	auto BtnBrush = [](const FLinearColor& Fill)
 	{
-		FButtonStyle BS = ActBtn->GetStyle();
-		auto BtnBrush = [](const FLinearColor& Fill)
+		FSlateBrush B;
+		B.DrawAs = ESlateBrushDrawType::RoundedBox;
+		B.TintColor = FSlateColor(Fill);
+		B.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+		B.OutlineSettings.CornerRadii = FVector4(6.f, 6.f, 6.f, 6.f);
+		return B;
+	};
+
+	if (bStepper)
+	{
+		// 出勤配置页 消耗品带入数量: [-] N [+] 步进器(替代原"带入 N"单按钮循环)。
+		UHorizontalBox* Stepper = WidgetTree->ConstructWidget<UHorizontalBox>();
+		auto MakeStepBtn = [&](const FString& Glyph, bool bEnabled, bool bPlus) -> UGT_IndexedButton*
 		{
-			FSlateBrush B;
-			B.DrawAs = ESlateBrushDrawType::RoundedBox;
-			B.TintColor = FSlateColor(Fill);
-			B.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
-			B.OutlineSettings.CornerRadii = FVector4(6.f, 6.f, 6.f, 6.f);
+			UGT_IndexedButton* B = WidgetTree->ConstructWidget<UGT_IndexedButton>();
+			B->Index = Index;
+			B->SetIsEnabled(bEnabled);
+			if (bPlus) { B->OnIndexClicked.AddDynamic(this, &UGT_DeployTerminalWidget::HandleCarryInc); }
+			else       { B->OnIndexClicked.AddDynamic(this, &UGT_DeployTerminalWidget::HandleCarryDec); }
+			FButtonStyle BS = B->GetStyle();
+			BS.Normal = BtnBrush(GTColBtn);
+			BS.Hovered = BtnBrush(GTColBtnHover);
+			BS.Pressed = BtnBrush(GTColBtnPress);
+			BS.Disabled = BtnBrush(GTColBtnDisabled);
+			BS.NormalPadding = FMargin(13.f, 4.f);
+			BS.PressedPadding = FMargin(13.f, 4.f);
+			B->SetStyle(BS);
+			UTextBlock* T = WidgetTree->ConstructWidget<UTextBlock>();
+			T->SetText(FText::FromString(Glyph));
+			T->SetFont(GTFont(18));
+			T->SetColorAndOpacity(FSlateColor(bEnabled ? GTColBtnText : GTColBtnTextDisabled));
+			T->SetJustification(ETextJustify::Center);
+			B->SetContent(T);
 			return B;
 		};
-		BS.Normal = BtnBrush(GTColBtn);
-		BS.Hovered = BtnBrush(GTColBtnHover);
-		BS.Pressed = BtnBrush(GTColBtnPress);
-		BS.Disabled = BtnBrush(GTColBtnDisabled);
-		BS.NormalPadding = FMargin(15.f, 5.f);
-		BS.PressedPadding = FMargin(15.f, 5.f);
-		ActBtn->SetStyle(BS);
+		if (UHorizontalBoxSlot* S = Stepper->AddChildToHorizontalBox(MakeStepBtn(TEXT("-"), StepValue > 0, false))) { S->SetVerticalAlignment(VAlign_Center); }
+		UTextBlock* NumTxt = WidgetTree->ConstructWidget<UTextBlock>();
+		NumTxt->SetText(FText::FromString(FString::FromInt(StepValue)));
+		NumTxt->SetFont(GTFont(17));
+		NumTxt->SetColorAndOpacity(FSlateColor(StepValue > 0 ? GTColGold : GTColDim));
+		NumTxt->SetJustification(ETextJustify::Center);
+		USizeBox* NumBox = WidgetTree->ConstructWidget<USizeBox>();
+		NumBox->SetWidthOverride(36.f);
+		NumBox->SetContent(NumTxt);
+		if (UHorizontalBoxSlot* S = Stepper->AddChildToHorizontalBox(NumBox)) { S->SetVerticalAlignment(VAlign_Center); S->SetPadding(FMargin(3.f, 0.f)); }
+		if (UHorizontalBoxSlot* S = Stepper->AddChildToHorizontalBox(MakeStepBtn(TEXT("+"), StepValue < StepMax, true))) { S->SetVerticalAlignment(VAlign_Center); }
+		if (UHorizontalBoxSlot* S = Foot->AddChildToHorizontalBox(Stepper)) { S->SetVerticalAlignment(VAlign_Center); }
 	}
-	UTextBlock* ActTxt = WidgetTree->ConstructWidget<UTextBlock>();
-	ActTxt->SetText(FText::FromString(ActionLabel));
-	ActTxt->SetFont(GTFont(15));
-	ActTxt->SetColorAndOpacity(FSlateColor(bActionEnabled ? GTColBtnText : GTColBtnTextDisabled));
-	ActBtn->SetContent(ActTxt);
-	if (UHorizontalBoxSlot* S = Foot->AddChildToHorizontalBox(ActBtn)) { S->SetVerticalAlignment(VAlign_Center); }
+	else
+	{
+		UGT_IndexedButton* ActBtn = WidgetTree->ConstructWidget<UGT_IndexedButton>();
+		ActBtn->Index = Index;
+		ActBtn->SetIsEnabled(bActionEnabled);
+		ActBtn->OnIndexClicked.AddDynamic(this, &UGT_DeployTerminalWidget::HandleRowClicked);
+		// 蓝底白字圆角按钮(原版风格); 不可用时灰底暗字。
+		{
+			FButtonStyle BS = ActBtn->GetStyle();
+			BS.Normal = BtnBrush(GTColBtn);
+			BS.Hovered = BtnBrush(GTColBtnHover);
+			BS.Pressed = BtnBrush(GTColBtnPress);
+			BS.Disabled = BtnBrush(GTColBtnDisabled);
+			BS.NormalPadding = FMargin(15.f, 5.f);
+			BS.PressedPadding = FMargin(15.f, 5.f);
+			ActBtn->SetStyle(BS);
+		}
+		UTextBlock* ActTxt = WidgetTree->ConstructWidget<UTextBlock>();
+		ActTxt->SetText(FText::FromString(ActionLabel));
+		ActTxt->SetFont(GTFont(15));
+		ActTxt->SetColorAndOpacity(FSlateColor(bActionEnabled ? GTColBtnText : GTColBtnTextDisabled));
+		ActBtn->SetContent(ActTxt);
+		if (UHorizontalBoxSlot* S = Foot->AddChildToHorizontalBox(ActBtn)) { S->SetVerticalAlignment(VAlign_Center); }
+	}
 }
 
 void UGT_DeployTerminalWidget::RebuildContent()
@@ -729,7 +774,7 @@ void UGT_DeployTerminalWidget::RebuildContent()
 
 	if (CurrentSection == ESection::Requisition)
 	{
-		if (DetailText) { DetailText->SetText(FText::FromString(TEXT("点击卡片右侧按钮: 未拥有→申领, 已拥有→装备/卸下(最多 2 件)。"))); }
+		if (DetailText) { DetailText->SetText(FText::FromString(TEXT("后勤申领: 购买装备与消耗品。已拥有的装备请到「出勤配置」页装备/卸下。"))); }
 		for (const FGT_EquipDef& Def : GT_MetaCatalog::GetEquipDefs())
 		{
 			if (!PassesFilter(FName(TEXT("type_equip")), EquipTierKey(Def.Id))) { continue; }
@@ -738,8 +783,9 @@ void UGT_DeployTerminalWidget::RebuildContent()
 			const bool bAfford = Gold >= Def.Price;
 			const FString Info = bOwned ? TEXT("拥有 x1") : FString::Printf(TEXT("价格 %d 结算币"), Def.Price);
 			const FString Status = !bOwned ? TEXT("未拥有") : (bEq ? TEXT("已装备") : TEXT("已拥有"));
-			const FString Action = !bOwned ? TEXT("申领") : (bEq ? TEXT("卸下") : TEXT("装备"));
-			const bool bEnabled = !bOwned ? bAfford : (bEq ? true : EquippedNum < GT_MetaCatalog::MaxEquipped);
+			// 申领页只负责购买; 已拥有的装备在此置灰(装备/卸下去「出勤配置」页)。
+			const FString Action = TEXT("申领");
+			const bool bEnabled = !bOwned && bAfford;
 			AddItemCard(CurrentRows.Num(), IconForEquip(Def.Id), Def.DisplayName, TEXT("装备"),
 				EquipEffectText(Def), EquipFlavor(Def.Id), Info, Status, Action, bEnabled, bEq);
 			CurrentRows.Add({ Def.Id, ERowKind::Equip });
@@ -778,10 +824,13 @@ void UGT_DeployTerminalWidget::RebuildContent()
 			if (!PassesFilter(FName(TEXT("type_consumable")), FName(TEXT("tier_common")))) { continue; }
 			bAny = true;
 			const int32 Carry = Meta->GetLoadout().FindRef(Def.Id);
+			int32 Cap = Stock;
+			if (Def.MaxCarry > 0) { Cap = FMath::Min(Cap, Def.MaxCarry); }
 			AddItemCard(CurrentRows.Num(), IconForConsumable(Def.Id), Def.DisplayName, TEXT("消耗品"),
 				ConsumableEffectText(Def), ConsumableFlavor(Def.Id),
-				FString::Printf(TEXT("库存 %d"), Stock), FString::Printf(TEXT("已带入 %d"), Carry),
-				FString::Printf(TEXT("带入 %d"), Carry), true, Carry > 0);
+				FString::Printf(TEXT("库存 %d"), Stock), FString::Printf(TEXT("已带入 %d / 上限 %d"), Carry, Cap),
+				FString(), true, Carry > 0,
+				/*bStepper*/ true, /*StepValue*/ Carry, /*StepMax*/ Cap);
 			CurrentRows.Add({ Def.Id, ERowKind::Consumable });
 		}
 		if (!bAny && DetailText)
@@ -1039,6 +1088,29 @@ void UGT_DeployTerminalWidget::HandleRowClicked(int32 Index)
 	}
 	}
 	RefreshAll();
+}
+
+void UGT_DeployTerminalWidget::HandleCarryInc(int32 Index) { AdjustCarry(Index, +1); }
+void UGT_DeployTerminalWidget::HandleCarryDec(int32 Index) { AdjustCarry(Index, -1); }
+
+void UGT_DeployTerminalWidget::AdjustCarry(int32 Index, int32 Delta)
+{
+	if (!CurrentRows.IsValidIndex(Index)) { return; }
+	UGT_MetaProgressSubsystem* Meta = GetMeta();
+	if (!Meta) { return; }
+	const FRowRef Ref = CurrentRows[Index];
+	if (Ref.Kind != ERowKind::Consumable) { return; }
+	const int32 Cur = Meta->GetLoadout().FindRef(Ref.Id);
+	const int32 Stock = Meta->GetConsumableCount(Ref.Id);
+	const FGT_ConsumableDef* Def = GT_MetaCatalog::FindConsumable(Ref.Id);
+	int32 Cap = Stock;
+	if (Def && Def->MaxCarry > 0) { Cap = FMath::Min(Cap, Def->MaxCarry); }
+	const int32 Next = FMath::Clamp(Cur + Delta, 0, Cap);
+	if (Next != Cur)
+	{
+		Meta->SetLoadoutConsumable(Ref.Id, Next);
+		RefreshAll();   // 重建卡片(数字更新)+右侧摘要, 与 HandleRowClicked 一致。
+	}
 }
 
 void UGT_DeployTerminalWidget::OnNavRequisition() { ShowSection(ESection::Requisition); }

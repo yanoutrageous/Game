@@ -22,6 +22,7 @@ class UGT_EventPanelWidget;
 class UGT_MainMenuWidget;
 class UGT_DeployTerminalWidget;
 class UGT_TutorialPopupWidget;
+class UGT_PauseMenuWidget;
 
 // 主游戏界面(对齐 Lua 原版构图): 房间视图铺满全屏为背景,
 // 左侧信息面板/右上协议面板/底部快捷键栏全部悬浮其上。
@@ -66,6 +67,13 @@ private:
 	UFUNCTION() void OnExtract();
 	UFUNCTION() void OnNewRun();
 	UFUNCTION() void OnReturnToMenu();
+
+	// 局内暂停菜单(ESC / =): 打开/关闭 + 三个菜单动作。
+	void TogglePauseMenu();
+	void HandlePauseResume();        // 继续: 关菜单, 焦点还房间(移动续走)。
+	void HandlePauseReturnToTitle(); // 放弃本局回标题(已确认, 不结算)。
+	void HandlePauseQuitGame();      // 退出游戏。
+	void HandleOpenCheatPanel();     // 打开作弊面板(作弊模式开启时)。
 
 	// 主菜单回调: 选难度开局。
 	void HandleMenuStartRequested(EGT_Difficulty Difficulty);
@@ -128,6 +136,9 @@ private:
 	// 局外部署终端(装备天赋入口打开; 在主菜单之上)。
 	UPROPERTY(Transient) UGT_DeployTerminalWidget* DeployTerminal = nullptr;
 	EGT_Difficulty LastDifficulty = EGT_Difficulty::Standard;
+
+	// 局内暂停菜单(最顶层): ESC / = 打开, 抢焦点暂停移动。
+	UPROPERTY(Transient) UGT_PauseMenuWidget* PauseMenu = nullptr;
 
 	// 新手教程教学弹窗(最顶层): blocking 模态抢焦点暂停移动, 非blocking 顶部提示条。
 	UPROPERTY(Transient) UGT_TutorialPopupWidget* TutorialPopup = nullptr;

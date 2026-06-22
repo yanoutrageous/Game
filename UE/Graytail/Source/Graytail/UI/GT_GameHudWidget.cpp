@@ -35,9 +35,11 @@
 #include "UI/GT_DeployTerminalWidget.h"
 #include "UI/GT_MainMenuWidget.h"
 #include "UI/GT_MapOverlayWidget.h"
+#include "UI/GT_PauseMenuWidget.h"
 #include "UI/GT_RoomViewWidget.h"
 #include "UI/GT_TutorialContent.h"
 #include "UI/GT_TutorialPopupWidget.h"
+#include "Kismet/KismetSystemLibrary.h"
 
 namespace
 {
@@ -505,6 +507,22 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		{
 			TutorialSlot->SetHorizontalAlignment(HAlign_Fill);
 			TutorialSlot->SetVerticalAlignment(VAlign_Fill);
+		}
+	}
+
+	// 第 10 层(最顶): 局内暂停菜单(ESC / =)。盖住一切并抢焦点暂停移动。
+	PauseMenu = CreateWidget<UGT_PauseMenuWidget>(this, UGT_PauseMenuWidget::StaticClass());
+	if (PauseMenu)
+	{
+		PauseMenu->OnResume.BindUObject(this, &UGT_GameHudWidget::HandlePauseResume);
+		PauseMenu->OnReturnToTitle.BindUObject(this, &UGT_GameHudWidget::HandlePauseReturnToTitle);
+		PauseMenu->OnQuitGame.BindUObject(this, &UGT_GameHudWidget::HandlePauseQuitGame);
+		PauseMenu->OnOpenCheatPanel.BindUObject(this, &UGT_GameHudWidget::HandleOpenCheatPanel);
+		PauseMenu->SetVisibility(ESlateVisibility::Collapsed);
+		if (UOverlaySlot* PauseSlot = Screen->AddChildToOverlay(PauseMenu))
+		{
+			PauseSlot->SetHorizontalAlignment(HAlign_Fill);
+			PauseSlot->SetVerticalAlignment(VAlign_Fill);
 		}
 	}
 }
@@ -1120,8 +1138,12 @@ void UGT_GameHudWidget::HandleMapOverlayClosed()
 FReply UGT_GameHudWidget::NativeOnFocusReceived(const FGeometry& InGeometry, const FFocusEvent& InFocusEvent)
 {
 	// HUD 根不持键盘焦点(gt.HUD 的 SetInputMode 会把焦点定到根):
-	// blocking 教程弹窗在显示时优先持焦点(否则会被抢走导致模态失效可继续移动);
-	// 其次菜单开着转交菜单(Enter/W/S 选难度), 否则转交房间视图(WASD)。
+	// 暂停菜单优先(模态, 持焦点暂停移动); 其次 blocking 教程弹窗;
+	// 再次菜单开着转交菜单(Enter/W/S 选难度), 否则转交房间视图(WASD)。
+	if (PauseMenu && PauseMenu->IsOpen())
+	{
+		return FReply::Handled().SetUserFocus(PauseMenu->TakeWidget(), EFocusCause::SetDirectly);
+	}
 	if (TutorialPopup && TutorialPopup->IsBlockingActive())
 	{
 		return FReply::Handled().SetUserFocus(TutorialPopup->TakeWidget(), EFocusCause::SetDirectly);
@@ -1146,6 +1168,13 @@ FReply UGT_GameHudWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FKe
 	// 焦点在弹窗/按钮上时 WASD 事件冒泡到这里, 转发给房间视图记账,
 	// 保证持键状态与物理按键一致(关弹窗后按住的键立刻续走, 不卡键)。
 	const FKey Key = InKeyEvent.GetKey();
+	// ESC / = : 切换局内暂停菜单。= 是给 PIE 用的备用键(PIE 里 ESC 被编辑器抢去停 play)。
+	// 菜单打开时由 PauseMenu 自己吞 ESC/=(关闭), 不会冒泡到这里; 这里只负责"关闭→打开"。
+	if (Key == EKeys::Escape || Key == EKeys::Equals)
+	{
+		TogglePauseMenu();
+		return FReply::Handled();
+	}
 	if (RoomView && (Key == EKeys::W || Key == EKeys::A || Key == EKeys::S || Key == EKeys::D))
 	{
 		RoomView->SetHeldMovementKey(Key, true);
@@ -1347,6 +1376,70 @@ void UGT_GameHudWidget::OnReturnToMenu()
 	{
 		MainMenu->Open();
 	}
+}
+
+void UGT_GameHudWidget::TogglePauseMenu()
+{
+	if (!PauseMenu)
+	{
+		return;
+	}
+	if (PauseMenu->IsOpen())
+	{
+		HandlePauseResume();
+		return;
+	}
+	// 仅局内、且无其它顶层界面占据时才弹(主菜单/部署终端/blocking 教程模态各有自己的焦点与按键)。
+	const UGT_RunContext* RunContext = GetRunContext();
+	const bool bRunActive = RunContext && RunContext->GetRunState() == EGT_RunState::Running;
+	const bool bBlockedByOther =
+		(MainMenu && MainMenu->IsOpen())
+		|| (DeployTerminal && DeployTerminal->IsOpen())
+		|| (TutorialPopup && TutorialPopup->IsBlockingActive());
+	if (!bRunActive || bBlockedByOther)
+	{
+		return;
+	}
+	// 作弊入口由作弊模式总开关决定(增量2接 DebugSubsystem 总开关; 当前恒 false)。
+	PauseMenu->Open(/*bShowCheatEntry*/ false);
+}
+
+void UGT_GameHudWidget::HandlePauseResume()
+{
+	if (PauseMenu)
+	{
+		PauseMenu->Close();
+	}
+	// 焦点还房间视图, 暂停期间松开/按住的 WASD 下一次 keydown 会重新登记(不卡键)。
+	if (RoomView)
+	{
+		RoomView->SetKeyboardFocus();
+	}
+}
+
+void UGT_GameHudWidget::HandlePauseReturnToTitle()
+{
+	// 放弃本局: 不发 RunFailed/RunSucceeded 事件 → 不触发结算(待结算金币丢失)。
+	// 直接回主菜单, 下次开局 StartNewRun 会重置本局状态。
+	if (PauseMenu)
+	{
+		PauseMenu->Close();
+	}
+	OnReturnToMenu();
+}
+
+void UGT_GameHudWidget::HandlePauseQuitGame()
+{
+	if (PauseMenu)
+	{
+		PauseMenu->Close();
+	}
+	UKismetSystemLibrary::QuitGame(this, GetOwningPlayer(), EQuitPreference::Quit, false);
+}
+
+void UGT_GameHudWidget::HandleOpenCheatPanel()
+{
+	// 增量2: 打开作弊面板。当前作弊入口未启用(Open(false) 不显示该按钮), 不会触发。
 }
 
 void UGT_GameHudWidget::HandleRoomChanged()

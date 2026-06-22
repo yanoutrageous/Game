@@ -60,7 +60,15 @@ UGT_RunContext* UGT_RunSubsystem::StartNewRunStandard(int32 Seed, EGT_Difficulty
 	CurrentRunContext = NewObject<UGT_RunContext>(this);
 	bRunSettled = false;
 	CurrentRunContext->InitializeRunStandard(Seed, Difficulty);
-	ApplyMetaLoadoutToRun();
+	if (CurrentRunContext->IsTutorialRun())
+	{
+		// 教程独立: 不接入局外装备系统(不扣库存/不带真实装备), 只塞一个占位止血贴教学按 Q 使用。
+		CurrentRunContext->CheatGiveItem(FName(TEXT("emergency_bandage")), 1);
+	}
+	else
+	{
+		ApplyMetaLoadoutToRun();
+	}
 	FinishStartRun();
 	return CurrentRunContext;
 }
@@ -155,8 +163,8 @@ void UGT_RunSubsystem::ApplyMetaLoadoutToRun()
 
 void UGT_RunSubsystem::HandleRunEvent(FGT_GameEvent Event)
 {
-	// 局终结算: 仅 Standard 模式触发(BasicDebug/163 夹具不结算, 对齐 Lua 训练工单不结算)。
-	if (!CurrentRunContext || CurrentRunContext->GetMapMode() != EGT_MapMode::Standard)
+	// 局终结算: 仅 Standard 模式触发(BasicDebug/163 夹具不结算); 教程局也排除(训练工单不登记/不结算, 对齐 Lua)。
+	if (!CurrentRunContext || CurrentRunContext->GetMapMode() != EGT_MapMode::Standard || CurrentRunContext->IsTutorialRun())
 	{
 		return;
 	}

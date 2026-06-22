@@ -41,6 +41,9 @@ namespace GT_MetaSettlement
 	{
 		const FGT_RunInventoryState& Inv = Run.GetRunInventory();
 
+		// 失败丢装备(用户拍板): 带入(已装备)的装备损失, 未装备的拥有装备保留(轻装规避=自然缓解)。
+		Meta.LoseEquippedItemsOnFailure();
+
 		// 抢救最高价值 1 件(对齐 Lua: 遍历 carriedItems 取 itemBaseValue 最大者, count=1)。
 		FName BestId = NAME_None;
 		int32 BestValue = -1;

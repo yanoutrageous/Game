@@ -23,6 +23,8 @@
 #include "Debug/GT_DebugSubsystem.h"
 #include "Domains/Events/GT_EventTypes.h"
 #include "Domains/Inventory/GT_ItemCatalog.h"
+#include "Domains/Meta/GT_MetaCatalog.h"
+#include "Domains/Meta/GT_MetaProgressSubsystem.h"
 #include "Engine/GameInstance.h"
 #include "Engine/Texture2D.h"
 #include "Fonts/SlateFontInfo.h"
@@ -729,15 +731,34 @@ void UGT_GameHudWidget::RefreshRunEndPanel()
 	}
 
 	const FGT_RunInventoryState& Inventory = RunContext->GetRunInventory();
+	// 失败丢装备: 列出本局损失的已装备装备(撤离成功时为空)。
+	FString LostEquipLine;
+	if (!bSuccess)
+	{
+		if (UGT_MetaProgressSubsystem* Meta = GetGameInstance() ? GetGameInstance()->GetSubsystem<UGT_MetaProgressSubsystem>() : nullptr)
+		{
+			TArray<FString> Names;
+			for (const FName& Id : Meta->GetLastFailureLostEquips())
+			{
+				const FGT_EquipDef* Def = GT_MetaCatalog::FindEquip(Id);
+				Names.Add(Def ? Def->DisplayName : Id.ToString());
+			}
+			if (Names.Num() > 0)
+			{
+				LostEquipLine = FString::Printf(TEXT("\n损失装备: %s"), *FString::Join(Names, TEXT(", ")));
+			}
+		}
+	}
 	RunEndBody->SetText(FText::FromString(FString::Printf(
-		TEXT("%s\n\n待结算: %d%s\n已锁定: %d\n回收物: %d 件%s\n已搜索: %d 格"),
+		TEXT("%s\n\n待结算: %d%s\n已锁定: %d\n回收物: %d 件%s\n已搜索: %d 格%s"),
 		*ReasonLine,
 		Inventory.PendingGold,
 		bSuccess ? TEXT("") : TEXT(" (已遗失)"),
 		Inventory.SafeGold,
 		Inventory.GetCarriedItemCount(),
 		bSuccess ? TEXT("") : TEXT(" (已遗失)"),
-		Inventory.SearchedRooms.Num())));
+		Inventory.SearchedRooms.Num(),
+		*LostEquipLine)));
 
 	RunEndRoot->SetVisibility(ESlateVisibility::Visible);
 	// 按钮拿焦点: 房间视图失焦后移动闸门关闭, 局终不再响应 WASD。

@@ -149,6 +149,19 @@ bool UGT_MetaProgressSubsystem::ToggleEquip(FName ItemId, FName& OutError)
 	return true;
 }
 
+TArray<FName> UGT_MetaProgressSubsystem::LoseEquippedItemsOnFailure()
+{
+	// 带入(已装备)的装备撤离失败损失; 拥有但未装备的保留(轻装规避=自然缓解)。
+	LastFailureLostEquips = State.EquippedItems;
+	for (const FName& Id : LastFailureLostEquips)
+	{
+		State.OwnedItems.Remove(Id);
+	}
+	State.EquippedItems.Reset();
+	if (LastFailureLostEquips.Num() > 0) { Save(); }
+	return LastFailureLostEquips;
+}
+
 bool UGT_MetaProgressSubsystem::UnlockTalent(FName TalentId, FName& OutError)
 {
 	if (State.UnlockedTalents.Contains(TalentId)) { OutError = TEXT("already_unlocked"); return false; }

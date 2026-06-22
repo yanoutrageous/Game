@@ -223,6 +223,9 @@ public:
 	// EquippedItemIds = 已装备装备 id 列表(纯数据), 用于激活 S6 触发型物品(异常体犬牙/封锁区结晶/回收磁石)。
 	void ApplyMetaLoadout(const FGT_EquipBonus& Equip, const FGT_TalentEffects& Talents, const TMap<FName, int32>& Consumables, const TArray<FName>& EquippedItemIds);
 
+	// 教程局: 训练工单, 不接入局外装备系统(不扣库存/不带真实装备/不结算/不登记), 只发占位消耗品教学。
+	bool IsTutorialRun() const { return CurrentDifficulty == EGT_Difficulty::Tutorial; }
+
 	// S5 表现/感知类 loadout 查询(表现层 UI 用): 罗盘方向提示 / 邻域高亮天赋是否激活 / 怪物避让窗口秒数。
 	bool IsLoadoutExitHintActive() const { return bLoadoutShowExitHint; }
 	bool IsLoadoutMapHighlightActive() const { return bLoadoutMapHighlight; }

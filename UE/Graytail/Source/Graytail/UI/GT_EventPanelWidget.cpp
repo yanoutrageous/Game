@@ -33,6 +33,17 @@ TSharedRef<SWidget> UGT_EventPanelWidget::RebuildWidget()
 	return Super::RebuildWidget();
 }
 
+void UGT_EventPanelWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+	Super::NativeTick(MyGeometry, InDeltaTime);
+	// 模态弹窗"粘焦点": 执行选项后 OnStateChanged 触发 HUD RefreshAll 会把焦点抢回房间,
+	// 面板还开着却收不到键(F/Enter/Esc 关不掉); 只要可见就每帧兜底夺回焦点(兑现 OnStateChanged 注释承诺)。
+	if (GetVisibility() == ESlateVisibility::Visible && !HasKeyboardFocus())
+	{
+		SetFocus();
+	}
+}
+
 void UGT_EventPanelWidget::BuildWidgetTree()
 {
 	UOverlay* Root = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());

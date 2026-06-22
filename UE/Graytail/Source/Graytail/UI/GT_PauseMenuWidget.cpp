@@ -41,6 +41,7 @@ TSharedRef<SWidget> UGT_PauseMenuWidget::RebuildWidget()
 UButton* UGT_PauseMenuWidget::AddMenuButton(UVerticalBox* Box, const FString& Label, const FLinearColor& Tint)
 {
 	UButton* Button = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
+	Button->SetStyle(GT_UIStyle::DarkButton());
 	UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	Text->SetFont(GT_UIStyle::Font(16));
 	Text->SetColorAndOpacity(FSlateColor(Tint));
@@ -152,6 +153,7 @@ UTextBlock* UGT_PauseMenuWidget::AddCheatButton(UVerticalBox* Box, const FString
 {
 	UGT_IndexedButton* Button = WidgetTree->ConstructWidget<UGT_IndexedButton>(UGT_IndexedButton::StaticClass());
 	Button->Index = Index;
+	Button->SetStyle(GT_UIStyle::DarkButton());
 	UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	Text->SetFont(GT_UIStyle::Font(14));
 	Text->SetColorAndOpacity(FSlateColor(Tint));

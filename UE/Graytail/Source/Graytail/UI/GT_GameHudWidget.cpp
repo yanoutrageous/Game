@@ -23,6 +23,8 @@
 #include "Debug/GT_DebugSubsystem.h"
 #include "Domains/Events/GT_EventTypes.h"
 #include "Domains/Inventory/GT_ItemCatalog.h"
+#include "Domains/Meta/GT_MetaCatalog.h"
+#include "Domains/Meta/GT_MetaProgressSubsystem.h"
 #include "Engine/GameInstance.h"
 #include "Engine/Texture2D.h"
 #include "Fonts/SlateFontInfo.h"
@@ -149,7 +151,41 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		RoomSize->SetHeightOverride(560.f);
 		RoomSize->AddChild(RoomView);
 		RoomScale->AddChild(RoomSize);
-		if (UVerticalBoxSlot* RoomSlot = CenterCol->AddChildToVerticalBox(RoomScale))
+
+		// 房间叠加层: 房间铺底 + 居中播报 toast 悬浮其上。
+		// toast 挂这里(而非整屏)是为了落在地图区中央 —— 左侧 360px 信息面板会让整屏中心明显偏左于地图。
+		UOverlay* RoomStack = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
+		if (UOverlaySlot* RoomScaleSlot = RoomStack->AddChildToOverlay(RoomScale))
+		{
+			RoomScaleSlot->SetHorizontalAlignment(HAlign_Fill);
+			RoomScaleSlot->SetVerticalAlignment(VAlign_Fill);
+		}
+		{
+			UBorder* ToastBg = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+			FSlateBrush ToastBrush;
+			ToastBrush.DrawAs = ESlateBrushDrawType::RoundedBox;
+			ToastBrush.TintColor = FSlateColor(FLinearColor(FColor(18, 22, 32, 235)));
+			ToastBrush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+			ToastBrush.OutlineSettings.CornerRadii = FVector4(8.f, 8.f, 8.f, 8.f);
+			ToastBrush.OutlineSettings.Color = FSlateColor(FLinearColor(FColor(120, 150, 200)));
+			ToastBrush.OutlineSettings.Width = 1.f;
+			ToastBg->SetBrush(ToastBrush);
+			ToastBg->SetPadding(FMargin(22.f, 11.f));
+			ToastText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+			ToastText->SetFont(GT_UIStyle::Font(18));
+			ToastText->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(255, 226, 150))));
+			ToastText->SetJustification(ETextJustify::Center);
+			ToastBg->SetContent(ToastText);
+			ToastBg->SetVisibility(ESlateVisibility::Collapsed);
+			ToastRoot = ToastBg;
+			if (UOverlaySlot* ToastSlot = RoomStack->AddChildToOverlay(ToastBg))
+			{
+				ToastSlot->SetHorizontalAlignment(HAlign_Center);
+				ToastSlot->SetVerticalAlignment(VAlign_Top);
+				ToastSlot->SetPadding(FMargin(0.f, 28.f, 0.f, 0.f));
+			}
+		}
+		if (UVerticalBoxSlot* RoomSlot = CenterCol->AddChildToVerticalBox(RoomStack))
 		{
 			RoomSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
 			RoomSlot->SetHorizontalAlignment(HAlign_Fill);
@@ -541,6 +577,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 			PauseSlot->SetVerticalAlignment(VAlign_Fill);
 		}
 	}
+
 }
 
 UTextBlock* UGT_GameHudWidget::MakePanelText(UVerticalBox* Panel, int32 FontSize, const FLinearColor& Color)
@@ -694,15 +731,34 @@ void UGT_GameHudWidget::RefreshRunEndPanel()
 	}
 
 	const FGT_RunInventoryState& Inventory = RunContext->GetRunInventory();
+	// 失败丢装备: 列出本局损失的已装备装备(撤离成功时为空)。
+	FString LostEquipLine;
+	if (!bSuccess)
+	{
+		if (UGT_MetaProgressSubsystem* Meta = GetGameInstance() ? GetGameInstance()->GetSubsystem<UGT_MetaProgressSubsystem>() : nullptr)
+		{
+			TArray<FString> Names;
+			for (const FName& Id : Meta->GetLastFailureLostEquips())
+			{
+				const FGT_EquipDef* Def = GT_MetaCatalog::FindEquip(Id);
+				Names.Add(Def ? Def->DisplayName : Id.ToString());
+			}
+			if (Names.Num() > 0)
+			{
+				LostEquipLine = FString::Printf(TEXT("\n损失装备: %s"), *FString::Join(Names, TEXT(", ")));
+			}
+		}
+	}
 	RunEndBody->SetText(FText::FromString(FString::Printf(
-		TEXT("%s\n\n待结算: %d%s\n已锁定: %d\n回收物: %d 件%s\n已搜索: %d 格"),
+		TEXT("%s\n\n待结算: %d%s\n已锁定: %d\n回收物: %d 件%s\n已搜索: %d 格%s"),
 		*ReasonLine,
 		Inventory.PendingGold,
 		bSuccess ? TEXT("") : TEXT(" (已遗失)"),
 		Inventory.SafeGold,
 		Inventory.GetCarriedItemCount(),
 		bSuccess ? TEXT("") : TEXT(" (已遗失)"),
-		Inventory.SearchedRooms.Num())));
+		Inventory.SearchedRooms.Num(),
+		*LostEquipLine)));
 
 	RunEndRoot->SetVisibility(ESlateVisibility::Visible);
 	// 按钮拿焦点: 房间视图失焦后移动闸门关闭, 局终不再响应 WASD。
@@ -786,6 +842,10 @@ void UGT_GameHudWidget::RefreshMiniMapGrid()
 	FGT_DebugRunSnapshot Snapshot;
 	Debug->GetDebugRunSnapshot(Snapshot);
 
+	// 邻域感知天赋: 玩家相邻 8 格描黄框(进房高亮邻域威胁, 对齐 Lua mapHighlight)。
+	const UGT_RunContext* HudRunContext = GetRunContext();
+	const bool bMapHighlightActive = HudRunContext && HudRunContext->IsLoadoutMapHighlightActive();
+
 	// 扫雷数字配色(对齐 MapOverlay.NUMBER_COLORS 风格)。
 	static const FLinearColor NumberColors[4] = {
 		FLinearColor(0.55f, 0.55f, 0.60f, 1.f),   // 0: 暗灰
@@ -831,6 +891,26 @@ void UGT_GameHudWidget::RefreshMiniMapGrid()
 
 			UOverlay* CellOverlay = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
 			CellBorder->SetContent(CellOverlay);
+
+			// 邻域感知天赋: 玩家相邻 8 格(非玩家格)描黄框, 高亮邻域威胁。
+			if (bMapHighlightActive && !bPlayerHere
+				&& FMath::Abs(X - Snapshot.PlayerX) <= 1 && FMath::Abs(Y - Snapshot.PlayerY) <= 1)
+			{
+				UBorder* NeighborHl = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+				FSlateBrush HlBrush;
+				HlBrush.DrawAs = ESlateBrushDrawType::RoundedBox;
+				HlBrush.TintColor = FSlateColor(FLinearColor(0.f, 0.f, 0.f, 0.f));
+				HlBrush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+				HlBrush.OutlineSettings.CornerRadii = FVector4(3.f, 3.f, 3.f, 3.f);
+				HlBrush.OutlineSettings.Color = FSlateColor(FLinearColor(FColor(255, 220, 80)));
+				HlBrush.OutlineSettings.Width = 2.f;
+				NeighborHl->SetBrush(HlBrush);
+				if (UOverlaySlot* HlSlot = CellOverlay->AddChildToOverlay(NeighborHl))
+				{
+					HlSlot->SetHorizontalAlignment(HAlign_Fill);
+					HlSlot->SetVerticalAlignment(VAlign_Fill);
+				}
+			}
 
 			auto AddCellIcon = [this, CellOverlay](UTexture2D* Texture, float Scale)
 			{
@@ -1316,11 +1396,70 @@ void UGT_GameHudWidget::OnUseConsumable()
 	const bool bUsed = Debug->DebugUseConsumable(PickId, Snapshot);
 	RefreshAll();
 
-	// 回血道具(止血贴)用成功才播绿光; 其它道具(如幸运硬币)效果由面板物品数 + HUD 金币/小地图体现。
-	if (bUsed && PickId == FName(TEXT("emergency_bandage")) && RoomView)
+	// 用成功的反馈: 止血贴播绿光; 幸运硬币无粒子/无显眼数值变化, 读 outcome 给居中 toast 播报结果。
+	if (bUsed)
 	{
-		RoomView->PlayHealGlow();
+		if (PickId == FName(TEXT("emergency_bandage")))
+		{
+			if (RoomView) { RoomView->PlayHealGlow(); }
+		}
+		else if (PickId == FName(TEXT("lucky_coin")))
+		{
+			const UGT_RunContext* RC = GetRunContext();
+			const FName Status = RC ? RC->GetLastConsumableOutcome().Status : NAME_None;
+			if (Status == FName(TEXT("lucky_gold")))       { ShowToast(TEXT("幸运硬币 · 正面! +30 结算币")); }
+			else if (Status == FName(TEXT("lucky_reveal"))) { ShowToast(TEXT("幸运硬币 · 反面! 揭示了相邻区域")); }
+			else                                            { ShowToast(TEXT("幸运硬币 · 已使用")); }
+		}
 	}
+}
+
+void UGT_GameHudWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+	Super::NativeTick(MyGeometry, InDeltaTime);
+	if (ToastTimer > 0.f && ToastRoot)
+	{
+		ToastTimer -= InDeltaTime;
+		if (ToastTimer <= 0.f)
+		{
+			ToastRoot->SetVisibility(ESlateVisibility::Collapsed);
+		}
+		else if (ToastTimer < 0.5f)
+		{
+			ToastRoot->SetRenderOpacity(ToastTimer / 0.5f);   // 末 0.5s 线性淡出
+		}
+	}
+}
+
+void UGT_GameHudWidget::ShowToast(const FString& Message, float Duration)
+{
+	if (!ToastText || !ToastRoot) { return; }
+	ToastText->SetText(FText::FromString(Message));
+	ToastRoot->SetRenderOpacity(1.f);
+	ToastRoot->SetVisibility(ESlateVisibility::HitTestInvisible);   // 显示但不吃点击
+	ToastTimer = Duration;
+}
+
+void UGT_GameHudWidget::ShowCompassHintIfNeeded()
+{
+	const UGT_RunContext* RC = GetRunContext();
+	if (!RC || !RC->IsLoadoutExitHintActive()) { return; }
+	int32 PX = 0, PY = 0;
+	if (!RC->TryGetPlayerPosition(PX, PY)) { return; }
+	const TArray<FIntPoint> Exits = RC->GetExitCells();
+	if (Exits.Num() == 0) { return; }
+	// 各撤离信标 -> 四斜向箭头(只给象限, 不暴露"正东/正北"那种精确同行同列, 弱化罗盘强度)。
+	// 屏幕 Y 向下: dy<=0 归北侧、dx>=0 归东侧(正交方向并入相邻象限)。
+	TArray<FString> Arrows;
+	for (const FIntPoint& E : Exits)
+	{
+		const bool bNorth = (E.Y - PY) <= 0;   // 同行(=)时归北侧
+		const bool bEast = (E.X - PX) >= 0;    // 同列(=)时归东侧
+		const TCHAR* Arrow = bNorth ? (bEast ? TEXT("↗") : TEXT("↖")) : (bEast ? TEXT("↘") : TEXT("↙"));
+		Arrows.AddUnique(FString(Arrow));
+	}
+	// 罗盘提示显示久一点(5s); 普通 toast 仍是默认 2.2s。
+	ShowToast(FString::Printf(TEXT("罗盘 · 撤离信标 %s"), *FString::Join(Arrows, TEXT("  "))), 5.f);
 }
 
 void UGT_GameHudWidget::OnNewRun()
@@ -1350,6 +1489,9 @@ void UGT_GameHudWidget::OnNewRun()
 	{
 		RoomView->SetFocus();
 	}
+
+	// 罗盘: 开局播报撤离信标方位(带罗盘才显示)。
+	ShowCompassHintIfNeeded();
 
 	// 教程局: 重置教学状态, 在出生格弹开场说明(blocking, 会接管焦点暂停移动直到确认)。
 	TutorialReset();

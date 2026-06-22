@@ -223,6 +223,17 @@ public:
 	// EquippedItemIds = 已装备装备 id 列表(纯数据), 用于激活 S6 触发型物品(异常体犬牙/封锁区结晶/回收磁石)。
 	void ApplyMetaLoadout(const FGT_EquipBonus& Equip, const FGT_TalentEffects& Talents, const TMap<FName, int32>& Consumables, const TArray<FName>& EquippedItemIds);
 
+	// 教程局: 训练工单, 不接入局外装备系统(不扣库存/不带真实装备/不结算/不登记), 只发占位消耗品教学。
+	bool IsTutorialRun() const { return CurrentDifficulty == EGT_Difficulty::Tutorial; }
+
+	// S5 表现/感知类 loadout 查询(表现层 UI 用): 罗盘方向提示 / 邻域高亮天赋是否激活 / 怪物避让窗口秒数。
+	bool IsLoadoutExitHintActive() const { return bLoadoutShowExitHint; }
+	bool IsLoadoutMapHighlightActive() const { return bLoadoutMapHighlight; }
+	int32 GetLoadoutMonsterFleeBonus() const { return LoadoutMonsterFleeBonus; }
+
+	// 真值图上所有撤离信标格坐标(罗盘开局方向提示用; 表现层算相对玩家方位)。
+	TArray<FIntPoint> GetExitCells() const;
+
 	// S6 回收磁石: 进宝箱房额外掉 1 件低价值回收物(每格一次)。内部判激活/宝箱房/去重; 返回是否真发了。
 	bool TryGrantChestMagnetLoot(int32 X, int32 Y);
 
@@ -356,6 +367,10 @@ private:
 	bool bLoadoutMineImmunityAvailable = false;
 	int32 LoadoutSearchBonusPercent = 0;
 	int32 LoadoutTradeBonusPercent = 0;   // S4: 议价天赋 → 旅商收购价 +N%(0 = 无议价, 基础 0.75 不变)
+	// S5 表现/感知类 loadout(开局存, 表现层读): 罗盘方向提示 / 邻域高亮 / 怪物避让窗口秒数。
+	bool bLoadoutShowExitHint = false;
+	bool bLoadoutMapHighlight = false;
+	int32 LoadoutMonsterFleeBonus = 0;
 	// 本局难度(Standard 满压惩罚按难度分档扣血; BasicDebug 不用)。
 	EGT_Difficulty CurrentDifficulty = EGT_Difficulty::Standard;
 

@@ -89,6 +89,7 @@ void UGT_SettingsWidget::BuildWidgetTree()
 
 	// 作弊模式开关(单按钮, 文字反映当前状态)。
 	UButton* CheatButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
+	CheatButton->SetStyle(GT_UIStyle::DarkButton());
 	CheatToggleText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	CheatToggleText->SetFont(GT_UIStyle::Font(16));
 	CheatToggleText->SetJustification(ETextJustify::Center);
@@ -112,6 +113,7 @@ void UGT_SettingsWidget::BuildWidgetTree()
 	}
 
 	UButton* BackButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
+	BackButton->SetStyle(GT_UIStyle::DarkButton());
 	UTextBlock* BackText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	BackText->SetFont(GT_UIStyle::Font(16));
 	BackText->SetColorAndOpacity(FSlateColor(GTSetText));

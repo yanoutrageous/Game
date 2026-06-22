@@ -7,24 +7,24 @@
 // 全部纯函数、确定性: 同一 (seed, x, y) 永远结出同样的奖励, 与调用次数无关。
 namespace GT_LootRules
 {
-	// 普通搜索数值(对齐 Balance.search)。
+	// 普通搜索数值(基线曾对齐 Balance.search; 2026-06-22 用户定明显调高金币, 基础+cap 同步提, 否则基础被旧 cap 压住)。
 	namespace SearchBalance
 	{
-		constexpr int32 BaseMin = 0;
-		constexpr int32 BaseMax = 2;
+		constexpr int32 BaseMin = 2;
+		constexpr int32 BaseMax = 5;
 		constexpr int32 AdjacentDivisor = 2;
-		constexpr int32 GoldCap = 4;
+		constexpr int32 GoldCap = 10;
 		// 周围雷数 >= AdjacentAtLeast 时掉落 roll +RareBonus(高危高收益)。
 		constexpr int32 HighAdjacentAtLeast = 3;
 		constexpr int32 HighAdjacentRareBonus = 10;
 	}
 
-	// 宝箱数值(对齐 Balance.chest)。宝箱房已实现(EGT_RoomBaseType::Chest)。
+	// 宝箱数值(基线曾对齐 Balance.chest; 2026-06-22 用户定明显调高金币, 基础+cap 同步提)。宝箱房已实现(EGT_RoomBaseType::Chest)。
 	namespace ChestBalance
 	{
-		constexpr int32 BaseMin = 3;
-		constexpr int32 BaseMax = 7;
-		constexpr int32 GoldCap = 11;
+		constexpr int32 BaseMin = 8;
+		constexpr int32 BaseMax = 16;
+		constexpr int32 GoldCap = 24;
 		constexpr int32 MinItems = 1;
 		constexpr int32 MaxItems = 2;
 	}

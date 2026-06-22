@@ -19,6 +19,28 @@
 #include "Input/Events.h"
 #include "Misc/PackageName.h"
 #include "Styling/CoreStyle.h"
+#include "Framework/Application/IInputProcessor.h"
+#include "Framework/Application/SlateApplication.h"
+
+// 全局键盘预处理器: 不受 UMG 焦点 / UIOnly input mode 影响地捕获 WASD 起落,
+// 让房间持键状态(HeldKeys)始终= 物理真值 —— 关弹窗后仍按着则续走、松开则停, 且永不漏 KeyUp 卡键。
+// 只监听不消费(return false), WASD 仍正常分发给焦点控件(如事件面板 W/S 选择)。
+class FGTMovementKeyProcessor : public IInputProcessor
+{
+public:
+	TWeakObjectPtr<UGT_RoomViewWidget> Owner;
+	virtual void Tick(const float, FSlateApplication&, TSharedRef<ICursor>) override {}
+	virtual bool HandleKeyDownEvent(FSlateApplication&, const FKeyEvent& InKeyEvent) override
+	{
+		if (UGT_RoomViewWidget* W = Owner.Get()) { W->SetHeldMovementKey(InKeyEvent.GetKey(), true); }
+		return false;
+	}
+	virtual bool HandleKeyUpEvent(FSlateApplication&, const FKeyEvent& InKeyEvent) override
+	{
+		if (UGT_RoomViewWidget* W = Owner.Get()) { W->SetHeldMovementKey(InKeyEvent.GetKey(), false); }
+		return false;
+	}
+};
 
 namespace
 {
@@ -34,7 +56,7 @@ namespace
 	constexpr float GTChestRewardDuration = 2.0f;  // 奖励飘字时长(对齐 Lua CHEST_REWARD_DURATION)
 	constexpr float GTHealGlowDuration = 1.0f;     // 止血绿色光子上升时长
 	constexpr float GTMineFlashDuration = 0.6f;    // 踩雷红闪时长
-	constexpr float GTPlayerAttackCooldown = 0.45f;     // 玩家挥砍冷却(Combat.lua playerAttackCooldown)
+	constexpr float GTPlayerAttackCooldown = 0.85f;     // 玩家挥砍冷却(原 0.45 对齐 Combat.lua; 2026-06-22 调长加大战斗难度, 防瞬间连刀秒杀)
 	constexpr float GTPlayerInvincibleDuration = 0.9f;  // 受击无敌帧(Combat.lua playerInvincibleDuration)
 	constexpr float GTEdgeHintDuration = 1.4f;          // 撞地图边缘提示显示+淡出时长
 	// 道具方形空气墙(AABB)归一化半边长 = (道具半宽 + 玩家碰撞半宽)/房宽。撞墙即停(不绕不抽搐);
@@ -91,6 +113,24 @@ void UGT_RoomViewWidget::NativeConstruct()
 	Super::NativeConstruct();
 	SetIsFocusable(true);
 	SyncToCurrentCell(true);
+
+	// 注册全局键盘预处理器: 持键真值不受焦点切换/UIOnly 影响, 根治"漏 KeyUp 卡键"且关弹窗能续走。
+	if (!MovementProcessor.IsValid() && FSlateApplication::IsInitialized())
+	{
+		MovementProcessor = MakeShared<FGTMovementKeyProcessor>();
+		MovementProcessor->Owner = this;
+		FSlateApplication::Get().RegisterInputPreProcessor(MovementProcessor);
+	}
+}
+
+void UGT_RoomViewWidget::NativeDestruct()
+{
+	if (MovementProcessor.IsValid() && FSlateApplication::IsInitialized())
+	{
+		FSlateApplication::Get().UnregisterInputPreProcessor(MovementProcessor);
+		MovementProcessor.Reset();
+	}
+	Super::NativeDestruct();
 }
 
 void UGT_RoomViewWidget::BuildWidgetTree()
@@ -996,6 +1036,18 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 			CurrentPlayerAttackRange = Arch.PlayerAttackRange;
 			CombatAnimTime += InDeltaTime;
 
+			// 怪物避让天赋(monsterFleeBonus): 战斗刚开始给一段"犹豫窗口", 期间怪既不追击也不攻击,
+			// 给玩家时间看清局势/逃跑(对齐 Lua monsterFleeActive)。窗口秒数 = 天赋值(开局存入 RunContext)。
+			if (!bPrevInCombat)
+			{
+				const UGT_RunContext* FleeRC = GetRunContext();
+				CombatFleeTimer = FleeRC ? static_cast<float>(FleeRC->GetLoadoutMonsterFleeBonus()) : 0.f;
+				bPrevInCombat = true;
+			}
+			if (CombatFleeTimer > 0.f) { CombatFleeTimer -= InDeltaTime; }
+			const bool bMonsterFleeing = CombatFleeTimer > 0.f;
+			EnemyImage->SetRenderOpacity(bMonsterFleeing ? 0.55f : 1.f);   // 犹豫中半透明示意
+
 			// 玩家挥砍冷却 / 受击无敌帧逐帧倒计时(表现层门控, 对齐 Combat.lua)。
 			if (PlayerAttackCooldownTimer > 0.f) PlayerAttackCooldownTimer = FMath::Max(0.f, PlayerAttackCooldownTimer - InDeltaTime);
 			if (PlayerIFrameTimer > 0.f) PlayerIFrameTimer = FMath::Max(0.f, PlayerIFrameTimer - InDeltaTime);
@@ -1017,7 +1069,7 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 
 			// 移动: 追击型朝玩家逼近, 进攻击圈(略内)即停 -> 形成走位风筝。
 			float Distance = FVector2D::Distance(PlayerPos, EnemyNormPos);
-			if (Arch.MovePattern == EGT_MonsterMovePattern::ChasePlayer)
+			if (!bMonsterFleeing && Arch.MovePattern == EGT_MonsterMovePattern::ChasePlayer)
 			{
 				const float StopDist = Arch.AttackRadius * 0.85f;
 				if (Distance > StopDist)
@@ -1031,7 +1083,13 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 			}
 			bPlayerInAttackRange = Distance <= CurrentPlayerAttackRange;
 
-			if (Arch.AttackPattern == EGT_MonsterAttackPattern::MeleeCircle)
+			if (bMonsterFleeing)
+			{
+				// 怪物避让窗口: 不发起任何攻击, 隐藏预警圈/瞄准线。
+				if (EnemyAttackCircle) { EnemyAttackCircle->SetVisibility(ESlateVisibility::Collapsed); }
+				if (EnemyWarningLine) { EnemyWarningLine->SetVisibility(ESlateVisibility::Collapsed); }
+			}
+			else if (Arch.AttackPattern == EGT_MonsterAttackPattern::MeleeCircle)
 			{
 				// 近战预警圈相位机(对齐原版 DungeonRoom): idle -> warning(脉动圈) -> active(填充判定, 圈内命中) -> cooldown。
 				EnemyMeleePhaseTimer -= InDeltaTime;
@@ -1201,6 +1259,9 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 		else
 		{
 			// 清理 + 重置(下一场战斗从头开始)。
+			bPrevInCombat = false;
+			CombatFleeTimer = 0.f;
+			if (EnemyImage) { EnemyImage->SetRenderOpacity(1.f); }
 			EnemyAttackCooldownTimer = 0.f;
 			EnemyAimTimer = 0.f;
 			EnemyShakeTimer = 0.f;
@@ -1226,9 +1287,11 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 	// ==========================================
 	
 
-	// 焦点在弹窗/按钮上时暂停移动(持键状态仍经 HUD 冒泡转发保持准确, 关弹窗立刻续走)。
+	// 焦点在弹窗/按钮上时暂停移动(不动 HeldKeys —— 持键真值由全局 InputPreProcessor 维护,
+	// 关弹窗后仍按着的键会续走、松开则停, 不受 UIOnly/焦点切换影响, 也不会漏 KeyUp 卡键)。
 	if (!HasKeyboardFocus())
 	{
+		MoveVelocity = FVector2D::ZeroVector;
 		return;
 	}
 

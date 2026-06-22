@@ -32,6 +32,10 @@ public:
 	bool ToggleEquip(FName ItemId, FName& OutError);
 	bool IsEquipped(FName ItemId) const { return State.EquippedItems.Contains(ItemId); }
 	const TArray<FName>& GetEquippedItems() const { return State.EquippedItems; }
+	// 撤离失败丢装备(用户拍板): 移除所有已装备的装备(从拥有+装备列表), 未装备的拥有装备保留。返回损失 id 列表。
+	TArray<FName> LoseEquippedItemsOnFailure();
+	// 最近一次失败损失的装备(供结算面板显示; 非持久, 不存档)。
+	const TArray<FName>& GetLastFailureLostEquips() const { return LastFailureLostEquips; }
 
 	// --- 天赋(对齐 Lua HasTalent/UnlockTalent) ---
 	bool HasTalent(FName TalentId) const { return State.UnlockedTalents.Contains(TalentId); }
@@ -81,6 +85,9 @@ public:
 
 private:
 	FGT_MetaProgressState State;
+
+	// 最近一次撤离失败损失的装备 id(非持久, 仅供结算面板本次显示)。
+	TArray<FName> LastFailureLostEquips;
 
 	static const TCHAR* SaveSlotName() { return TEXT("GraytailMeta"); }
 	static constexpr int32 SaveUserIndex = 0;

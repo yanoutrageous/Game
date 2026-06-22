@@ -3,6 +3,10 @@
 #include "CoreMinimal.h"
 #include "GT_InventoryTypes.generated.h"
 
+// 重量查询的定义在 GT_ItemCatalog.cpp。此处仅前置声明该函数, 不 include GT_ItemCatalog.h ——
+// 后者反向依赖本头的 FGT_ItemStack/FGT_ItemCatalogEntry, 直接 include 会构成循环包含。
+namespace GT_ItemCatalog { GRAYTAIL_API int32 GetItemWeight(FName ItemId); }
+
 // 掉落品质档位: 对齐 Lua Balance.search/chest dropTable 的 quality 字段。
 // None 表示该次 roll 落在 "无掉落" 区间(仅普通搜索表有)。
 UENUM(BlueprintType)
@@ -211,13 +215,29 @@ struct GRAYTAIL_API FGT_RunInventoryState
 			return false;
 		}
 
-		const int32 WeightPerItem = GT_ItemCatalog::GetItemWeight(ItemId);
-		const int32 TotalWeight = WeightPerItem * Count;
+		const int32 TotalWeight = GT_ItemCatalog::GetItemWeight(ItemId) * Count;
 		if (GetCurrentWeight() + TotalWeight > BackpackCapacity)
 		{
 			return false;
 		}
 
+		StackCarriedItem(ItemId, Count, Source);
+		return true;
+	}
+
+	// 强制入包, 无视容量上限(开局 loadout 消耗品用, 不应被背包限制挡住)。
+	void ForceAddCarriedItem(FName ItemId, int32 Count, FName Source)
+	{
+		if (ItemId.IsNone() || Count < 1)
+		{
+			return;
+		}
+		StackCarriedItem(ItemId, Count, Source);
+	}
+
+	// 入包堆叠(不查容量, 供 Add / ForceAdd 复用)。
+	void StackCarriedItem(FName ItemId, int32 Count, FName Source)
+	{
 		FGT_ItemStack* Stack = CarriedItems.FindByPredicate([ItemId](const FGT_ItemStack& Existing)
 		{
 			return Existing.ItemId == ItemId;
@@ -229,7 +249,6 @@ struct GRAYTAIL_API FGT_RunInventoryState
 		}
 		Stack->Count += Count;
 		Stack->Source = Source;
-		return true;
 	}
 
 	// 当前背包总重量。

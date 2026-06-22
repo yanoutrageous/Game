@@ -169,9 +169,20 @@ void UGT_LootResultWidget::RebuildContent(const FGT_SearchOutcome& Outcome)
 
 	// 标题/副标题/描边色按是否宝箱切换(对齐 OpenLootResultPanel)。
 	TitleText->SetText(FText::FromString(Reward.bIsChest ? TEXT("未登记物资箱") : TEXT("搜索结果")));
-	SubtitleText->SetText(FText::FromString(Reward.bIsChest
-		? TEXT("高价值物资已放入临时回收包")
-		: TEXT("可回收物已放入临时回收包")));
+	// 背包超重: 部分回收物已被丢弃, 副标题改为醒目暖色提示(下方列表只含实际入包的物品)。
+	// 面板复用同一控件, 两个分支都显式设色, 防上次超重的暖色残留。
+	if (Outcome.Status == FName(TEXT("searched_overweight")))
+	{
+		SubtitleText->SetText(FText::FromString(TEXT("背包已满 · 部分回收物已丢弃")));
+		SubtitleText->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(245, 170, 90, 245))));
+	}
+	else
+	{
+		SubtitleText->SetText(FText::FromString(Reward.bIsChest
+			? TEXT("高价值物资已放入临时回收包")
+			: TEXT("可回收物已放入临时回收包")));
+		SubtitleText->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(180, 205, 210, 230))));
+	}
 	PanelFrame->SetBrushColor(Reward.bIsChest
 		? FLinearColor(FColor(240, 190, 90, 220))
 		: FLinearColor(FColor(90, 170, 190, 210)));

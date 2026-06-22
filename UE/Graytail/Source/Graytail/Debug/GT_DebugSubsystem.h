@@ -79,6 +79,11 @@ public:
 	// 实现 = god 瞬移到目标邻格 + 真实走入目标格(触发房间内容, 如怪物房开战)。
 	bool DebugGotoRoomType(const FString& TypeArg, FGT_DebugRunSnapshot& OutSnapshot);
 
+	// 作弊模式总开关(GameInstance 级, 本会话跨局持续)。标题「设置」切换;
+	// 开启后局内 ESC 暂停菜单才显示「作弊面板」入口。不影响 163(默认关)。
+	void SetCheatModeEnabled(bool bEnabled) { bCheatModeEnabled = bEnabled; }
+	bool IsCheatModeEnabled() const { return bCheatModeEnabled; }
+
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
 	bool GetDebugRunSnapshot(FGT_DebugRunSnapshot& OutSnapshot) const;
 
@@ -107,4 +112,7 @@ public:
 private:
 	UGT_RunSubsystem* GetRunSubsystem() const;
 	bool SubmitDebugCommand(FName CommandType, int32 X, int32 Y, FGT_DebugRunSnapshot& OutSnapshot, FName PayloadId = NAME_None);
+
+	// 作弊模式总开关(本会话内存态, 不存档)。
+	bool bCheatModeEnabled = false;
 };

@@ -36,6 +36,7 @@
 #include "UI/GT_MainMenuWidget.h"
 #include "UI/GT_MapOverlayWidget.h"
 #include "UI/GT_PauseMenuWidget.h"
+#include "UI/GT_SettingsWidget.h"
 #include "UI/GT_RoomViewWidget.h"
 #include "UI/GT_TutorialContent.h"
 #include "UI/GT_TutorialPopupWidget.h"
@@ -476,6 +477,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	{
 		MainMenu->OnStartRequested.BindUObject(this, &UGT_GameHudWidget::HandleMenuStartRequested);
 		MainMenu->OnDeployRequested.BindUObject(this, &UGT_GameHudWidget::HandleDeployRequested);
+		MainMenu->OnSettingsRequested.BindUObject(this, &UGT_GameHudWidget::HandleSettingsRequested);
 		MainMenu->SetVisibility(ESlateVisibility::Collapsed);
 		if (UOverlaySlot* MenuSlot = Screen->AddChildToOverlay(MainMenu))
 		{
@@ -495,6 +497,19 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		{
 			DeploySlot->SetHorizontalAlignment(HAlign_Fill);
 			DeploySlot->SetVerticalAlignment(VAlign_Fill);
+		}
+	}
+
+	// 第 8.6 层: 设置面板(主菜单之上)。由主菜单「设置」打开, 含作弊模式总开关。
+	SettingsPanel = CreateWidget<UGT_SettingsWidget>(this, UGT_SettingsWidget::StaticClass());
+	if (SettingsPanel)
+	{
+		SettingsPanel->OnBackRequested.BindUObject(this, &UGT_GameHudWidget::HandleSettingsBack);
+		SettingsPanel->SetVisibility(ESlateVisibility::Collapsed);
+		if (UOverlaySlot* SettingsSlot = Screen->AddChildToOverlay(SettingsPanel))
+		{
+			SettingsSlot->SetHorizontalAlignment(HAlign_Fill);
+			SettingsSlot->SetVerticalAlignment(VAlign_Fill);
 		}
 	}
 
@@ -518,6 +533,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		PauseMenu->OnReturnToTitle.BindUObject(this, &UGT_GameHudWidget::HandlePauseReturnToTitle);
 		PauseMenu->OnQuitGame.BindUObject(this, &UGT_GameHudWidget::HandlePauseQuitGame);
 		PauseMenu->OnOpenCheatPanel.BindUObject(this, &UGT_GameHudWidget::HandleOpenCheatPanel);
+		PauseMenu->OnCheatApplied.BindUObject(this, &UGT_GameHudWidget::RefreshAll);
 		PauseMenu->SetVisibility(ESlateVisibility::Collapsed);
 		if (UOverlaySlot* PauseSlot = Screen->AddChildToOverlay(PauseMenu))
 		{
@@ -1152,6 +1168,10 @@ FReply UGT_GameHudWidget::NativeOnFocusReceived(const FGeometry& InGeometry, con
 	{
 		return FReply::Handled().SetUserFocus(DeployTerminal->TakeWidget(), EFocusCause::SetDirectly);
 	}
+	if (SettingsPanel && SettingsPanel->IsOpen())
+	{
+		return FReply::Handled().SetUserFocus(SettingsPanel->TakeWidget(), EFocusCause::SetDirectly);
+	}
 	if (MainMenu && MainMenu->IsOpen())
 	{
 		return FReply::Handled().SetUserFocus(MainMenu->TakeWidget(), EFocusCause::SetDirectly);
@@ -1351,6 +1371,18 @@ void UGT_GameHudWidget::HandleDeployBack()
 	if (MainMenu) { MainMenu->Open(); }
 }
 
+void UGT_GameHudWidget::HandleSettingsRequested()
+{
+	if (MainMenu) { MainMenu->Close(); }
+	if (SettingsPanel) { SettingsPanel->Open(); }
+}
+
+void UGT_GameHudWidget::HandleSettingsBack()
+{
+	if (SettingsPanel) { SettingsPanel->Close(); }
+	if (MainMenu) { MainMenu->Open(); }
+}
+
 void UGT_GameHudWidget::HandleDeployDepart()
 {
 	if (DeployTerminal) { DeployTerminal->Close(); }
@@ -1400,8 +1432,9 @@ void UGT_GameHudWidget::TogglePauseMenu()
 	{
 		return;
 	}
-	// 作弊入口由作弊模式总开关决定(增量2接 DebugSubsystem 总开关; 当前恒 false)。
-	PauseMenu->Open(/*bShowCheatEntry*/ false);
+	// 作弊面板入口仅在作弊模式总开关开启时显示(标题「设置」里切换)。
+	const UGT_DebugSubsystem* Debug = GetDebugSubsystem();
+	PauseMenu->Open(Debug && Debug->IsCheatModeEnabled());
 }
 
 void UGT_GameHudWidget::HandlePauseResume()

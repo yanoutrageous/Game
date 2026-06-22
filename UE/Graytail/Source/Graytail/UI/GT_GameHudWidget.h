@@ -23,6 +23,7 @@ class UGT_MainMenuWidget;
 class UGT_DeployTerminalWidget;
 class UGT_TutorialPopupWidget;
 class UGT_PauseMenuWidget;
+class UGT_SettingsWidget;
 
 // 主游戏界面(对齐 Lua 原版构图): 房间视图铺满全屏为背景,
 // 左侧信息面板/右上协议面板/底部快捷键栏全部悬浮其上。
@@ -83,6 +84,10 @@ private:
 	void HandleDeployBack();
 	void HandleDeployDepart();
 
+	// 设置面板(标题): 打开 / 返回主菜单。
+	void HandleSettingsRequested();
+	void HandleSettingsBack();
+
 	// 过门换房后的统一回调: 刷新信息面板 + 驱动新手教程弹窗(若在教程局)。
 	void HandleRoomChanged();
 
@@ -135,6 +140,8 @@ private:
 	UPROPERTY(Transient) UGT_MainMenuWidget* MainMenu = nullptr;
 	// 局外部署终端(装备天赋入口打开; 在主菜单之上)。
 	UPROPERTY(Transient) UGT_DeployTerminalWidget* DeployTerminal = nullptr;
+	// 设置面板(标题「设置」打开; 在主菜单之上)。含作弊模式总开关。
+	UPROPERTY(Transient) UGT_SettingsWidget* SettingsPanel = nullptr;
 	EGT_Difficulty LastDifficulty = EGT_Difficulty::Standard;
 
 	// 局内暂停菜单(最顶层): ESC / = 打开, 抢焦点暂停移动。

@@ -46,6 +46,9 @@ public:
 	// 「装备天赋」入口: 打开局外部署终端(HUD 接)。
 	TDelegate<void()> OnDeployRequested;
 
+	// 「设置」入口: 打开设置面板(含作弊模式总开关; HUD 接)。
+	TDelegate<void()> OnSettingsRequested;
+
 private:
 	// 页面: 主页(四入口) / 区域页(地图大小) / 难度页(三档, 随区域切换)。
 	enum class EPage : uint8 { Main, Size, Difficulty };

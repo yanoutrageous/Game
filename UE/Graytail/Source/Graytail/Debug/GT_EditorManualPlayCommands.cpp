@@ -376,6 +376,115 @@ namespace
 		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.Teleport %d %d %s: %s"), X, Y, bAccepted ? TEXT("accepted") : TEXT("rejected"), *Snapshot.Summary);
 	}
 
+	// ---- 作弊指令 ----
+	void HandleGod(const TArray<FString>& Args, UWorld* World)
+	{
+		FString FailureReason;
+		UGT_DebugSubsystem* DebugSubsystem = FindDebugSubsystem(World, FailureReason);
+		if (!DebugSubsystem)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("gt.God failed: %s"), *FailureReason);
+			return;
+		}
+		// 无参 = 开; 传 0 = 关。
+		bool bEnable = true;
+		if (Args.Num() >= 1)
+		{
+			int32 Value = 1;
+			if (LexTryParseString(Value, *Args[0]))
+			{
+				bEnable = (Value != 0);
+			}
+		}
+		FGT_DebugRunSnapshot Snapshot;
+		const bool bAccepted = DebugSubsystem->DebugSetGodMode(bEnable, Snapshot);
+		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.God %s: %s"), bAccepted ? TEXT("accepted") : TEXT("rejected"), *Snapshot.Summary);
+	}
+
+	void HandleAddGold(const TArray<FString>& Args, UWorld* World)
+	{
+		FString FailureReason;
+		UGT_DebugSubsystem* DebugSubsystem = FindDebugSubsystem(World, FailureReason);
+		if (!DebugSubsystem)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("gt.AddGold failed: %s"), *FailureReason);
+			return;
+		}
+		int32 Amount = 0;
+		if (!TryParseIntArg(Args, 0, TEXT("Amount"), Amount))
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("Usage: gt.AddGold <n>"));
+			return;
+		}
+		FGT_DebugRunSnapshot Snapshot;
+		const bool bAccepted = DebugSubsystem->DebugAddGold(Amount, Snapshot);
+		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.AddGold %d %s: %s"), Amount, bAccepted ? TEXT("accepted") : TEXT("rejected"), *Snapshot.Summary);
+	}
+
+	void HandleGiveItem(const TArray<FString>& Args, UWorld* World)
+	{
+		FString FailureReason;
+		UGT_DebugSubsystem* DebugSubsystem = FindDebugSubsystem(World, FailureReason);
+		if (!DebugSubsystem)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("gt.GiveItem failed: %s"), *FailureReason);
+			return;
+		}
+		if (Args.Num() < 1)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("Usage: gt.GiveItem <ItemId> [Count]"));
+			return;
+		}
+		const FName ItemId(*Args[0]);
+		int32 Count = 1;
+		if (Args.Num() >= 2)
+		{
+			LexTryParseString(Count, *Args[1]);
+		}
+		FGT_DebugRunSnapshot Snapshot;
+		const bool bAccepted = DebugSubsystem->DebugGiveItem(ItemId, Count, Snapshot);
+		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.GiveItem %s %s: %s"), *ItemId.ToString(), bAccepted ? TEXT("accepted") : TEXT("rejected"), *Snapshot.Summary);
+	}
+
+	void HandleSetHp(const TArray<FString>& Args, UWorld* World)
+	{
+		FString FailureReason;
+		UGT_DebugSubsystem* DebugSubsystem = FindDebugSubsystem(World, FailureReason);
+		if (!DebugSubsystem)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("gt.SetHp failed: %s"), *FailureReason);
+			return;
+		}
+		int32 NewHp = 0;
+		if (!TryParseIntArg(Args, 0, TEXT("Hp"), NewHp))
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("Usage: gt.SetHp <n>"));
+			return;
+		}
+		FGT_DebugRunSnapshot Snapshot;
+		const bool bAccepted = DebugSubsystem->DebugSetHp(NewHp, Snapshot);
+		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.SetHp %d %s: %s"), NewHp, bAccepted ? TEXT("accepted") : TEXT("rejected"), *Snapshot.Summary);
+	}
+
+	void HandleGoto(const TArray<FString>& Args, UWorld* World)
+	{
+		FString FailureReason;
+		UGT_DebugSubsystem* DebugSubsystem = FindDebugSubsystem(World, FailureReason);
+		if (!DebugSubsystem)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("gt.Goto failed: %s"), *FailureReason);
+			return;
+		}
+		if (Args.Num() < 1)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("Usage: gt.Goto <chest|combat|event|exit|trader|dice|altar|trap>"));
+			return;
+		}
+		FGT_DebugRunSnapshot Snapshot;
+		const bool bAccepted = DebugSubsystem->DebugGotoRoomType(Args[0], Snapshot);
+		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.Goto %s %s: %s"), *Args[0], bAccepted ? TEXT("accepted") : TEXT("rejected"), *Snapshot.Summary);
+	}
+
 	void HandleScan(const TArray<FString>& Args, UWorld* World)
 	{
 		FString FailureReason;
@@ -1016,5 +1125,31 @@ namespace
 		TEXT("gt.StartStd"),
 		TEXT("Starts a Standard random run at a difficulty. Usage: gt.StartStd [Tutorial|Easy|Standard|Hard|Veteran|Elite|Nightmare] [Seed]"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleStartStd));
+
+	// ---- 作弊指令(CHEAT) ----
+	FAutoConsoleCommandWithWorldAndArgs GTGodCommand(
+		TEXT("gt.God"),
+		TEXT("CHEAT: toggle invincibility (mine/monster/protocol/trap damage -> 0). Usage: gt.God [0|1] (no arg = on)"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleGod));
+
+	FAutoConsoleCommandWithWorldAndArgs GTAddGoldCommand(
+		TEXT("gt.AddGold"),
+		TEXT("CHEAT: add pending (in-run) gold. Usage: gt.AddGold <n>"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleAddGold));
+
+	FAutoConsoleCommandWithWorldAndArgs GTGiveItemCommand(
+		TEXT("gt.GiveItem"),
+		TEXT("CHEAT: add an item to the bag (ignores capacity). Usage: gt.GiveItem <ItemId> [Count]"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleGiveItem));
+
+	FAutoConsoleCommandWithWorldAndArgs GTSetHpCommand(
+		TEXT("gt.SetHp"),
+		TEXT("CHEAT: set player current HP (clamped 1..MaxHp). Usage: gt.SetHp <n>"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleSetHp));
+
+	FAutoConsoleCommandWithWorldAndArgs GTGotoCommand(
+		TEXT("gt.Goto"),
+		TEXT("CHEAT: jump to the nearest room of a type and enter it. Usage: gt.Goto <chest|combat|event|exit|trader|dice|altar|trap>"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleGoto));
 
 }

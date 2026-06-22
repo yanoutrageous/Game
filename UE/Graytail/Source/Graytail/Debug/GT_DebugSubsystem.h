@@ -66,6 +66,24 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
 	bool DebugUseConsumable(FName ItemId, FGT_DebugRunSnapshot& OutSnapshot);
 
+	// ---- 调试作弊命令(gt.God/gt.AddGold/gt.GiveItem/gt.SetHp/gt.Goto)----
+	// 切换无敌(危险伤害归零)。
+	bool DebugSetGodMode(bool bEnabled, FGT_DebugRunSnapshot& OutSnapshot);
+	// 直接加本局待结算金币。
+	bool DebugAddGold(int32 Amount, FGT_DebugRunSnapshot& OutSnapshot);
+	// 直接塞物品进背包(无视容量); 未知 ItemId 返回 false。
+	bool DebugGiveItem(FName ItemId, int32 Count, FGT_DebugRunSnapshot& OutSnapshot);
+	// 直接设玩家当前生命(夹到 1..MaxHp)。
+	bool DebugSetHp(int32 NewHp, FGT_DebugRunSnapshot& OutSnapshot);
+	// 快速进入最近的指定房型(chest/combat/event/exit, 或事件子类 trader/dice/altar/trap)。
+	// 实现 = god 瞬移到目标邻格 + 真实走入目标格(触发房间内容, 如怪物房开战)。
+	bool DebugGotoRoomType(const FString& TypeArg, FGT_DebugRunSnapshot& OutSnapshot);
+
+	// 作弊模式总开关(GameInstance 级, 本会话跨局持续)。标题「设置」切换;
+	// 开启后局内 ESC 暂停菜单才显示「作弊面板」入口。不影响 163(默认关)。
+	void SetCheatModeEnabled(bool bEnabled) { bCheatModeEnabled = bEnabled; }
+	bool IsCheatModeEnabled() const { return bCheatModeEnabled; }
+
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
 	bool GetDebugRunSnapshot(FGT_DebugRunSnapshot& OutSnapshot) const;
 
@@ -94,4 +112,7 @@ public:
 private:
 	UGT_RunSubsystem* GetRunSubsystem() const;
 	bool SubmitDebugCommand(FName CommandType, int32 X, int32 Y, FGT_DebugRunSnapshot& OutSnapshot, FName PayloadId = NAME_None);
+
+	// 作弊模式总开关(本会话内存态, 不存档)。
+	bool bCheatModeEnabled = false;
 };

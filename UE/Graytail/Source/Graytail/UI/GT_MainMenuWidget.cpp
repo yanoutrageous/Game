@@ -47,13 +47,14 @@ namespace
 		  FAnchors(0.6825f, 0.4662f, 0.8728f, 0.5667f) },
 		{ TEXT(""), TEXT("装备/天赋: 进入部署终端, 申领装备 / 配置作业装备与带入消耗品"),
 		  FAnchors(0.6730f, 0.6017f, 0.8574f, 0.7045f) },
-		{ TEXT(""), TEXT("设置: 尚未开放"),
+		{ TEXT(""), TEXT("设置: 作弊模式开关(开启后局内 ESC 菜单出现作弊面板)"),
 		  FAnchors(0.6620f, 0.7371f, 0.8454f, 0.8093f) },
 	};
-	// 主页入口: 出发探索(0) / 新手教程(1) 已开放; 装备天赋(2) / 设置(3) = 局外组部署终端预留位, 尚未开放。
+	// 主页入口: 出发探索(0) / 新手教程(1) / 装备天赋(2 部署终端) / 设置(3) 均已开放。
 	constexpr int32 GTMainOption_Depart = 0;
 	constexpr int32 GTMainOption_Tutorial = 1;
 	constexpr int32 GTMainOption_Deploy = 2;
+	constexpr int32 GTMainOption_Settings = 3;
 
 	// 每块板独立的错切默认值 (横X=上下边错开, 纵Y=左右高低), F10 校准实测。
 	const FVector2D GTMainShearDefaults[] =
@@ -584,6 +585,12 @@ void UGT_MainMenuWidget::ConfirmSelection()
 		{
 			// 装备天赋: 打开局外部署终端(HUD 负责开关菜单/终端)。
 			OnDeployRequested.ExecuteIfBound();
+			return;
+		}
+		if (SelectedIndex == GTMainOption_Settings)
+		{
+			// 设置: 打开设置面板(作弊模式总开关; HUD 负责开关菜单/面板)。
+			OnSettingsRequested.ExecuteIfBound();
 			return;
 		}
 		// 其余入口未开放: 提示行变暖红反馈。

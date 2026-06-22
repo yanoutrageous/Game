@@ -7,6 +7,7 @@
 #include "Core/GT_RunContext.h"
 #include "Core/GT_RunSubsystem.h"
 #include "Debug/GT_RuntimeSmokeValidator.h"
+#include "Domains/Events/GT_EventRules.h"
 #include "Domains/Inventory/GT_ItemCatalog.h"
 #include "Domains/Map/GT_MapGenerator.h"
 #include "Engine/GameInstance.h"
@@ -303,6 +304,207 @@ bool UGT_DebugSubsystem::DebugTeleport(int32 X, int32 Y, FGT_DebugRunSnapshot& O
 
 	GetDebugRunSnapshot(OutSnapshot);
 	return true;
+}
+
+namespace
+{
+	// 取当前 run(活跃)。失败时填 OutSnapshot.Summary 并返回 nullptr。
+	UGT_RunContext* GetActiveRunContext(UGT_RunSubsystem* RunSubsystem, FGT_DebugRunSnapshot& OutSnapshot)
+	{
+		UGT_RunContext* RunContext = RunSubsystem ? RunSubsystem->GetCurrentRunContext() : nullptr;
+		if (!RunContext || !RunContext->IsRunActive())
+		{
+			OutSnapshot.Summary = TEXT("No active run");
+			return nullptr;
+		}
+		return RunContext;
+	}
+}
+
+bool UGT_DebugSubsystem::DebugSetGodMode(bool bEnabled, FGT_DebugRunSnapshot& OutSnapshot)
+{
+	OutSnapshot = FGT_DebugRunSnapshot();
+	UGT_RunContext* RunContext = GetActiveRunContext(GetRunSubsystem(), OutSnapshot);
+	if (!RunContext)
+	{
+		return false;
+	}
+	RunContext->SetCheatGodMode(bEnabled);
+	GetDebugRunSnapshot(OutSnapshot);
+	OutSnapshot.Summary = FString::Printf(TEXT("GodMode=%s. %s"), bEnabled ? TEXT("ON") : TEXT("OFF"), *OutSnapshot.Summary);
+	return true;
+}
+
+bool UGT_DebugSubsystem::DebugAddGold(int32 Amount, FGT_DebugRunSnapshot& OutSnapshot)
+{
+	OutSnapshot = FGT_DebugRunSnapshot();
+	UGT_RunContext* RunContext = GetActiveRunContext(GetRunSubsystem(), OutSnapshot);
+	if (!RunContext)
+	{
+		return false;
+	}
+	RunContext->CheatAddPendingGold(Amount);
+	GetDebugRunSnapshot(OutSnapshot);
+	OutSnapshot.Summary = FString::Printf(TEXT("PendingGold += %d. %s"), Amount, *OutSnapshot.Summary);
+	return true;
+}
+
+bool UGT_DebugSubsystem::DebugGiveItem(FName ItemId, int32 Count, FGT_DebugRunSnapshot& OutSnapshot)
+{
+	OutSnapshot = FGT_DebugRunSnapshot();
+	UGT_RunContext* RunContext = GetActiveRunContext(GetRunSubsystem(), OutSnapshot);
+	if (!RunContext)
+	{
+		return false;
+	}
+	if (Count < 1)
+	{
+		Count = 1;
+	}
+	if (!GT_ItemCatalog::FindItemDef(ItemId))
+	{
+		GetDebugRunSnapshot(OutSnapshot);
+		OutSnapshot.Summary = FString::Printf(TEXT("GiveItem rejected: unknown item id '%s'. %s"), *ItemId.ToString(), *OutSnapshot.Summary);
+		return false;
+	}
+	RunContext->CheatGiveItem(ItemId, Count);
+	GetDebugRunSnapshot(OutSnapshot);
+	OutSnapshot.Summary = FString::Printf(TEXT("GiveItem %s x%d. %s"), *ItemId.ToString(), Count, *OutSnapshot.Summary);
+	return true;
+}
+
+bool UGT_DebugSubsystem::DebugSetHp(int32 NewHp, FGT_DebugRunSnapshot& OutSnapshot)
+{
+	OutSnapshot = FGT_DebugRunSnapshot();
+	UGT_RunContext* RunContext = GetActiveRunContext(GetRunSubsystem(), OutSnapshot);
+	if (!RunContext)
+	{
+		return false;
+	}
+	RunContext->CheatSetPlayerHp(NewHp);
+	GetDebugRunSnapshot(OutSnapshot);
+	OutSnapshot.Summary = FString::Printf(TEXT("SetHp -> %d. %s"), NewHp, *OutSnapshot.Summary);
+	return true;
+}
+
+bool UGT_DebugSubsystem::DebugGotoRoomType(const FString& TypeArg, FGT_DebugRunSnapshot& OutSnapshot)
+{
+	OutSnapshot = FGT_DebugRunSnapshot();
+	UGT_RunSubsystem* RunSubsystem = GetRunSubsystem();
+	UGT_RunContext* RunContext = GetActiveRunContext(RunSubsystem, OutSnapshot);
+	if (!RunContext)
+	{
+		return false;
+	}
+
+	// 解析房型参数(中英都收)。事件子类需先匹配 Event 基底再按哈希定 kind。
+	const FString T = TypeArg.ToLower();
+	EGT_RoomBaseType WantBase = EGT_RoomBaseType::Unknown;
+	EGT_EventKind WantEvent = EGT_EventKind::None;   // None = 任意事件房
+	bool bWantExit = false;
+	if (T == TEXT("chest") || T == TEXT("宝箱")) { WantBase = EGT_RoomBaseType::Chest; }
+	else if (T == TEXT("combat") || T == TEXT("monster") || T == TEXT("怪物") || T == TEXT("怪")) { WantBase = EGT_RoomBaseType::Combat; }
+	else if (T == TEXT("exit") || T == TEXT("撤离") || T == TEXT("出口")) { bWantExit = true; }
+	else if (T == TEXT("event") || T == TEXT("事件")) { WantBase = EGT_RoomBaseType::Event; }
+	else if (T == TEXT("trader") || T == TEXT("旅商")) { WantBase = EGT_RoomBaseType::Event; WantEvent = EGT_EventKind::Trader; }
+	else if (T == TEXT("dice") || T == TEXT("赌徒")) { WantBase = EGT_RoomBaseType::Event; WantEvent = EGT_EventKind::Dice; }
+	else if (T == TEXT("altar") || T == TEXT("祭坛")) { WantBase = EGT_RoomBaseType::Event; WantEvent = EGT_EventKind::Altar; }
+	else if (T == TEXT("trap") || T == TEXT("机关")) { WantBase = EGT_RoomBaseType::Event; WantEvent = EGT_EventKind::Trap; }
+	else
+	{
+		OutSnapshot.Summary = FString::Printf(TEXT("Goto: unknown type '%s'. Use chest/combat/event/exit/trader/dice/altar/trap."), *TypeArg);
+		return false;
+	}
+
+	// 玩家位置(用于挑最近目标)。
+	int32 PlayerX = 0, PlayerY = 0;
+	if (const UGT_QueryFacade* QueryFacade = RunSubsystem->GetQueryFacade())
+	{
+		QueryFacade->TryGetPlayerPosition(PlayerX, PlayerY);
+	}
+
+	const FGT_TruthMap& Truth = RunContext->GetTruthMapForDebugOnly();
+	const int32 Width = RunContext->GetMapWidth();
+	const int32 Height = RunContext->GetMapHeight();
+	const int32 Seed = RunContext->GetSeed();
+
+	int32 BestX = INDEX_NONE, BestY = INDEX_NONE, BestDist = MAX_int32;
+	for (int32 Y = 0; Y < Height; ++Y)
+	{
+		for (int32 X = 0; X < Width; ++X)
+		{
+			const FGT_TruthCell* Cell = Truth.GetCellConst(X, Y);
+			if (!Cell)
+			{
+				continue;
+			}
+			bool bMatch = false;
+			if (bWantExit)
+			{
+				bMatch = Cell->bIsExit || Cell->RoomBaseType == EGT_RoomBaseType::Exit;
+			}
+			else if (Cell->RoomBaseType == WantBase)
+			{
+				bMatch = (WantBase != EGT_RoomBaseType::Event || WantEvent == EGT_EventKind::None
+					|| GT_EventRules::GetEventKindAt(Seed, X, Y) == WantEvent);
+			}
+			if (!bMatch)
+			{
+				continue;
+			}
+			const int32 Dist = FMath::Abs(X - PlayerX) + FMath::Abs(Y - PlayerY);
+			if (Dist < BestDist)
+			{
+				BestDist = Dist;
+				BestX = X;
+				BestY = Y;
+			}
+		}
+	}
+
+	if (BestX == INDEX_NONE)
+	{
+		GetDebugRunSnapshot(OutSnapshot);
+		OutSnapshot.Summary = FString::Printf(TEXT("Goto: no '%s' room in this run. %s"), *TypeArg, *OutSnapshot.Summary);
+		return false;
+	}
+
+	if (BestX == PlayerX && BestY == PlayerY)
+	{
+		GetDebugRunSnapshot(OutSnapshot);
+		OutSnapshot.Summary = FString::Printf(TEXT("Goto '%s': already at (%d,%d). %s"), *TypeArg, BestX, BestY, *OutSnapshot.Summary);
+		return true;
+	}
+
+	// 找目标的一个合法邻格: god 瞬移过去(不触发任何房间), 再真实走入目标格,
+	// 让目标房按正常管线 ResolveRoomAt 触发内容(怪物房开战 / 事件房就绪 / 宝箱可搜)。
+	const int32 NeighborDX[4] = { -1, 1, 0, 0 };
+	const int32 NeighborDY[4] = { 0, 0, -1, 1 };
+	int32 AdjX = INDEX_NONE, AdjY = INDEX_NONE;
+	for (int32 Dir = 0; Dir < 4; ++Dir)
+	{
+		const int32 NX = BestX + NeighborDX[Dir];
+		const int32 NY = BestY + NeighborDY[Dir];
+		if (RunContext->IsValidMapCoord(NX, NY))
+		{
+			AdjX = NX;
+			AdjY = NY;
+			break;
+		}
+	}
+
+	if (AdjX == INDEX_NONE)
+	{
+		// 无邻格(1x1 地图): 退化成直接瞬移(不触发内容)。
+		return DebugTeleport(BestX, BestY, OutSnapshot);
+	}
+
+	FGT_DebugRunSnapshot Discard;
+	DebugTeleport(AdjX, AdjY, Discard);
+	const bool bMoved = DebugMoveTo(BestX, BestY, OutSnapshot);
+	OutSnapshot.Summary = FString::Printf(TEXT("Goto '%s' -> (%d,%d) %s. %s"),
+		*TypeArg, BestX, BestY, bMoved ? TEXT("entered") : TEXT("move-failed"), *OutSnapshot.Summary);
+	return bMoved;
 }
 
 bool UGT_DebugSubsystem::DebugSearch(FGT_DebugRunSnapshot& OutSnapshot)
@@ -744,6 +946,12 @@ void UGT_DebugSubsystem::GetDebugCommandHelpLines(TArray<FString>& OutLines) con
 	OutLines.Add(TEXT("    Example: gt.ResolveCombat Combat_DebugResult_Retreat"));
 	OutLines.Add(TEXT("  gt.Attack - Attack active dummy combat once through the command path."));
 	OutLines.Add(TEXT("  gt.RunDemo - Run a fixed Event, Combat, Attack, Extract, and Summary demo path."));
+	OutLines.Add(TEXT("-- CHEAT (fast testing) --"));
+	OutLines.Add(TEXT("  gt.God [0|1] - Toggle invincibility (mine/monster/protocol/trap damage -> 0). No arg = on."));
+	OutLines.Add(TEXT("  gt.Goto <type> - Jump to & enter the nearest room of: chest/combat/event/exit/trader/dice/altar/trap."));
+	OutLines.Add(TEXT("  gt.AddGold <n> - Add pending (in-run) gold."));
+	OutLines.Add(TEXT("  gt.GiveItem <ItemId> [Count] - Add an item to the bag, ignoring capacity."));
+	OutLines.Add(TEXT("  gt.SetHp <n> - Set player current HP (clamped 1..MaxHp)."));
 	OutLines.Add(TEXT("Recommended manual flow: gt.StartRun -> gt.Minimap -> gt.Move 1 0 -> gt.Scan 1 1 -> gt.Status -> gt.Room."));
 	OutLines.Add(TEXT("Event demo path: gt.StartRun -> gt.Move 1 0 -> gt.Move 2 0 -> gt.Move 3 0 -> gt.Move 4 0 -> gt.Move 4 1 -> gt.ChooseEventOption Event_DebugOption_Continue -> gt.Events."));
 	OutLines.Add(TEXT("Combat demo path: gt.StartRun -> gt.Move 0 1 -> gt.Move 0 2 -> gt.Move 0 3 -> gt.Move 0 4 -> gt.Move 1 4 -> gt.Attack -> gt.Events."));

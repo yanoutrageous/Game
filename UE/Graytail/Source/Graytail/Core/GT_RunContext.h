@@ -207,6 +207,17 @@ public:
 	// 踩雷扣血(Standard 模式规则, 对齐 Combat.TakeMineHit)。返回实际伤害与是否致死。
 	void ApplyMineHitToPlayer(int32& OutDamage, bool& bOutDead);
 
+	// ---- 调试作弊(仅控制台 gt.* 调用; 默认全关, 对 163/正常局零影响)----
+	// 无敌: 开启后所有危险伤害(踩雷/怪物/协议满压/机关失败)归零; 祭坛献祭是自愿交易, 不免。
+	void SetCheatGodMode(bool bEnabled) { bCheatGodMode = bEnabled; }
+	bool IsCheatGodMode() const { return bCheatGodMode; }
+	// 直接加待结算金币(本局钱包)。
+	void CheatAddPendingGold(int32 Amount) { RunInventory.AddPendingGold(Amount); }
+	// 直接塞物品进背包(无视容量)。调用方负责校验 ItemId 合法。
+	void CheatGiveItem(FName ItemId, int32 Count) { RunInventory.ForceAddCarriedItem(ItemId, Count, FName(TEXT("cheat"))); }
+	// 直接设玩家当前生命(自动夹到 1..MaxHp)。
+	void CheatSetPlayerHp(int32 NewHp);
+
 	// 开局应用局外 loadout(S3): 设属性加成 + 存规则层加成 + 灌带入消耗品。
 	// 仅 Standard 局由 RunSubsystem 在初始化后调用(RunContext 不依赖 MetaProgress 子系统, 只收纯数据)。
 	// EquippedItemIds = 已装备装备 id 列表(纯数据), 用于激活 S6 触发型物品(异常体犬牙/封锁区结晶/回收磁石)。
@@ -347,6 +358,11 @@ private:
 	int32 LoadoutTradeBonusPercent = 0;   // S4: 议价天赋 → 旅商收购价 +N%(0 = 无议价, 基础 0.75 不变)
 	// 本局难度(Standard 满压惩罚按难度分档扣血; BasicDebug 不用)。
 	EGT_Difficulty CurrentDifficulty = EGT_Difficulty::Standard;
+
+	// 调试无敌: 所有危险伤害经 ApplyPlayerDamage 统一过滤, 开启时归零。默认关。
+	bool bCheatGodMode = false;
+	// 统一玩家受伤入口(危险伤害走这里, 便于 god 模式一处拦截)。返回实际扣血。
+	int32 ApplyPlayerDamage(int32 RawDamage);
 
 	// S6 触发型物品本局状态(开局 ApplyMetaLoadout 按已装备物品激活; InitializeFromSpec/ResetRun 重置)。
 	bool bLoadoutKillPowerStack = false;   // 异常体犬牙: 战斗胜利叠攻

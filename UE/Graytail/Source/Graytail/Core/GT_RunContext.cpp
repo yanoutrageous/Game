@@ -435,6 +435,21 @@ bool UGT_RunContext::AttackDummyCombat(FGT_CombatRuntimeState& OutState)
 	return true;
 }
 
+int32 UGT_RunContext::ApplyPlayerDamage(int32 RawDamage)
+{
+	// 调试无敌: 危险伤害一律归零(踩雷/怪物/协议满压/机关失败都走这里)。
+	if (bCheatGodMode)
+	{
+		return 0;
+	}
+	return PlayerCombatState.ApplyDamage(RawDamage);
+}
+
+void UGT_RunContext::CheatSetPlayerHp(int32 NewHp)
+{
+	PlayerCombatState.Hp = FMath::Clamp(NewHp, 1, PlayerCombatState.MaxHp);
+}
+
 bool UGT_RunContext::MonsterHitPlayer(int32& OutDamage, bool& bOutDead)
 {
 	OutDamage = 0;
@@ -451,7 +466,7 @@ bool UGT_RunContext::MonsterHitPlayer(int32& OutDamage, bool& bOutDead)
 	}
 
 	const int32 Damage = FMath::Max(0, CombatRuntimeState.EnemyDamage);
-	OutDamage = PlayerCombatState.ApplyDamage(Damage);
+	OutDamage = ApplyPlayerDamage(Damage);
 	bOutDead = !PlayerCombatState.IsAlive();
 	return true;
 }
@@ -558,7 +573,7 @@ void UGT_RunContext::ApplyMineHitToPlayer(int32& OutDamage, bool& bOutDead)
 	}
 	// 对齐 Combat.TakeMineHit: 雷伤 30, 装备(绝缘套)/天赋(厚皮)减免后最低 5。
 	OutDamage = FMath::Max(GT_CombatRules::MineDamageFloor, GT_CombatRules::MineDamage - LoadoutMineDmgReduce);
-	PlayerCombatState.ApplyDamage(OutDamage);
+	OutDamage = ApplyPlayerDamage(OutDamage);
 	bOutDead = !PlayerCombatState.IsAlive();
 }
 
@@ -722,7 +737,7 @@ bool UGT_RunContext::ApplyMaxPressureRoomPenalty(int32& OutDamage, bool& bOutDea
 	{
 		return false;
 	}
-	OutDamage = PlayerCombatState.ApplyDamage(MaxPressureRoomDamageForDifficulty(CurrentDifficulty));
+	OutDamage = ApplyPlayerDamage(MaxPressureRoomDamageForDifficulty(CurrentDifficulty));
 	bOutDead = !PlayerCombatState.IsAlive();
 	return OutDamage > 0;
 }
@@ -1370,12 +1385,12 @@ bool UGT_RunContext::ExecuteEventOptionAtPlayer(FName OptionId, FGT_EventOutcome
 		}
 		else
 		{
-			PlayerCombatState.ApplyDamage(GT_EventRules::Trap::FailHpLoss);
+			const int32 TrapDamage = ApplyPlayerDamage(GT_EventRules::Trap::FailHpLoss);
 			AddProtocolPressure(GT_EventRules::Trap::FailPressure);
-			OutOutcome.HpDelta = -GT_EventRules::Trap::FailHpLoss;
+			OutOutcome.HpDelta = -TrapDamage;
 			OutOutcome.PressureDelta = GT_EventRules::Trap::FailPressure;
 			OutOutcome.Message = FString::Printf(
-				TEXT("机关失控: 生命 -%d，协议压力 +%d。"), GT_EventRules::Trap::FailHpLoss, GT_EventRules::Trap::FailPressure);
+				TEXT("机关失控: 生命 -%d，协议压力 +%d。"), TrapDamage, GT_EventRules::Trap::FailPressure);
 		}
 		break;
 	}

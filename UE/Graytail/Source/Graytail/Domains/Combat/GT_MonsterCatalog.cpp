@@ -43,8 +43,8 @@ namespace GT_MonsterCatalog
 				A.AttackInterval = 1.5f;
 				A.SpreadCount = 3;
 				A.SpreadHalfAngleDeg = 25.f;
-				A.SpritePath = TEXT("/Game/Graytail/Sprites/enemy_slime");   // 占位
-				A.TintColor = FLinearColor(0.72f, 0.40f, 1.0f);             // 紫
+				A.SpritePath = TEXT("/Game/Graytail/Sprites/Monsters/bat_idle_0");
+				A.TintColor = FLinearColor::White;   // 真彩贴图自带紫色, 不再占位染色
 				return A;
 			}();
 			return Bat;
@@ -66,8 +66,8 @@ namespace GT_MonsterCatalog
 				A.AttackInterval = 2.5f;
 				A.LaserDuration = 1.2f;        // 光束持续
 				A.LaserTickInterval = 0.3f;    // 站内扣血间隔
-				A.SpritePath = TEXT("/Game/Graytail/Sprites/enemy_slime");   // 占位
-				A.TintColor = FLinearColor(0.40f, 0.62f, 0.92f);            // 蓝灰
+				A.SpritePath = TEXT("/Game/Graytail/Sprites/Monsters/drone_idle_0");
+				A.TintColor = FLinearColor::White;   // 真彩贴图自带蓝灰, 不再占位染色
 				return A;
 			}();
 			return Drone;

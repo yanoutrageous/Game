@@ -311,6 +311,7 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 	// 怪物(史莱姆), 战斗激活时显示在房间偏左上(对齐 Lua monsterPosition 0.35/0.45)。
 	EnemyImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
 	EnemyImage->SetVisibility(ESlateVisibility::Collapsed);
+	EnemyImage->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));   // 中心轴心: 面向玩家水平翻转时原地镜像不偏移
 	if (UCanvasPanelSlot* EnemySlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(EnemyImage)))
 	{
 		EnemySlot->SetPosition(FVector2D(GTRoomSize * 0.35f - 40.f, GTRoomSize * 0.45f - 40.f));
@@ -345,27 +346,58 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 		ProjSlot->SetSize(FVector2D(16.f, 16.f));
 	}
 
-	// 2b. 散射飞弹(蝙蝠 RangedSpread): 预建 5 个实心点, 复用单飞弹外观。
+	// 2b. 散射飞弹(蝙蝠 RangedSpread): 预建 5 个, 用紫色能量弹贴图(无则回退纯色点)。
+	UTexture2D* BoltTex = LoadTextureAsset(TEXT("/Game/Graytail/Sprites/Effects/bat_bolt"));
 	for (int32 SpreadIndex = 0; SpreadIndex < GTMaxSpreadProjectiles; ++SpreadIndex)
 	{
 		UImage* Proj = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
 		Proj->SetVisibility(ESlateVisibility::Collapsed);
-		Proj->SetBrushTintColor(FSlateColor(FLinearColor(1.0f, 0.35f, 0.5f, 1.f))); // 偏粉红(蝙蝠散射)
+		if (BoltTex) { Proj->SetBrushFromTexture(BoltTex); }
+		else { Proj->SetBrushTintColor(FSlateColor(FLinearColor(1.0f, 0.35f, 0.5f, 1.f))); } // 回退粉红
+		Proj->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));   // 中心轴心: 弹丸旋转对齐飞行方向
 		if (UCanvasPanelSlot* PSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(Proj)))
 		{
-			PSlot->SetSize(FVector2D(14.f, 14.f));
+			PSlot->SetSize(FVector2D(24.f, 24.f));
 		}
 		SpreadProjImages[SpreadIndex] = Proj;
 	}
 
-	// 2c. 激光光束(无人机 RangedLaser): 粗实心光束, 复用瞄准线的左中心轴心旋转。
+	// 2c. 激光光束(无人机 RangedLaser): 青蓝光束贴图(左端亮帽=镜头侧), 左中心轴心旋转。
 	LaserBeamImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
 	LaserBeamImage->SetVisibility(ESlateVisibility::Collapsed);
-	LaserBeamImage->SetBrushTintColor(FSlateColor(FLinearColor(0.5f, 0.85f, 1.0f, 0.9f))); // 亮蓝青光束(无人机)
+	if (UTexture2D* BeamTex = LoadTextureAsset(TEXT("/Game/Graytail/Sprites/Effects/drone_laser_beam")))
+	{
+		LaserBeamImage->SetBrushFromTexture(BeamTex);
+	}
+	else { LaserBeamImage->SetBrushTintColor(FSlateColor(FLinearColor(0.5f, 0.85f, 1.0f, 0.9f))); } // 回退纯色
 	LaserBeamImage->SetRenderTransformPivot(FVector2D(0.f, 0.5f));
 	if (UCanvasPanelSlot* LaserSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(LaserBeamImage)))
 	{
-		LaserSlot->SetSize(FVector2D(800.f, 14.f)); // 长贯穿房间, 粗 14px
+		LaserSlot->SetSize(FVector2D(800.f, 20.f)); // 长贯穿房间, 粗 20px
+	}
+
+	// 2d. 激光起手闪光(镜头端 46px) + 命中爆点(玩家端 52px): 发射时按需闪现, 平时隐藏。
+	LaserMuzzleImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+	LaserMuzzleImage->SetVisibility(ESlateVisibility::Collapsed);
+	LaserMuzzleImage->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
+	if (UTexture2D* MzTex = LoadTextureAsset(TEXT("/Game/Graytail/Sprites/Effects/drone_laser_muzzle")))
+	{
+		LaserMuzzleImage->SetBrushFromTexture(MzTex);
+	}
+	if (UCanvasPanelSlot* MzSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(LaserMuzzleImage)))
+	{
+		MzSlot->SetSize(FVector2D(46.f, 46.f));
+	}
+	LaserImpactImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+	LaserImpactImage->SetVisibility(ESlateVisibility::Collapsed);
+	LaserImpactImage->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
+	if (UTexture2D* ImTex = LoadTextureAsset(TEXT("/Game/Graytail/Sprites/Effects/drone_laser_impact")))
+	{
+		LaserImpactImage->SetBrushFromTexture(ImTex);
+	}
+	if (UCanvasPanelSlot* ImSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(LaserImpactImage)))
+	{
+		ImSlot->SetSize(FVector2D(52.f, 52.f));
 	}
 	// ==========================================
 
@@ -609,6 +641,7 @@ void UGT_RoomViewWidget::RefreshRoomDecor()
 		{
 			EnemyImage->SetBrushFromTexture(SlimeTexture);
 		}
+		CurrentEnemyFrameKey.Reset();   // 占位后让战斗 tick 重新按怪种刷新本体帧
 	}
 	EnemyImage->SetVisibility(bShowEnemy ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 
@@ -1225,6 +1258,7 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 							if (SpreadProjImages[i]) { SpreadProjImages[i]->SetVisibility(ESlateVisibility::HitTestInvisible); }
 						}
 						EnemyShakeTimer = 0.3f;
+						EnemyFireFlashTimer = 0.18f;   // 张大嘴发射帧短暂闪现
 						EnemyAttackCooldownTimer = Arch.AttackInterval;
 					}
 				}
@@ -1237,8 +1271,10 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 					{
 						if (UCanvasPanelSlot* PSlot = Cast<UCanvasPanelSlot>(SpreadProjImages[i]->Slot))
 						{
-							PSlot->SetPosition(FVector2D(SpreadProjPos[i].X * GTRoomSize - 7.f, SpreadProjPos[i].Y * GTRoomSize - 7.f));
+							PSlot->SetPosition(FVector2D(SpreadProjPos[i].X * GTRoomSize - 12.f, SpreadProjPos[i].Y * GTRoomSize - 12.f));
 						}
+						const float BoltDeg = FMath::RadiansToDegrees(FMath::Atan2(SpreadProjDir[i].Y, SpreadProjDir[i].X));
+						SpreadProjImages[i]->SetRenderTransform(FWidgetTransform(FVector2D::ZeroVector, FVector2D(1.f, 1.f), FVector2D::ZeroVector, BoltDeg));
 					}
 					if (FVector2D::Distance(SpreadProjPos[i], PlayerPos) < 0.06f)
 					{
@@ -1291,10 +1327,19 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 						LaserBeamImage->SetVisibility(ESlateVisibility::HitTestInvisible);
 						if (UCanvasPanelSlot* LaserSlot = Cast<UCanvasPanelSlot>(LaserBeamImage->Slot))
 						{
-							LaserSlot->SetPosition(FVector2D(EnemyNormPos.X * GTRoomSize, EnemyNormPos.Y * GTRoomSize) - FVector2D(0.f, 7.f));
+							LaserSlot->SetPosition(FVector2D(EnemyNormPos.X * GTRoomSize, EnemyNormPos.Y * GTRoomSize) - FVector2D(0.f, 10.f));
 						}
 						const float LaserDeg = FMath::RadiansToDegrees(FMath::Atan2(LaserDir.Y, LaserDir.X));
 						LaserBeamImage->SetRenderTransform(FWidgetTransform(FVector2D::ZeroVector, FVector2D(1.f, 1.f), FVector2D::ZeroVector, LaserDeg));
+					}
+					// 镜头起手闪光: 跟随发射端(无人机本体)。
+					if (LaserMuzzleImage)
+					{
+						LaserMuzzleImage->SetVisibility(ESlateVisibility::HitTestInvisible);
+						if (UCanvasPanelSlot* MzSlot = Cast<UCanvasPanelSlot>(LaserMuzzleImage->Slot))
+						{
+							MzSlot->SetPosition(FVector2D(EnemyNormPos.X * GTRoomSize - 23.f, EnemyNormPos.Y * GTRoomSize - 23.f));
+						}
 					}
 					LaserTickTimer -= InDeltaTime;
 					if (LaserTickTimer <= 0.f)
@@ -1303,13 +1348,26 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 						const float Proj = FVector2D::DotProduct(ToPlayer, LaserDir);
 						const FVector2D Closest = EnemyNormPos + LaserDir * FMath::Max(0.f, Proj);
 						const float PerpDist = FVector2D::Distance(PlayerPos, Closest);
-						if (Proj > 0.f && PerpDist < 0.05f) { TryApplyMonsterHit(); }   // 站光束前方且贴近线 -> 扣血
+						if (Proj > 0.f && PerpDist < 0.05f)
+						{
+							TryApplyMonsterHit();   // 站光束前方且贴近线 -> 扣血
+							if (LaserImpactImage)
+							{
+								LaserImpactTimer = 0.14f;
+								LaserImpactImage->SetVisibility(ESlateVisibility::HitTestInvisible);
+								if (UCanvasPanelSlot* ImSlot = Cast<UCanvasPanelSlot>(LaserImpactImage->Slot))
+								{
+									ImSlot->SetPosition(FVector2D(PlayerPos.X * GTRoomSize - 26.f, PlayerPos.Y * GTRoomSize - 26.f));
+								}
+							}
+						}
 						LaserTickTimer = Arch.LaserTickInterval;
 					}
 					if (LaserActiveTimer <= 0.f)
 					{
 						bLaserFiring = false;
 						if (LaserBeamImage) { LaserBeamImage->SetVisibility(ESlateVisibility::Collapsed); }
+						if (LaserMuzzleImage) { LaserMuzzleImage->SetVisibility(ESlateVisibility::Collapsed); }
 						EnemyAttackCooldownTimer = Arch.AttackInterval;
 					}
 				}
@@ -1371,8 +1429,47 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 				}
 			}
 
-			// 怪物图像: 跟随 EnemyNormPos(逐帧移动)+ 攻击抖动偏移。
+			// 激光命中爆点衰减 + 非发射时确保镜头闪光隐藏。
+			if (LaserImpactTimer > 0.f)
 			{
+				LaserImpactTimer -= InDeltaTime;
+				if (LaserImpactTimer <= 0.f && LaserImpactImage) { LaserImpactImage->SetVisibility(ESlateVisibility::Collapsed); }
+			}
+			if (!bLaserFiring && LaserMuzzleImage && LaserMuzzleImage->GetVisibility() != ESlateVisibility::Collapsed)
+			{
+				LaserMuzzleImage->SetVisibility(ESlateVisibility::Collapsed);
+			}
+
+			// 怪物本体: 帧动画(待机循环/蓄力姿态/蝙蝠发射张嘴) + 朝向(源贴图朝右, 玩家在左则水平翻转面向玩家)。
+			{
+				EnemyAnimTime += InDeltaTime;
+				if (EnemyFireFlashTimer > 0.f) { EnemyFireFlashTimer -= InDeltaTime; }
+				const bool bCharging = (EnemyAimTimer > 0.f) || bLaserFiring;
+				FString FrameKey;
+				switch (Snapshot.EnemyType)
+				{
+				case EGT_MonsterType::Bat:
+					if (EnemyFireFlashTimer > 0.f)  { FrameKey = TEXT("/Game/Graytail/Sprites/Monsters/bat_attack_1"); }
+					else if (bCharging)             { FrameKey = TEXT("/Game/Graytail/Sprites/Monsters/bat_attack_0"); }
+					else { FrameKey = FString::Printf(TEXT("/Game/Graytail/Sprites/Monsters/bat_idle_%d"), FMath::FloorToInt(EnemyAnimTime * 7.f) % 4); }
+					break;
+				case EGT_MonsterType::Drone:
+					if (bCharging)
+					{
+						const float Prog = (Arch.AimDuration > 0.f && EnemyAimTimer > 0.f) ? (1.f - EnemyAimTimer / Arch.AimDuration) : 1.f;
+						FrameKey = FString::Printf(TEXT("/Game/Graytail/Sprites/Monsters/drone_charge_%d"), FMath::Clamp(FMath::FloorToInt(Prog * 3.f), 0, 2));
+					}
+					else { FrameKey = FString::Printf(TEXT("/Game/Graytail/Sprites/Monsters/drone_idle_%d"), FMath::FloorToInt(EnemyAnimTime * 5.f) % 4); }
+					break;
+				default:
+					FrameKey = TEXT("/Game/Graytail/Sprites/enemy_slime");
+					break;
+				}
+				if (FrameKey != CurrentEnemyFrameKey)
+				{
+					if (UTexture2D* BodyTex = LoadTextureAsset(FrameKey)) { EnemyImage->SetBrushFromTexture(BodyTex); CurrentEnemyFrameKey = FrameKey; }
+				}
+
 				const FVector2D BasePx(EnemyNormPos.X * GTRoomSize - 40.f, EnemyNormPos.Y * GTRoomSize - 40.f);
 				FVector2D Offset = FVector2D::ZeroVector;
 				if (EnemyShakeTimer > 0.f)
@@ -1384,8 +1481,11 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 				{
 					EnemySlot->SetPosition(BasePx + Offset);
 				}
+				const float FaceScaleX = (PlayerPos.X < EnemyNormPos.X) ? -1.f : 1.f;
+				EnemyImage->SetRenderTransform(FWidgetTransform(FVector2D::ZeroVector, FVector2D(FaceScaleX, 1.f), FVector2D::ZeroVector, 0.f));
 			}
 			LastEnemyNormPos = EnemyNormPos;   // 记录怪物当前位置, 供死亡碎裂在其末位置播放
+			LastEnemyType = Snapshot.EnemyType;
 
 			// 攻击射程提示: 未进入射程时提示靠近(怪物会追击, 射程很快闭合)。
 			if (CombatHintLabel)
@@ -1453,6 +1553,7 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 				DeathShatterTimer = 0.f;
 				DeathShatterFrame = -1;
 				DeathEffectPos = LastEnemyNormPos;
+				DeathShatterType = LastEnemyType;   // 按怪种选碎裂图(蝙蝠紫羽/无人机火花/史莱姆)
 			}
 			// 清理 + 重置(下一场战斗从头开始)。
 			bPrevInCombat = false;
@@ -1480,7 +1581,15 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 			bLaserFiring = false;
 			LaserActiveTimer = 0.f;
 			LaserTickTimer = 0.f;
+			LaserImpactTimer = 0.f;
 			if (LaserBeamImage) LaserBeamImage->SetVisibility(ESlateVisibility::Collapsed);
+			if (LaserMuzzleImage) LaserMuzzleImage->SetVisibility(ESlateVisibility::Collapsed);
+			if (LaserImpactImage) LaserImpactImage->SetVisibility(ESlateVisibility::Collapsed);
+			// 本体帧动画/朝向复位(下场战斗从头来; 防缓存 desync)。
+			EnemyAnimTime = 0.f;
+			EnemyFireFlashTimer = 0.f;
+			CurrentEnemyFrameKey.Reset();
+			if (EnemyImage) EnemyImage->SetRenderTransform(FWidgetTransform(FVector2D::ZeroVector, FVector2D(1.f, 1.f), FVector2D::ZeroVector, 0.f));
 			if (EnemyAttackCircle) EnemyAttackCircle->SetVisibility(ESlateVisibility::Collapsed);
 			if (CombatHintLabel) CombatHintLabel->SetVisibility(ESlateVisibility::Collapsed);
 			if (EnemyHpBarBg) EnemyHpBarBg->SetVisibility(ESlateVisibility::Collapsed);
@@ -1507,7 +1616,10 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 			if (Frame != DeathShatterFrame)
 			{
 				DeathShatterFrame = Frame;
-				if (UTexture2D* FrameTex = LoadTextureAsset(FString::Printf(TEXT("/Game/Graytail/Sprites/Effects/slime_shatter_%d"), Frame)))
+				const TCHAR* ShatterPrefix =
+					(DeathShatterType == EGT_MonsterType::Bat) ? TEXT("bat_shatter") :
+					(DeathShatterType == EGT_MonsterType::Drone) ? TEXT("drone_shatter") : TEXT("slime_shatter");
+				if (UTexture2D* FrameTex = LoadTextureAsset(FString::Printf(TEXT("/Game/Graytail/Sprites/Effects/%s_%d"), ShatterPrefix, Frame)))
 				{
 					DeathEffectImage->SetBrushFromTexture(FrameTex);
 				}

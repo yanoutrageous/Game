@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "Domains/Combat/GT_MonsterCatalog.h"   // EGT_MonsterType (帧动画/按怪种死亡选图)
 #include "GT_RoomViewWidget.generated.h"
 
 class UBorder;
@@ -180,9 +181,12 @@ private:
 
 	// 激光(无人机 RangedLaser): 蓄力 -> 锁向粗光束持续 + 站内每隔扣血。
 	UPROPERTY(Transient) UImage* LaserBeamImage = nullptr;
+	UPROPERTY(Transient) UImage* LaserMuzzleImage = nullptr;   // 无人机镜头起手闪光(发射端)
+	UPROPERTY(Transient) UImage* LaserImpactImage = nullptr;   // 激光命中玩家的灼烧爆点
 	bool bLaserFiring = false;
 	float LaserActiveTimer = 0.f;     // 光束持续剩余
 	float LaserTickTimer = 0.f;       // 站内扣血间隔倒计时
+	float LaserImpactTimer = 0.f;     // 命中爆点闪现剩余
 	FVector2D LaserDir = FVector2D::ZeroVector;
 
 	// 远程怪 kiting 随机游走(让移动别太规律): 每隔一段换随机方向叠加。
@@ -203,6 +207,13 @@ private:
 	// 怪物实时战斗状态(表现层): 归一化位置(追击移动)、近战相位机、攻击射程缓存。
 	FVector2D EnemyNormPos = FVector2D(0.35f, 0.45f);
 	int32 EnemyMeleePhase = 0;          // 0 idle / 1 warning / 2 active / 3 cooldown
+
+	// 怪物本体帧动画 + 朝向(贴图源朝右, 玩家在左侧则水平翻转面向玩家)。
+	float EnemyAnimTime = 0.f;            // 待机/蓄力帧动画时钟
+	float EnemyFireFlashTimer = 0.f;      // 蝙蝠发射张嘴帧的短暂闪现窗口
+	FString CurrentEnemyFrameKey;         // 当前已设贴图路径缓存(跳过逐帧重复 SetBrush)
+	EGT_MonsterType LastEnemyType = EGT_MonsterType::Slime;       // 逐帧记录当前怪种(死亡碎裂选图用)
+	EGT_MonsterType DeathShatterType = EGT_MonsterType::Slime;    // 触发碎裂时定格的怪种
 
 	// 怪物死亡碎裂演出(独立于战斗状态机): 怪物被击杀时在其末位置叠播 5 帧。
 	bool bPlayingDeathShatter = false;

@@ -350,6 +350,10 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run", meta = (AllowPrivateAccess = "true"))
 	FName PlayerActorId = NAME_None;
 
+	// 出生格坐标(InitializeFromSpec 从 MapResult.SpawnCoord 记下)。出生格是纯空安全格(生成器把它排除出内容候选), 不可搜刮。
+	// BasicDebug=(0,0) 对齐 163 夹具; Standard 随机出生 → 不能再写死 (0,0) 判定(否则真出生格被当普通房白嫖、(0,0) 内容被误吞)。
+	FIntPoint SpawnCellCoord = FIntPoint::ZeroValue;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat", meta = (AllowPrivateAccess = "true"))
 	FGT_CombatRuntimeState CombatRuntimeState;
 

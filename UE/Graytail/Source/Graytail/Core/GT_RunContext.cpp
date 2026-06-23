@@ -80,6 +80,7 @@ void UGT_RunContext::InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec)
 	PlayerState.X = MapResult.SpawnCoord.X;
 	PlayerState.Y = MapResult.SpawnCoord.Y;
 	PlayerState.bAlive = true;
+	SpawnCellCoord = MapResult.SpawnCoord;   // 出生格定位(搜刮判定/小地图用), 跟随真实出生点, 非写死 (0,0)
 
 	ActorStates.Reset();
 	ActorStates.Add(PlayerState);
@@ -148,6 +149,7 @@ void UGT_RunContext::ResetRun()
 	bLoadoutKillPowerStack = false; KillPowerStackCap = 0; KillPowerStackAmount = 0; KillPowerStacksUsed = 0;
 	bLoadoutProtocolHeal = false; ProtocolHealCap = 0; ProtocolHealAmount = 0; ProtocolHealsUsed = 0;
 	bLoadoutChestBonusLoot = false; ChestBonusGrantedCells.Reset();
+	SpawnCellCoord = FIntPoint::ZeroValue;
 	MapMode = EGT_MapMode::Unknown;
 }
 
@@ -819,8 +821,8 @@ bool UGT_RunContext::EvaluateSearchAtPlayer(FName& OutReason, bool& bOutIsChest)
 		return false;
 	}
 
-	// 出生点固定 (0, 0)(InitializeFromSpec 放置), 不可搜刮。
-	if (PlayerX == 0 && PlayerY == 0)
+	// 出生格不可搜刮(纯空安全格, 生成器已排除其内容)。出生点 BasicDebug 固定 (0,0)、Standard 随机, 用真实出生格坐标判定。
+	if (PlayerX == SpawnCellCoord.X && PlayerY == SpawnCellCoord.Y)
 	{
 		OutReason = FName(TEXT("spawn"));
 		return false;

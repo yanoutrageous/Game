@@ -243,13 +243,16 @@ FGT_MapGenerationSpec UGT_MapGenerator::MakeSpecForDifficulty(EGT_Difficulty Dif
 	case EGT_Difficulty::Standard:
 		Spec.Width = 10; Spec.Height = 10; Spec.RandomExitCount = 2; break;
 	case EGT_Difficulty::Hard:
-		Spec.Width = 10; Spec.Height = 10; Spec.RandomExitCount = 1; break;
+		Spec.Width = 10; Spec.Height = 10; Spec.RandomExitCount = 1;
+		Spec.MonsterRoomRatio = 0.15f; break;   // 困难: 怪物房加密(基准 0.10)
 	case EGT_Difficulty::Veteran:
 		Spec.Width = 13; Spec.Height = 13; Spec.RandomExitCount = 4; break;
 	case EGT_Difficulty::Elite:
-		Spec.Width = 13; Spec.Height = 13; Spec.RandomExitCount = 2; break;
+		Spec.Width = 13; Spec.Height = 13; Spec.RandomExitCount = 2;
+		Spec.MonsterRoomRatio = 0.15f; break;   // 困难(大图): 怪物房加密
 	case EGT_Difficulty::Nightmare:
-		Spec.Width = 13; Spec.Height = 13; Spec.RandomExitCount = 1; break;
+		Spec.Width = 13; Spec.Height = 13; Spec.RandomExitCount = 1;
+		Spec.MonsterRoomRatio = 0.18f; break;   // 地狱: 怪物房最密
 	default:
 		Spec.Width = 10; Spec.Height = 10; Spec.RandomExitCount = 2; break;
 	}

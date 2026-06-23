@@ -129,7 +129,7 @@ void UGT_PauseMenuWidget::BuildWidgetTree()
 	ConfirmText->SetColorAndOpacity(FSlateColor(GTPauseDanger));
 	ConfirmText->SetJustification(ETextJustify::Center);
 	ConfirmText->SetAutoWrapText(true);
-	ConfirmText->SetText(FText::FromString(TEXT("确认放弃本局? 待结算金币将丢失, 不结算。")));
+	ConfirmText->SetText(FText::FromString(TEXT("确认放弃本局? 比阵亡更惨 —— 不结算(金币全丢), 带入装备同样损失。")));
 	if (UVerticalBoxSlot* ConfirmTextSlot = ConfirmBox->AddChildToVerticalBox(ConfirmText))
 	{
 		ConfirmTextSlot->SetPadding(FMargin(0.f, 0.f, 0.f, 8.f));
@@ -174,10 +174,12 @@ void UGT_PauseMenuWidget::BuildCheatBox(UVerticalBox* Column)
 	CheatBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	Column->AddChildToVerticalBox(CheatBox);
 
-	// 索引约定: 0=无敌切换; 1..7=进房型; 8=+金币; 9=给止血贴; 10=满血; 11=残血。
+	// 索引约定: 0=无敌切换; 1..7=进房型; 8=+金币; 9=给止血贴; 10=满血; 11=残血; 12=蝙蝠房; 13=无人机房。
 	CheatGodText = AddCheatButton(CheatBox, TEXT("无敌: 关"), 0, GTPauseWarn);
 	AddCheatButton(CheatBox, TEXT("进宝箱房"), 1, GTPauseBtnText);
-	AddCheatButton(CheatBox, TEXT("进怪物房"), 2, GTPauseBtnText);
+	AddCheatButton(CheatBox, TEXT("进怪物房(随机)"), 2, GTPauseBtnText);
+	AddCheatButton(CheatBox, TEXT("进蝙蝠房"), 12, GTPauseBtnText);
+	AddCheatButton(CheatBox, TEXT("进无人机房"), 13, GTPauseBtnText);
 	AddCheatButton(CheatBox, TEXT("进旅商房"), 3, GTPauseBtnText);
 	AddCheatButton(CheatBox, TEXT("进赌徒房"), 4, GTPauseBtnText);
 	AddCheatButton(CheatBox, TEXT("进祭坛房"), 5, GTPauseBtnText);
@@ -318,6 +320,8 @@ void UGT_PauseMenuWidget::HandleCheatIndex(int32 Index)
 	case 9:  Debug->DebugGiveItem(FName(TEXT("emergency_bandage")), 1, Snapshot); break;
 	case 10: Debug->DebugSetHp(9999, Snapshot); break;
 	case 11: Debug->DebugSetHp(1, Snapshot); break;
+	case 12: Debug->DebugGotoRoomType(TEXT("bat"),   Snapshot); bCloseAfter = true; break;
+	case 13: Debug->DebugGotoRoomType(TEXT("drone"), Snapshot); bCloseAfter = true; break;
 	default: return;
 	}
 	OnCheatApplied.ExecuteIfBound();   // 请 HUD 整体刷新(金币/血量/背包/房间)

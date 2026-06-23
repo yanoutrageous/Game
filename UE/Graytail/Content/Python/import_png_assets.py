@@ -37,6 +37,7 @@ DIR_MAP = [
     ("Textures/generated/rooms", "Rooms"),
     ("Textures/generated/characters", "Sprites/Characters"),
     ("Textures/generated/props", "Sprites/Props"),
+    ("Textures/generated/effects", "Sprites/Effects"),
     ("Textures/generated/ui", "UI/Misc"),
     ("Textures", "Sprites/Misc"),
     ("image", "Sprites"),

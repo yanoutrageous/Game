@@ -111,6 +111,7 @@ private:
 	UPROPERTY(Transient) UImage* BurstPartsImage = nullptr;
 	UPROPERTY(Transient) UTextBlock* BurstPartsText = nullptr;
 	UPROPERTY(Transient) UImage* EnemyImage = nullptr;
+	UPROPERTY(Transient) UImage* DeathEffectImage = nullptr;   // 怪物死亡碎裂特效层(独立于 EnemyImage)
 	UPROPERTY(Transient) UImage* PlayerImage = nullptr;
 	// 实时战斗血条(怪物/玩家)+ 怪物名牌 + 近战预警圈 + 攻击射程提示。
 	UPROPERTY(Transient) UImage* EnemyHpBarBg = nullptr;
@@ -170,6 +171,24 @@ private:
 	FVector2D ProjectilePos = FVector2D::ZeroVector;
 	float ProjectileSpeed = 0.8f;
 
+	// 散射飞弹(蝙蝠 RangedSpread): 多发并发, 预建固定上限 5。
+	static constexpr int32 GTMaxSpreadProjectiles = 5;
+	UPROPERTY(Transient) UImage* SpreadProjImages[5] = {};
+	FVector2D SpreadProjPos[5] = {};
+	FVector2D SpreadProjDir[5] = {};
+	bool bSpreadProjActive[5] = {};
+
+	// 激光(无人机 RangedLaser): 蓄力 -> 锁向粗光束持续 + 站内每隔扣血。
+	UPROPERTY(Transient) UImage* LaserBeamImage = nullptr;
+	bool bLaserFiring = false;
+	float LaserActiveTimer = 0.f;     // 光束持续剩余
+	float LaserTickTimer = 0.f;       // 站内扣血间隔倒计时
+	FVector2D LaserDir = FVector2D::ZeroVector;
+
+	// 远程怪 kiting 随机游走(让移动别太规律): 每隔一段换随机方向叠加。
+	FVector2D WanderDir = FVector2D::ZeroVector;
+	float WanderTimer = 0.f;
+
 	// 玩家实时战斗计时(表现层门控, 对齐 Combat.lua): 挥砍冷却 + 受击无敌帧。
 	float PlayerAttackCooldownTimer = 0.f;
 	float PlayerIFrameTimer = 0.f;
@@ -184,6 +203,13 @@ private:
 	// 怪物实时战斗状态(表现层): 归一化位置(追击移动)、近战相位机、攻击射程缓存。
 	FVector2D EnemyNormPos = FVector2D(0.35f, 0.45f);
 	int32 EnemyMeleePhase = 0;          // 0 idle / 1 warning / 2 active / 3 cooldown
+
+	// 怪物死亡碎裂演出(独立于战斗状态机): 怪物被击杀时在其末位置叠播 5 帧。
+	bool bPlayingDeathShatter = false;
+	float DeathShatterTimer = 0.f;
+	int32 DeathShatterFrame = -1;
+	FVector2D DeathEffectPos = FVector2D(0.35f, 0.45f);
+	FVector2D LastEnemyNormPos = FVector2D(0.35f, 0.45f);
 	float EnemyMeleePhaseTimer = 0.f;
 	bool bEnemyMeleeHitResolved = false;
 	bool bPlayerInAttackRange = false;

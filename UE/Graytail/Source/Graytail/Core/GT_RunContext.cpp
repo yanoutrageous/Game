@@ -371,7 +371,15 @@ bool UGT_RunContext::StartDummyCombat(int32 X, int32 Y, FName RoomContentId, FNa
 		TruthMap.CountAdjacentMines8(X, Y, AdjacentMineCount);
 		CombatRuntimeState.bStandardEnemy = true;
 		GT_CombatRules::MakeEnemyForCell(Seed, X, Y, AdjacentMineCount, CombatRuntimeState.EnemyName, CombatRuntimeState.EnemyPower);
-		CombatRuntimeState.EnemyType = GT_MonsterCatalog::PickTypeForCell(Seed, X, Y, AdjacentMineCount);
+		if (bDebugForceMonsterType)
+		{
+			CombatRuntimeState.EnemyType = DebugForcedMonsterType;
+			bDebugForceMonsterType = false;   // 一次性: 用完即清, 不污染其它战斗房
+		}
+		else
+		{
+			CombatRuntimeState.EnemyType = GT_MonsterCatalog::PickTypeForCell(Seed, X, Y, AdjacentMineCount);
+		}
 		const FGT_MonsterArchetype& Archetype = GT_MonsterCatalog::GetArchetype(CombatRuntimeState.EnemyType);
 		CombatRuntimeState.EnemyMaxHp = Archetype.HpBase + FMath::Max(0, CombatRuntimeState.EnemyPower);
 		CombatRuntimeState.EnemyHp = CombatRuntimeState.EnemyMaxHp;
@@ -642,6 +650,17 @@ TArray<FIntPoint> UGT_RunContext::GetExitCells() const
 		}
 	}
 	return Exits;
+}
+
+void UGT_RunContext::SetDebugForcedMonsterType(EGT_MonsterType Type, bool bEnable)
+{
+	DebugForcedMonsterType = Type;
+	bDebugForceMonsterType = bEnable;
+}
+
+void UGT_RunContext::DebugClearDefeatedCombatRoom(int32 X, int32 Y)
+{
+	DefeatedCombatRooms.Remove(FIntPoint(X, Y));
 }
 
 bool UGT_RunContext::TryGrantChestMagnetLoot(int32 X, int32 Y)

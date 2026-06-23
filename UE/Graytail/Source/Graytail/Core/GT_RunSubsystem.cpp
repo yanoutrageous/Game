@@ -199,6 +199,28 @@ void UGT_RunSubsystem::HandleRunEvent(FGT_GameEvent Event)
 	}
 }
 
+void UGT_RunSubsystem::AbandonRun()
+{
+	if (!CurrentRunContext || !CurrentRunContext->IsRunActive())
+	{
+		return;
+	}
+	// 主动放弃比阵亡更惨: 不走结算 → 待结算金币 + 安全金全丢(随 RunContext 重置, 不进 meta;
+	// 阵亡走 SettleFailure 还能拿安全金 + 抢救 1 件, 放弃啥都不剩)。
+	CurrentRunContext->MarkRunFailed(FName(TEXT("Abandoned")));
+	// 但带入(已装备)的装备照样损失 —— 防"快死了放弃保装备"的 exploit(对齐撤离失败丢装备)。
+	if (CurrentRunContext->GetMapMode() != EGT_MapMode::Standard || CurrentRunContext->IsTutorialRun())
+	{
+		return;
+	}
+	UGameInstance* GameInstance = GetGameInstance();
+	UGT_MetaProgressSubsystem* Meta = GameInstance ? GameInstance->GetSubsystem<UGT_MetaProgressSubsystem>() : nullptr;
+	if (Meta)
+	{
+		Meta->LoseEquippedItemsOnFailure();
+	}
+}
+
 UGT_CommandBus* UGT_RunSubsystem::GetCommandBus() const
 {
 	return CommandBus;

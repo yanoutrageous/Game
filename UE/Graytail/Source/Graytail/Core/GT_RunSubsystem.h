@@ -39,6 +39,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Run")
 	void EndCurrentRun();
 
+	// 主动放弃本局(ESC 暂停菜单"返回标题"): 视同撤离失败 —— 带入装备损失 + 失败金币结算,
+	// 防"快死了放弃保住装备"的 exploit。仅 Standard 非教程实际结算。
+	UFUNCTION(BlueprintCallable, Category = "Graytail|Run")
+	void AbandonRun();
+
 	// 局终结算挂接: 订阅 EventBus, 在 Standard 局终把结果结算进局外 MetaProgress(S2)。
 	UFUNCTION()
 	void HandleRunEvent(FGT_GameEvent Event);

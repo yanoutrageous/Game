@@ -1594,8 +1594,15 @@ void UGT_GameHudWidget::HandlePauseResume()
 
 void UGT_GameHudWidget::HandlePauseReturnToTitle()
 {
-	// 放弃本局: 不发 RunFailed/RunSucceeded 事件 → 不触发结算(待结算金币丢失)。
-	// 直接回主菜单, 下次开局 StartNewRun 会重置本局状态。
+	// 放弃本局 = 视同撤离失败: 走 AbandonRun 结算(带入装备损失 + 失败金币),
+	// 防"快死了放弃保住装备"的 exploit。结算后回主菜单, 下次 StartNewRun 重置本局。
+	if (UGameInstance* GI = GetGameInstance())
+	{
+		if (UGT_RunSubsystem* RunSys = GI->GetSubsystem<UGT_RunSubsystem>())
+		{
+			RunSys->AbandonRun();
+		}
+	}
 	if (PauseMenu)
 	{
 		PauseMenu->Close();

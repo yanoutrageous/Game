@@ -8,6 +8,7 @@
 class UBorder;
 class UTextBlock;
 class UButton;
+class UImage;
 class UHorizontalBox;
 class UVerticalBox;
 class UProgressBar;
@@ -132,10 +133,12 @@ private:
 	int32 SelectedConsumableSlot = 1;                              // 当前选中道具槽(1-based)
 	UPROPERTY(Transient) UTextBlock* LogText = nullptr;
 	UPROPERTY(Transient) UTextBlock* ProtocolText = nullptr;
+	UPROPERTY(Transient) UImage* ProtocolBarImage = nullptr;   // 协议N 状态条贴图(组员美术)
 
 	// 局终结算弹窗(死亡/撤离后弹出, 含 重新出发/返回菜单 按钮)。
 	UPROPERTY(Transient) UWidget* RunEndRoot = nullptr;
 	UPROPERTY(Transient) UBorder* RunEndFrame = nullptr;
+	UPROPERTY(Transient) UImage* RunEndBanner = nullptr;       // 局终横幅(作业完成/信号中断)
 	UPROPERTY(Transient) UTextBlock* RunEndTitle = nullptr;
 	UPROPERTY(Transient) UTextBlock* RunEndBody = nullptr;
 	UPROPERTY(Transient) UButton* RunEndButton = nullptr;

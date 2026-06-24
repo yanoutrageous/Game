@@ -307,17 +307,25 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	ConsumableList = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	LowerBox->AddChildToVerticalBox(ConsumableList);
 
-	// 第 3 层: 右上协议面板(占位, 数值待协议系统迁入)。
-	UBorder* ProtocolPanel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-	ProtocolPanel->SetBrushColor(FLinearColor(0.05f, 0.03f, 0.03f, 0.9f));
-	ProtocolPanel->SetPadding(FMargin(12.f, 8.f));
+	// 第 3 层: 右上协议状态条(协议N 贴图 = 等级+描述 烤在图里) + 压力值。
+	UVerticalBox* ProtocolBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+	ProtocolBarImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+	ProtocolBarImage->SetDesiredSizeOverride(FVector2D(224.f, 76.f));
+	if (UVerticalBoxSlot* BarSlot = ProtocolBox->AddChildToVerticalBox(ProtocolBarImage))
+	{
+		BarSlot->SetHorizontalAlignment(HAlign_Right);
+	}
 	ProtocolText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	ProtocolText->SetFont(GT_UIStyle::Font(16));
-	ProtocolText->SetColorAndOpacity(FSlateColor(FLinearColor(0.95f, 0.55f, 0.45f, 1.f)));
-	ProtocolText->SetText(FText::FromString(TEXT("协议 5")));
-	ProtocolPanel->SetContent(ProtocolText);
-	// 协议面板保持整图拉伸画法(竖版贴图压扁成小匾, 原版认可的效果; 9-slice 反而会摊开成大竖框)。
-	if (UOverlaySlot* ProtocolSlot = Screen->AddChildToOverlay(MakeSkinnedPanel(ProtocolPanel, TEXT("/Game/Graytail/UI/hud/ui_panel_protocol"))))
+	ProtocolText->SetFont(GT_UIStyle::Font(12));
+	ProtocolText->SetColorAndOpacity(FSlateColor(FLinearColor(0.92f, 0.82f, 0.72f, 1.f)));
+	ProtocolText->SetJustification(ETextJustify::Right);
+	ProtocolText->SetText(FText::FromString(TEXT("压力 0 / 10")));
+	if (UVerticalBoxSlot* PtSlot = ProtocolBox->AddChildToVerticalBox(ProtocolText))
+	{
+		PtSlot->SetHorizontalAlignment(HAlign_Right);
+		PtSlot->SetPadding(FMargin(0.f, 1.f, 8.f, 0.f));
+	}
+	if (UOverlaySlot* ProtocolSlot = Screen->AddChildToOverlay(ProtocolBox))
 	{
 		ProtocolSlot->SetHorizontalAlignment(HAlign_Right);
 		ProtocolSlot->SetVerticalAlignment(VAlign_Top);
@@ -468,6 +476,16 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		EndBg->SetContent(EndWidth);
 		UVerticalBox* EndColumn = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 		EndWidth->SetContent(EndColumn);
+
+		// 局终横幅(作业完成/信号中断), 顶在标题位; 贴图缺失时回退纯文字标题。
+		RunEndBanner = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+		RunEndBanner->SetVisibility(ESlateVisibility::Collapsed);
+		RunEndBanner->SetDesiredSizeOverride(FVector2D(300.f, 130.f));
+		if (UVerticalBoxSlot* BannerSlot = EndColumn->AddChildToVerticalBox(RunEndBanner))
+		{
+			BannerSlot->SetHorizontalAlignment(HAlign_Center);
+			BannerSlot->SetPadding(FMargin(0.f, 0.f, 0.f, 4.f));
+		}
 
 		RunEndTitle = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 		RunEndTitle->SetFont(GT_UIStyle::Font(24));
@@ -649,23 +667,23 @@ void UGT_GameHudWidget::RefreshPanels()
 		LogText->SetText(FText::GetEmpty());
 	}
 
-	// 右上协议面板(对齐原版: 协议等级 + 描述 + 压力值)。
-	if (ProtocolText)
+	// 右上协议状态: 协议N 状态条贴图(等级+描述烤在图里) + 压力值文字。
+	if (ProtocolBarImage)
 	{
+		int32 Level = 5, Pressure = 0, MaxP = 10;
 		if (const UGT_RunContext* RunContext = GetRunContext())
 		{
 			const FGT_ProtocolState& Protocol = RunContext->GetProtocolState();
-			ProtocolText->SetText(FText::FromString(FString::Printf(
-				TEXT("协议 %d  %s\n协议压力 %d / %d"),
-				Protocol.Level,
-				*GT_ProtocolRules::GetLevelDescription(Protocol.Level),
-				Protocol.Pressure,
-				Protocol.MaxPressure)));
+			Level = FMath::Clamp(Protocol.Level, 1, 5);
+			Pressure = Protocol.Pressure;
+			MaxP = Protocol.MaxPressure;
 		}
-		else
+		if (UTexture2D* Bar = LoadUiTexture(FString::Printf(TEXT("/Game/Graytail/UI/Misc/protocol_%d"), Level)))
 		{
-			ProtocolText->SetText(FText::FromString(TEXT("协议 5")));
+			ProtocolBarImage->SetBrushFromTexture(Bar);
+			ProtocolBarImage->SetDesiredSizeOverride(FVector2D(224.f, 76.f));
 		}
+		if (ProtocolText) { ProtocolText->SetText(FText::FromString(FString::Printf(TEXT("压力 %d / %d"), Pressure, MaxP))); }
 	}
 
 	// 局终(死亡/撤离成功)弹结算面板, 每局只弹一次。
@@ -704,6 +722,22 @@ void UGT_GameHudWidget::RefreshRunEndPanel()
 			}
 		}
 	}
+	// 横幅替纯文字标题: 成功=作业完成, 失败=信号中断; 贴图缺失则回退文字标题。
+	bool bBannerOk = false;
+	if (RunEndBanner)
+	{
+		if (UTexture2D* Banner = LoadUiTexture(bSuccess
+			? TEXT("/Game/Graytail/UI/Misc/banner_job_done")
+			: TEXT("/Game/Graytail/UI/Misc/banner_signal_lost")))
+		{
+			RunEndBanner->SetBrushFromTexture(Banner);
+			RunEndBanner->SetDesiredSizeOverride(FVector2D(300.f, 130.f));
+			RunEndBanner->SetVisibility(ESlateVisibility::HitTestInvisible);
+			bBannerOk = true;
+		}
+		else { RunEndBanner->SetVisibility(ESlateVisibility::Collapsed); }
+	}
+	RunEndTitle->SetVisibility(bBannerOk ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
 	RunEndTitle->SetText(FText::FromString(bSuccess ? TEXT("撤离成功") : TEXT("信号中断")));
 	RunEndTitle->SetColorAndOpacity(FSlateColor(bSuccess
 		? FLinearColor(FColor(120, 230, 150))

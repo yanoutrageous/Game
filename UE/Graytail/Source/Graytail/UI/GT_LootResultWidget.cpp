@@ -84,6 +84,7 @@ void UGT_LootResultWidget::BuildWidgetTree()
 	// 居中面板: 外层描边(宝箱金框/普通青框, Open 时着色) + 内层深底。
 	PanelFrame = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 	PanelFrame->SetPadding(FMargin(2.f));
+	GT_UIStyle::SkinPanel9(PanelFrame, GT_UIStyle::PanelDialogSkin());   // 金属框换皮(刷新时按宝箱/稀有度叠色 tint)
 	if (UOverlaySlot* PanelSlot = Root->AddChildToOverlay(PanelFrame))
 	{
 		PanelSlot->SetHorizontalAlignment(HAlign_Center);
@@ -91,8 +92,8 @@ void UGT_LootResultWidget::BuildWidgetTree()
 	}
 
 	UBorder* PanelBg = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-	PanelBg->SetBrushColor(FLinearColor(FColor(17, 23, 32, 242)));
-	PanelBg->SetPadding(FMargin(26.f, 20.f));
+	PanelBg->SetBrushColor(FLinearColor(0.f, 0.f, 0.f, 0.f));   // 透明: 透出金属框贴图
+	PanelBg->SetPadding(FMargin(26.f, 26.f, 26.f, 46.f));        // 底部加大避开框内阴影
 	PanelFrame->SetContent(PanelBg);
 
 	USizeBox* PanelWidth = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
@@ -184,9 +185,10 @@ void UGT_LootResultWidget::RebuildContent(const FGT_SearchOutcome& Outcome)
 		? TEXT("高价值物资已放入临时回收包")
 		: TEXT("可回收物已放入临时回收包")));
 	SubtitleText->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(180, 205, 210, 230))));
+	// 换皮后这层是金属框贴图, SetBrushColor 即叠色 tint: 宝箱=暖金框 / 普通=冷青框。
 	PanelFrame->SetBrushColor(Reward.bIsChest
-		? FLinearColor(FColor(240, 190, 90, 220))
-		: FLinearColor(FColor(90, 170, 190, 210)));
+		? FLinearColor(FColor(248, 210, 140))
+		: FLinearColor(FColor(150, 205, 220)));
 
 	const int32 ItemValue = GT_ItemCatalog::GetCarriedItemsValue(Reward.Items);
 	SummaryText->SetText(FText::FromString(FString::Printf(

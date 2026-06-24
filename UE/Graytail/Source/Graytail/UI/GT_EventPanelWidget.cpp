@@ -60,8 +60,10 @@ void UGT_EventPanelWidget::BuildWidgetTree()
 
 	// 居中面板: 暗金描边 + 深底(对齐 Lua DrawEventPanel 的事件面板配色)。
 	FrameBorder = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-	FrameBorder->SetBrushColor(FLinearColor(FColor(150, 125, 80)));
+	FrameBorder->SetBrushColor(FLinearColor(FColor(150, 125, 80)));   // fallback 纯色(贴图缺失时保留)
 	FrameBorder->SetPadding(FMargin(2.f));
+	GT_UIStyle::SkinPanel9(FrameBorder, GT_UIStyle::PanelDialogSkin());   // 金属框换皮
+	FrameBorder->SetBrushColor(FLinearColor(FColor(205, 178, 125)));  // 暖黄铜 tint: 保留"事件"暖框识别
 	if (UOverlaySlot* FrameSlot = Root->AddChildToOverlay(FrameBorder))
 	{
 		FrameSlot->SetHorizontalAlignment(HAlign_Center);
@@ -69,8 +71,8 @@ void UGT_EventPanelWidget::BuildWidgetTree()
 	}
 
 	UBorder* Background = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-	Background->SetBrushColor(FLinearColor(FColor(28, 25, 20, 246)));
-	Background->SetPadding(FMargin(28.f, 22.f));
+	Background->SetBrushColor(FLinearColor(0.f, 0.f, 0.f, 0.f));   // 透明: 透出金属框贴图
+	Background->SetPadding(FMargin(28.f, 28.f, 28.f, 48.f));        // 底部加大避开框内阴影
 	FrameBorder->SetContent(Background);
 
 	USizeBox* WidthBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());

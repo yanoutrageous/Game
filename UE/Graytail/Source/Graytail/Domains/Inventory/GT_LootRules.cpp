@@ -11,20 +11,23 @@ namespace
 		EGT_ItemQuality Quality = EGT_ItemQuality::None;
 	};
 
-	// 对齐 Balance.search.dropTable: 35% 无掉落 / 45% 低质 / 15% 一般 / 5% 稀有。
+	// 普通房搜索掉落表(2026-06-24 用户定, 不再对齐 Lua): 35% 无 / 白41 / 蓝15 / 紫5 / 金3 / 红1。
+	// 档位↔稀有度: Low=白 Common=蓝 Rare=紫 Precious=金 Abnormal=红。普通搜索也能偶尔出金/红。
 	const FGT_DropEntry SearchDropTable[] = {
-		{ 35, EGT_ItemQuality::None },
-		{ 80, EGT_ItemQuality::Low },
-		{ 95, EGT_ItemQuality::Common },
-		{ 100, EGT_ItemQuality::Rare },
+		{ 35,  EGT_ItemQuality::None },
+		{ 76,  EGT_ItemQuality::Low },       // 白 41%
+		{ 91,  EGT_ItemQuality::Common },    // 蓝 15%
+		{ 96,  EGT_ItemQuality::Rare },      // 紫 5%
+		{ 99,  EGT_ItemQuality::Precious },  // 金 3%
+		{ 100, EGT_ItemQuality::Abnormal },  // 红 1%
 	};
 
-	// 对齐 Balance.chest.dropTable: 宝箱必掉, 且品质整体高一档。
+	// 宝箱房掉落表(2026-06-24 用户定): 必掉, 紫最大 / 蓝次 / 金再次 / 红最低。无白。
 	const FGT_DropEntry ChestDropTable[] = {
-		{ 45, EGT_ItemQuality::Common },
-		{ 80, EGT_ItemQuality::Rare },
-		{ 97, EGT_ItemQuality::Precious },
-		{ 100, EGT_ItemQuality::Abnormal },
+		{ 32,  EGT_ItemQuality::Common },    // 蓝 32%
+		{ 77,  EGT_ItemQuality::Rare },      // 紫 45%
+		{ 93,  EGT_ItemQuality::Precious },  // 金 16%
+		{ 100, EGT_ItemQuality::Abnormal },  // 红 7%
 	};
 
 	// 对齐 Lua pickQualityFromTable: 高雷数房间 roll 上浮, 更容易命中表尾的稀有段。
@@ -52,7 +55,8 @@ namespace
 		const EGT_ItemQuality Quality = bIsChest
 			? PickQualityFromTable(ChestDropTable, UE_ARRAY_COUNT(ChestDropTable), Roll, AdjacentMineCount)
 			: PickQualityFromTable(SearchDropTable, UE_ARRAY_COUNT(SearchDropTable), Roll, AdjacentMineCount);
-		return GT_ItemCatalog::GetQualityItemId(Quality);
+		// 该档内按 Roll 确定性选具体物品(每档 >=2 件); 同箱不同件 Roll 不同 -> 物品有变化。
+		return GT_ItemCatalog::GetQualityItemId(Quality, Roll);
 	}
 
 	// 对齐 Lua buildRewardItems: 决定件数, 逐件 roll 品质, 同物品合并堆叠。

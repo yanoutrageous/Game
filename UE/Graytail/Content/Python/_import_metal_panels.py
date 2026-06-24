@@ -11,9 +11,10 @@ import unreal
 
 DEST = "/Game/Graytail/UI/common"
 NAMES = [
-    "ui_panel_metal_neutral", "ui_panel_metal_gold",
-    "ui_panel_metal_teal", "ui_panel_metal_copper",
-    "ui_panel_metal_uncommon", "ui_panel_metal_rare",   # 战利品按最高稀有度: 绿/蓝
+    "ui_panel_metal_neutral", "ui_panel_metal_copper",
+    "ui_panel_metal_rare", "ui_panel_metal_epic", "ui_panel_metal_mythic",
+    "ui_panel_metal_gold",   # = legendary 金
+    # 旧色(teal/uncommon 绿)已弃用, 不再导入。
 ]
 
 

@@ -482,15 +482,17 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		}
 
 		RunEndFrame = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+		RunEndFrame->SetBrushColor(FLinearColor(FColor(120, 95, 70)));   // fallback 纯色
 		RunEndFrame->SetPadding(FMargin(2.f));
+		GT_UIStyle::SkinPanel9(RunEndFrame, GT_UIStyle::PanelDialogSkin());   // 金属框(刷新时按结局换金/中性)
 		if (UOverlaySlot* FrameSlot = EndRoot->AddChildToOverlay(RunEndFrame))
 		{
 			FrameSlot->SetHorizontalAlignment(HAlign_Center);
 			FrameSlot->SetVerticalAlignment(VAlign_Center);
 		}
 		UBorder* EndBg = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-		EndBg->SetBrushColor(FLinearColor(FColor(26, 16, 18, 244)));
-		EndBg->SetPadding(FMargin(34.f, 24.f));
+		EndBg->SetBrushColor(FLinearColor(0.f, 0.f, 0.f, 0.f));   // 透明: 透出金属框
+		EndBg->SetPadding(FMargin(34.f, 30.f, 34.f, 50.f));        // 底部加大避开框内阴影
 		RunEndFrame->SetContent(EndBg);
 
 		USizeBox* EndWidth = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
@@ -766,9 +768,10 @@ void UGT_GameHudWidget::RefreshRunEndPanel()
 	RunEndTitle->SetColorAndOpacity(FSlateColor(bSuccess
 		? FLinearColor(FColor(120, 230, 150))
 		: FLinearColor(FColor(255, 90, 80))));
-	RunEndFrame->SetBrushColor(bSuccess
-		? FLinearColor(FColor(80, 170, 110, 220))
-		: FLinearColor(FColor(180, 60, 55, 220)));
+	// 结局换框(所见即所得, 同战利品): 撤离成功=金框 / 信号中断=中性灰框。
+	GT_UIStyle::SkinPanel9(RunEndFrame, bSuccess
+		? GT_UIStyle::PanelSkinGold()
+		: GT_UIStyle::PanelDialogSkin());
 
 	const FName Reason = RunContext->GetRunEndReason();
 	FString ReasonLine;

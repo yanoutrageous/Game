@@ -22,27 +22,37 @@
 namespace
 {
 	// 对齐 Lua ITEM_RARITY_COLORS。
+	// 5 档稀有度色(白/蓝/紫/金/红), 与金属框色一致, 也用于 per-item 卡边。
 	FLinearColor GTRarityColor(FName Rarity)
 	{
-		if (Rarity == FName(TEXT("uncommon"))) { return FLinearColor(FColor(120, 220, 170)); }
-		if (Rarity == FName(TEXT("rare"))) { return FLinearColor(FColor(115, 180, 255)); }
-		return FLinearColor(FColor(180, 200, 210)); // common
+		if (Rarity == FName(TEXT("mythic")))    { return FLinearColor(FColor(250, 95, 85)); }   // 红
+		if (Rarity == FName(TEXT("legendary"))) { return FLinearColor(FColor(255, 195, 70)); }  // 金
+		if (Rarity == FName(TEXT("epic")))      { return FLinearColor(FColor(190, 120, 255)); } // 紫
+		if (Rarity == FName(TEXT("rare")))      { return FLinearColor(FColor(95, 165, 255)); }  // 蓝
+		return FLinearColor(FColor(208, 216, 224)); // common 白
 	}
 
-	// 稀有度档序(common<uncommon<rare), 取本次战利品最高稀有度 -> 面板框色。
+	// 稀有度档序(common<rare<epic<legendary<mythic), 取本次战利品最高档 -> 面板框色。
 	int32 GTRarityRank(FName Rarity)
 	{
-		if (Rarity == FName(TEXT("rare"))) { return 2; }
-		if (Rarity == FName(TEXT("uncommon"))) { return 1; }
+		if (Rarity == FName(TEXT("mythic")))    { return 4; }
+		if (Rarity == FName(TEXT("legendary"))) { return 3; }
+		if (Rarity == FName(TEXT("epic")))      { return 2; }
+		if (Rarity == FName(TEXT("rare")))      { return 1; }
 		return 0; // common / 未知
 	}
 
-	// 稀有度 -> 面板框贴图(common=中性灰 / uncommon=绿 / rare=蓝, 与 per-item 卡边色统一)。
+	// 稀有度档 -> 面板框贴图(common灰 / rare蓝 / epic紫 / legendary金 / mythic红)。
 	const TCHAR* GTRaritySkin(int32 Rank)
 	{
-		if (Rank >= 2) { return GT_UIStyle::PanelSkinRare(); }
-		if (Rank >= 1) { return GT_UIStyle::PanelSkinUncommon(); }
-		return GT_UIStyle::PanelDialogSkin();
+		switch (Rank)
+		{
+		case 4:  return GT_UIStyle::PanelSkinMythic();
+		case 3:  return GT_UIStyle::PanelSkinGold();
+		case 2:  return GT_UIStyle::PanelSkinEpic();
+		case 1:  return GT_UIStyle::PanelSkinRare();
+		default: return GT_UIStyle::PanelDialogSkin();
+		}
 	}
 
 	// 对齐 Lua ITEM_DEFS 的 typeName / rarityName 文案。
@@ -53,7 +63,11 @@ namespace
 
 	const TCHAR* GTRarityLabel(FName Rarity)
 	{
-		return Rarity == FName(TEXT("common")) ? TEXT("一般") : TEXT("稀有");
+		if (Rarity == FName(TEXT("mythic")))    { return TEXT("异常"); }
+		if (Rarity == FName(TEXT("legendary"))) { return TEXT("传说"); }
+		if (Rarity == FName(TEXT("epic")))      { return TEXT("史诗"); }
+		if (Rarity == FName(TEXT("rare")))      { return TEXT("稀有"); }
+		return TEXT("一般"); // common
 	}
 }
 

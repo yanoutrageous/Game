@@ -12,6 +12,9 @@ DEST = "/Game/Graytail/Items/Recovered"
 IDS = [
     "broken_copper_wire", "dim_capacitor", "whisper_wick",
     "sealed_core_shard", "static_lens", "blackbox_tag",
+    # 2026-06-24 新增 8 个异常回收物(Zuhe2 §9 抠图, 像素风)。
+    "old_gear", "anomaly_core_shard", "dead_battery", "fluorescent_shard",
+    "damaged_circuit", "old_gauge", "data_disk", "broken_terminal",
 ]
 
 

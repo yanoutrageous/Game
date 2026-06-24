@@ -58,11 +58,12 @@ namespace
 	// 物品稀有度(FName)-> 中文档位键。装备在 UI 层按 id 派生。
 	FName RarityTierKey(FName Rarity)
 	{
+		// 5 档稀有度映射到仓库 4 档过滤(一般/稀有/珍贵/唯一): 紫+金=珍贵, 红=唯一。
 		const FString R = Rarity.ToString().ToLower();
 		if (R == TEXT("rare")) { return FName(TEXT("tier_rare")); }
-		if (R == TEXT("precious") || R == TEXT("epic")) { return FName(TEXT("tier_precious")); }
-		if (R == TEXT("abnormal")) { return FName(TEXT("tier_abnormal")); }
-		return FName(TEXT("tier_common")); // common / uncommon / low / 其它
+		if (R == TEXT("epic") || R == TEXT("legendary") || R == TEXT("precious")) { return FName(TEXT("tier_precious")); }
+		if (R == TEXT("mythic") || R == TEXT("abnormal")) { return FName(TEXT("tier_abnormal")); }
+		return FName(TEXT("tier_common")); // common / 其它
 	}
 
 	// 6 件装备的稀有度(UI 派生, 申领页按价位粗分)。

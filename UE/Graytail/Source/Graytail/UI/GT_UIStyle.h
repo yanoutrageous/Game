@@ -73,11 +73,13 @@ namespace GT_UIStyle
 
 	// 弹窗/卡片换皮用的中性金属框(从组员框去饱和+对比重映射, 离线烤色相)。
 	// 运行时按面板直接换对应色版(不靠 multiply tint -> 不踩绿底染不出金/色彩空间的坑, 所见即所得)。
-	inline const TCHAR* PanelDialogSkin()   { return TEXT("/Game/Graytail/UI/common/ui_panel_metal_neutral"); }  // 设置/暂停/战利品-common
-	inline const TCHAR* PanelSkinUncommon() { return TEXT("/Game/Graytail/UI/common/ui_panel_metal_uncommon"); } // 战利品 uncommon=绿
-	inline const TCHAR* PanelSkinRare()     { return TEXT("/Game/Graytail/UI/common/ui_panel_metal_rare"); }     // 战利品 rare=蓝
-	inline const TCHAR* PanelSkinCopper()   { return TEXT("/Game/Graytail/UI/common/ui_panel_metal_copper"); }   // 事件
-	inline const TCHAR* PanelSkinGold()     { return TEXT("/Game/Graytail/UI/common/ui_panel_metal_gold"); }     // 备用(高稀有度/宝箱)
+	// 5 档稀有度框(白蓝紫金红)+ 中性(设置/暂停)+ 铜(事件)。
+	inline const TCHAR* PanelDialogSkin() { return TEXT("/Game/Graytail/UI/common/ui_panel_metal_neutral"); }  // 设置/暂停/战利品-common 白
+	inline const TCHAR* PanelSkinRare()   { return TEXT("/Game/Graytail/UI/common/ui_panel_metal_rare"); }     // 蓝 rare
+	inline const TCHAR* PanelSkinEpic()   { return TEXT("/Game/Graytail/UI/common/ui_panel_metal_epic"); }     // 紫 epic
+	inline const TCHAR* PanelSkinGold()   { return TEXT("/Game/Graytail/UI/common/ui_panel_metal_gold"); }     // 金 legendary
+	inline const TCHAR* PanelSkinMythic() { return TEXT("/Game/Graytail/UI/common/ui_panel_metal_mythic"); }   // 红 mythic
+	inline const TCHAR* PanelSkinCopper() { return TEXT("/Game/Graytail/UI/common/ui_panel_metal_copper"); }   // 事件
 
 	// 把组员的边框贴图作为面板背景刷(9-slice): 四角原始像素不拉伸、只拉中段, 面板与贴图长宽比差异大也不变形。
 	// 调用方传外层 UBorder(自身仍保留纯色 SetBrushColor 作 fallback); 贴图缺失时静默返回, 不崩。

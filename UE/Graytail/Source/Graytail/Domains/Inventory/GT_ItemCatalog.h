@@ -17,8 +17,9 @@ namespace GT_ItemCatalog
 	// 物品基础价值, 未知物品返回 0。
 	GRAYTAIL_API int32 GetItemValue(FName ItemId);
 
-	// 掉落品质 -> 具体物品(对齐 Lua QUALITY_ITEMS 表)。None/未知品质返回 NAME_None。
-	GRAYTAIL_API FName GetQualityItemId(EGT_ItemQuality Quality);
+	// 掉落品质 -> 该档一组回收物之一(2026-06-24 扩 5 档稀有度, 每档 >=2 件)。
+	// Selector 在该档物品列表内确定性选一个(默认 0 取首件)。None/未知品质返回 NAME_None。
+	GRAYTAIL_API FName GetQualityItemId(EGT_ItemQuality Quality, int32 Selector = 0);
 
 	// 一组堆叠的总价值(按基础价值累加), 对齐 Lua GetCarriedItemValue。
 	GRAYTAIL_API int32 GetCarriedItemsValue(const TArray<FGT_ItemStack>& Stacks);

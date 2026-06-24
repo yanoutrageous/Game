@@ -308,6 +308,26 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 		}
 	}
 
+	// 阴影(纯代码深色软椭圆, 地面层在怪/人之下, 卖立体/悬空感)。
+	auto MakeShadow = [&](float W, float H) -> UImage*
+	{
+		UImage* Shadow = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+		Shadow->SetVisibility(ESlateVisibility::Collapsed);
+		FSlateBrush B;
+		B.DrawAs = ESlateBrushDrawType::RoundedBox;
+		B.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+		B.OutlineSettings.CornerRadii = FVector4(H * 0.5f, H * 0.5f, H * 0.5f, H * 0.5f);
+		B.TintColor = FSlateColor(FLinearColor(0.f, 0.f, 0.f, 0.32f));
+		Shadow->SetBrush(B);
+		if (UCanvasPanelSlot* S = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(Shadow)))
+		{
+			S->SetSize(FVector2D(W, H));
+		}
+		return Shadow;
+	};
+	EnemyShadow = MakeShadow(56.f, 18.f);     // 战斗中显示
+	PlayerShadow = MakeShadow(46.f, 16.f);    // 进房后由 UpdatePlayerImagePosition 显示+定位
+
 	// 怪物(史莱姆), 战斗激活时显示在房间偏左上(对齐 Lua monsterPosition 0.35/0.45)。
 	EnemyImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
 	EnemyImage->SetVisibility(ESlateVisibility::Collapsed);
@@ -344,6 +364,25 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 	if (UCanvasPanelSlot* ProjSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(EnemyProjectileImage)))
 	{
 		ProjSlot->SetSize(FVector2D(16.f, 16.f));
+	}
+
+	// 2a-trail. 散弹拖尾: 每发 2 个渐隐紫色残影点(z 在弹丸之下)。
+	for (int32 TrailIndex = 0; TrailIndex < GTMaxSpreadProjectiles * 2; ++TrailIndex)
+	{
+		UImage* Trail = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+		Trail->SetVisibility(ESlateVisibility::Collapsed);
+		FSlateBrush B;
+		B.DrawAs = ESlateBrushDrawType::RoundedBox;
+		B.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+		const float R = (TrailIndex % 2 == 0) ? 7.f : 5.f;
+		B.OutlineSettings.CornerRadii = FVector4(R, R, R, R);
+		B.TintColor = FSlateColor(FLinearColor(0.72f, 0.40f, 1.0f, 1.f));   // 紫
+		Trail->SetBrush(B);
+		if (UCanvasPanelSlot* TrailSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(Trail)))
+		{
+			TrailSlot->SetSize(FVector2D(R * 2.f, R * 2.f));
+		}
+		SpreadTrailImages[TrailIndex] = Trail;
 	}
 
 	// 2b. 散射飞弹(蝙蝠 RangedSpread): 预建 5 个, 用紫色能量弹贴图(无则回退纯色点)。
@@ -788,6 +827,17 @@ void UGT_RoomViewWidget::UpdatePlayerImagePosition()
 			PlayerPos.X * GTRoomSize - GTPlayerSize * 0.5f,
 			PlayerPos.Y * GTRoomSize - GTPlayerSize * 0.5f));
 	}
+	// 玩家脚下阴影(46x16, 进房后常驻跟随)。
+	if (PlayerShadow)
+	{
+		PlayerShadow->SetVisibility(ESlateVisibility::HitTestInvisible);
+		if (UCanvasPanelSlot* PShadowSlot = Cast<UCanvasPanelSlot>(PlayerShadow->Slot))
+		{
+			PShadowSlot->SetPosition(FVector2D(
+				PlayerPos.X * GTRoomSize - 23.f,
+				PlayerPos.Y * GTRoomSize + GTPlayerSize * 0.30f));
+		}
+	}
 }
 
 FReply UGT_RoomViewWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
@@ -1053,6 +1103,7 @@ void UGT_RoomViewWidget::PlayHealGlow()
 void UGT_RoomViewWidget::PlayMineFlash()
 {
 	MineFlashTimer = GTMineFlashDuration;
+	PlayerHitFlashTimer = 0.14f;   // 玩家受击本体闪白(配合全屏红光)
 	UpdateChestBurstAnim(0.f);
 }
 
@@ -1098,7 +1149,12 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 			// 行为原型(决定移动/攻击模式/数值; 见 GT_MonsterCatalog)。
 			const FGT_MonsterArchetype& Arch = GT_MonsterCatalog::GetArchetype(Snapshot.EnemyType);
 			CurrentPlayerAttackRange = Arch.PlayerAttackRange;
-			EnemyImage->SetBrushTintColor(FSlateColor(Arch.TintColor));   // 占位染色区分怪种(蝙蝠紫/无人机蓝/slime 白)
+			// 怪物受击闪白: HP 下降帧触发亮白 tint(配合本体 scale punch), 随后衰减。
+			if (PrevEnemyHp >= 0 && Snapshot.EnemyHp < PrevEnemyHp) { EnemyHitFlashTimer = 0.13f; }
+			PrevEnemyHp = Snapshot.EnemyHp;
+			if (EnemyHitFlashTimer > 0.f) { EnemyHitFlashTimer = FMath::Max(0.f, EnemyHitFlashTimer - InDeltaTime); }
+			const float EnemyHitFlash = FMath::Clamp(EnemyHitFlashTimer / 0.13f, 0.f, 1.f);
+			EnemyImage->SetBrushTintColor(FSlateColor(FMath::Lerp(FLinearColor::White, FLinearColor(3.5f, 3.5f, 3.5f, 1.f), EnemyHitFlash)));
 			CombatAnimTime += InDeltaTime;
 
 			// 怪物避让天赋(monsterFleeBonus): 战斗刚开始给一段"犹豫窗口", 期间怪既不追击也不攻击,
@@ -1265,6 +1321,10 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 
 				for (int32 i = 0; i < GTMaxSpreadProjectiles; ++i)
 				{
+					auto HideTrail = [&]()
+					{
+						for (int32 g = 0; g < 2; ++g) { if (SpreadTrailImages[i * 2 + g]) SpreadTrailImages[i * 2 + g]->SetVisibility(ESlateVisibility::Collapsed); }
+					};
 					if (!bSpreadProjActive[i]) { continue; }
 					SpreadProjPos[i] += SpreadProjDir[i] * ProjectileSpeed * InDeltaTime;
 					if (SpreadProjImages[i])
@@ -1276,16 +1336,33 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 						const float BoltDeg = FMath::RadiansToDegrees(FMath::Atan2(SpreadProjDir[i].Y, SpreadProjDir[i].X));
 						SpreadProjImages[i]->SetRenderTransform(FWidgetTransform(FVector2D::ZeroVector, FVector2D(1.f, 1.f), FVector2D::ZeroVector, BoltDeg));
 					}
+					// 拖尾: 两残影点跟在弹丸后(越后越淡越小)。
+					for (int32 g = 0; g < 2; ++g)
+					{
+						UImage* Trail = SpreadTrailImages[i * 2 + g];
+						if (!Trail) { continue; }
+						const float Back = (g == 0) ? 0.022f : 0.044f;
+						const float Rr = (g == 0) ? 7.f : 5.f;
+						const FVector2D TP = SpreadProjPos[i] - SpreadProjDir[i] * Back;
+						Trail->SetVisibility(ESlateVisibility::HitTestInvisible);
+						Trail->SetRenderOpacity((g == 0) ? 0.5f : 0.28f);
+						if (UCanvasPanelSlot* TS = Cast<UCanvasPanelSlot>(Trail->Slot))
+						{
+							TS->SetPosition(FVector2D(TP.X * GTRoomSize - Rr, TP.Y * GTRoomSize - Rr));
+						}
+					}
 					if (FVector2D::Distance(SpreadProjPos[i], PlayerPos) < 0.06f)
 					{
 						bSpreadProjActive[i] = false;
 						if (SpreadProjImages[i]) { SpreadProjImages[i]->SetVisibility(ESlateVisibility::Collapsed); }
+						HideTrail();
 						TryApplyMonsterHit();
 					}
 					else if (SpreadProjPos[i].X < 0.f || SpreadProjPos[i].X > 1.f || SpreadProjPos[i].Y < 0.f || SpreadProjPos[i].Y > 1.f)
 					{
 						bSpreadProjActive[i] = false;
 						if (SpreadProjImages[i]) { SpreadProjImages[i]->SetVisibility(ESlateVisibility::Collapsed); }
+						HideTrail();
 					}
 				}
 			}
@@ -1481,8 +1558,18 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 				{
 					EnemySlot->SetPosition(BasePx + Offset);
 				}
+				// 怪物脚下阴影(地面层, 不随抖动/翻转/punch, 卖悬空感)。
+				if (EnemyShadow)
+				{
+					EnemyShadow->SetVisibility(ESlateVisibility::HitTestInvisible);
+					if (UCanvasPanelSlot* EShadowSlot = Cast<UCanvasPanelSlot>(EnemyShadow->Slot))
+					{
+						EShadowSlot->SetPosition(FVector2D(EnemyNormPos.X * GTRoomSize - 28.f, EnemyNormPos.Y * GTRoomSize + 22.f));
+					}
+				}
 				const float FaceScaleX = (PlayerPos.X < EnemyNormPos.X) ? -1.f : 1.f;
-				EnemyImage->SetRenderTransform(FWidgetTransform(FVector2D::ZeroVector, FVector2D(FaceScaleX, 1.f), FVector2D::ZeroVector, 0.f));
+				const float HitPunch = 1.f + 0.18f * EnemyHitFlash;   // 受击瞬间放大
+				EnemyImage->SetRenderTransform(FWidgetTransform(FVector2D::ZeroVector, FVector2D(FaceScaleX * HitPunch, HitPunch), FVector2D::ZeroVector, 0.f));
 			}
 			LastEnemyNormPos = EnemyNormPos;   // 记录怪物当前位置, 供死亡碎裂在其末位置播放
 			LastEnemyType = Snapshot.EnemyType;
@@ -1572,11 +1659,15 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 			bPlayerInAttackRange = false;
 			if (EnemyWarningLine) EnemyWarningLine->SetVisibility(ESlateVisibility::Collapsed);
 			if (EnemyProjectileImage) EnemyProjectileImage->SetVisibility(ESlateVisibility::Collapsed);
-			// 散射飞弹 / 激光重置(防下场战斗残留)。
+			// 散射飞弹 / 拖尾 / 激光重置(防下场战斗残留)。
 			for (int32 i = 0; i < GTMaxSpreadProjectiles; ++i)
 			{
 				bSpreadProjActive[i] = false;
 				if (SpreadProjImages[i]) SpreadProjImages[i]->SetVisibility(ESlateVisibility::Collapsed);
+			}
+			for (int32 t = 0; t < GTMaxSpreadProjectiles * 2; ++t)
+			{
+				if (SpreadTrailImages[t]) SpreadTrailImages[t]->SetVisibility(ESlateVisibility::Collapsed);
 			}
 			bLaserFiring = false;
 			LaserActiveTimer = 0.f;
@@ -1589,7 +1680,14 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 			EnemyAnimTime = 0.f;
 			EnemyFireFlashTimer = 0.f;
 			CurrentEnemyFrameKey.Reset();
-			if (EnemyImage) EnemyImage->SetRenderTransform(FWidgetTransform(FVector2D::ZeroVector, FVector2D(1.f, 1.f), FVector2D::ZeroVector, 0.f));
+			EnemyHitFlashTimer = 0.f;
+			PrevEnemyHp = -1;
+			if (EnemyShadow) EnemyShadow->SetVisibility(ESlateVisibility::Collapsed);
+			if (EnemyImage)
+			{
+				EnemyImage->SetBrushTintColor(FSlateColor(FLinearColor::White));
+				EnemyImage->SetRenderTransform(FWidgetTransform(FVector2D::ZeroVector, FVector2D(1.f, 1.f), FVector2D::ZeroVector, 0.f));
+			}
 			if (EnemyAttackCircle) EnemyAttackCircle->SetVisibility(ESlateVisibility::Collapsed);
 			if (CombatHintLabel) CombatHintLabel->SetVisibility(ESlateVisibility::Collapsed);
 			if (EnemyHpBarBg) EnemyHpBarBg->SetVisibility(ESlateVisibility::Collapsed);
@@ -1633,6 +1731,14 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 	}
 	// ==========================================
 	
+
+	// 玩家受击闪白(亮白 tint 衰减; 配合 PlayMineFlash 全屏红光, 双反馈)。
+	if (PlayerImage)
+	{
+		if (PlayerHitFlashTimer > 0.f) { PlayerHitFlashTimer = FMath::Max(0.f, PlayerHitFlashTimer - InDeltaTime); }
+		const float PlayerFlash = FMath::Clamp(PlayerHitFlashTimer / 0.14f, 0.f, 1.f);
+		PlayerImage->SetColorAndOpacity(FMath::Lerp(FLinearColor::White, FLinearColor(3.f, 3.f, 3.f, 1.f), PlayerFlash));
+	}
 
 	// 焦点在弹窗/按钮上时暂停移动(不动 HeldKeys —— 持键真值由全局 InputPreProcessor 维护,
 	// 关弹窗后仍按着的键会续走、松开则停, 不受 UIOnly/焦点切换影响, 也不会漏 KeyUp 卡键)。

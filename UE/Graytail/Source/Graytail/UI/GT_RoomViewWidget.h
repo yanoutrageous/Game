@@ -193,6 +193,16 @@ private:
 	FVector2D WanderDir = FVector2D::ZeroVector;
 	float WanderTimer = 0.f;
 
+	// 纯代码 juice(无素材): 阴影 = RoundedBox 深色软椭圆(玩家常驻 + 战斗怪物脚下)。
+	UPROPERTY(Transient) UImage* PlayerShadow = nullptr;
+	UPROPERTY(Transient) UImage* EnemyShadow = nullptr;
+	// 受击闪白: 亮白 tint + scale punch, HP 下降帧触发后衰减。
+	float EnemyHitFlashTimer = 0.f;
+	int32 PrevEnemyHp = -1;
+	float PlayerHitFlashTimer = 0.f;
+	// 散弹弹道拖尾: 每发 2 个渐隐残影点跟在弹丸后。
+	UPROPERTY(Transient) UImage* SpreadTrailImages[GTMaxSpreadProjectiles * 2] = {};
+
 	// 玩家实时战斗计时(表现层门控, 对齐 Combat.lua): 挥砍冷却 + 受击无敌帧。
 	float PlayerAttackCooldownTimer = 0.f;
 	float PlayerIFrameTimer = 0.f;

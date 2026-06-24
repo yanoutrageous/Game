@@ -46,8 +46,7 @@ public:
 	// 房间状态变化后(开局/外部移动)由 HUD 调用, 重读当前格并重绘。
 	void SyncToCurrentCell(bool bCenterPlayer);
 
-	// 玩家挥砍冷却闸门(对齐 Combat.lua playerAttackCooldown): 冷却到则起冷却并返回 true 放行攻击。
-	// HUD 的 F 攻击分支调用, 防 F 自动重复连发秒杀。
+	// 玩家挥砍: 距离门控 + 动画锁(SwingAnimTimer 播完前禁止二次攻击)。放行则起动画。
 	bool TryConsumePlayerAttack();
 
 	// WASD 过门移动成功后通知 HUD 刷新信息面板(不含房间视图自身)。
@@ -86,6 +85,7 @@ private:
 	void UpdatePlayerImagePosition();
 	void RefreshRoomDecor();
 	void UpdateChestBurstAnim(float DeltaTime);
+	void UpdateSwingAnim(float DeltaTime);
 
 	UPROPERTY(Transient) UCanvasPanel* RoomCanvas = nullptr;
 	UPROPERTY(Transient) UBorder* FloorBorder = nullptr;
@@ -173,6 +173,10 @@ private:
 	// 玩家实时战斗计时(表现层门控, 对齐 Combat.lua): 挥砍冷却 + 受击无敌帧。
 	float PlayerAttackCooldownTimer = 0.f;
 	float PlayerIFrameTimer = 0.f;
+
+	// 挥砍动画计时器(动画锁): 播放中禁止二次攻击, 计时到则动画结束。
+	float SwingAnimTimer = 0.f;
+	int32 LastLoggedSwingFrame = -1;
 
 	// 怪物避让天赋(monsterFleeBonus): 战斗刚开始的"犹豫窗口", 期间怪不追不攻; 给玩家缓冲。
 	bool bPrevInCombat = false;

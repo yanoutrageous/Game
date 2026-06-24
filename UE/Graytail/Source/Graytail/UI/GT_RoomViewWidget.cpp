@@ -59,6 +59,18 @@ namespace
 	constexpr float GTPlayerAttackCooldown = 0.85f;     // 玩家挥砍冷却(原 0.45 对齐 Combat.lua; 2026-06-22 调长加大战斗难度, 防瞬间连刀秒杀)
 	constexpr float GTPlayerInvincibleDuration = 0.9f;  // 受击无敌帧(Combat.lua playerInvincibleDuration)
 	constexpr float GTEdgeHintDuration = 1.4f;          // 撞地图边缘提示显示+淡出时长
+
+	// 挥砍动画: 4 帧顺时针播放(上→右→下→左), 每帧 0.12s, 总计 0.48s。
+	constexpr float GTSwingFrameTime = 0.12f;
+	constexpr float GTSwingDuration = 0.48f;
+
+	// 顺时针环形顺序索引(0=上, 1=右, 2=下, 3=左)。
+	// GTDirIndexToSwingStart[ GTDirIndex(LastDirX,LastDirY) ] → 起始位
+	//   GTDirIndex: 0=down, 1=up, 2=left, 3=right
+	static const int32 GTDirIndexToSwingStart[4] = { 2, 0, 3, 1 };
+
+	// 帧位 → 方向名(日志用)
+	static const TCHAR* GTSwingDirNames[4] = { TEXT("Up"), TEXT("Right"), TEXT("Down"), TEXT("Left") };
 	// 道具方形空气墙(AABB)归一化半边长 = (道具半宽 + 玩家碰撞半宽)/房宽。撞墙即停(不绕不抽搐);
 	// 宝藏房宝箱墙较大(对应箱体)、一般事件房 NPC 墙较小。PIE 可微调。怪物会动+影响走位风筝, 不做碰撞。
 	constexpr float GTChestCollideHalf = 0.060f;        // 宝藏房宝箱(贴箱体, 碰到才挡)
@@ -520,6 +532,8 @@ void UGT_RoomViewWidget::SyncToCurrentCell(bool bCenterPlayer)
 	{
 		PlayerPos = FVector2D(0.5, 0.5);
 		MoveVelocity = FVector2D::ZeroVector;
+		// 换房时打断挥砍动画(防跨房残留)。
+		SwingAnimTimer = 0.f;
 	}
 	// 同步血量基准(开局/瞬移/外部移动后), 避免下次踩雷误判扣血。
 	PrevPlayerHp = Snapshot.PlayerHp;
@@ -999,13 +1013,43 @@ bool UGT_RoomViewWidget::TryConsumePlayerAttack()
 	{
 		return false;
 	}
-	// 挥砍冷却未到则拒绝(防 F 自动重复连发秒杀); 就绪则起冷却并放行。
-	if (PlayerAttackCooldownTimer > 0.f)
+	// 动画锁: 挥砍播放中拒绝重复攻击(动画结束前不允许第二次挥砍)。
+	if (SwingAnimTimer > 0.f)
 	{
 		return false;
 	}
-	PlayerAttackCooldownTimer = GTPlayerAttackCooldown;
+	// 起动画
+	SwingAnimTimer = GTSwingDuration;
+	UE_LOG(LogTemp, Log, TEXT("[Swing] Start — facing %s, clockwise: Up→Right→Down→Left"),
+		GTSwingDirNames[GTDirIndexToSwingStart[GTDirIndex(LastDirX, LastDirY)]]);
 	return true;
+}
+
+void UGT_RoomViewWidget::UpdateSwingAnim(float DeltaTime)
+{
+	if (SwingAnimTimer <= 0.f) return;
+
+	SwingAnimTimer = FMath::Max(0.f, SwingAnimTimer - DeltaTime);
+
+	if (SwingAnimTimer <= 0.f)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[Swing] End — animation complete"));
+		LastLoggedSwingFrame = -1;
+		return;
+	}
+
+	const float Elapsed = GTSwingDuration - SwingAnimTimer;
+	const int32 SeqFrame = FMath::Clamp(static_cast<int32>(Elapsed / GTSwingFrameTime), 0, 3);
+
+	if (SeqFrame == LastLoggedSwingFrame) return;  // 同帧不重复输出
+
+	LastLoggedSwingFrame = SeqFrame;
+
+	const int32 StartIdx = GTDirIndexToSwingStart[GTDirIndex(LastDirX, LastDirY)];
+	const int32 FrameIdx = (StartIdx + SeqFrame) % 4;
+
+	UE_LOG(LogTemp, Log, TEXT("[Swing] Frame %d/4: %s (elapsed=%.2fs)"),
+		SeqFrame + 1, GTSwingDirNames[FrameIdx], Elapsed);
 }
 
 void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
@@ -1017,8 +1061,9 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 		return;
 	}
 
-	// 开箱演出不受焦点影响(弹窗刚关/按钮持焦时也要继续播)。
+	// 开箱/挥砍演出不受焦点影响(弹窗刚关/按钮持焦时也要继续播)。
 	UpdateChestBurstAnim(InDeltaTime);
+	UpdateSwingAnim(InDeltaTime);
 
 	// ==========================================
 		// 怪物远近战混合 AI 逻辑
@@ -1268,6 +1313,7 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 			bProjectileActive = false;
 			PlayerAttackCooldownTimer = 0.f;
 			PlayerIFrameTimer = 0.f;
+			SwingAnimTimer = 0.f;
 			EnemyNormPos = FVector2D(0.35f, 0.45f);
 			EnemyMeleePhase = 0;
 			EnemyMeleePhaseTimer = 0.f;

@@ -315,18 +315,24 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	{
 		BarSlot->SetHorizontalAlignment(HAlign_Right);
 	}
-	// 压力值: 数字底板(5.png #12)作背景 + 暖金文字居中其上。
+	// 压力值: 数字底板(组员美术)拉宽作背景 + 暖金文字居中其上。
+	// 用 SizeBox 强制底板尺寸(够宽框住"压力 100/100"), 避免 Overlay 被文字宽度坍缩 -> 底板看着过小。
+	USizeBox* PressureBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+	PressureBox->SetWidthOverride(204.f);    // ≈ 与上方协议条同宽, 对齐成一列
+	PressureBox->SetHeightOverride(52.f);
 	UOverlay* PressureOverlay = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
 	UImage* PressurePlate = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
-	PressurePlate->SetDesiredSizeOverride(FVector2D(152.f, 42.f));
 	if (UTexture2D* PlateTex = LoadUiTexture(TEXT("/Game/Graytail/UI/Misc/pressure_plate")))
 	{
 		PressurePlate->SetBrushFromTexture(PlateTex);
-		PressurePlate->SetDesiredSizeOverride(FVector2D(152.f, 42.f));
 	}
-	PressureOverlay->AddChildToOverlay(PressurePlate);
+	if (UOverlaySlot* PlateSlot = PressureOverlay->AddChildToOverlay(PressurePlate))
+	{
+		PlateSlot->SetHorizontalAlignment(HAlign_Fill);
+		PlateSlot->SetVerticalAlignment(VAlign_Fill);   // 底板填满 SizeBox -> 真拉宽(可拉伸, 损精度无妨)
+	}
 	ProtocolText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	ProtocolText->SetFont(GT_UIStyle::Font(13));
+	ProtocolText->SetFont(GT_UIStyle::Font(15));
 	ProtocolText->SetColorAndOpacity(FSlateColor(FLinearColor(1.0f, 0.86f, 0.5f, 1.f)));   // 暖金, 配深底板
 	ProtocolText->SetJustification(ETextJustify::Center);
 	ProtocolText->SetText(FText::FromString(TEXT("压力 0/100")));
@@ -335,10 +341,11 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		TxtSlot->SetHorizontalAlignment(HAlign_Center);
 		TxtSlot->SetVerticalAlignment(VAlign_Center);
 	}
-	if (UVerticalBoxSlot* PressSlot = ProtocolBox->AddChildToVerticalBox(PressureOverlay))
+	PressureBox->AddChild(PressureOverlay);
+	if (UVerticalBoxSlot* PressSlot = ProtocolBox->AddChildToVerticalBox(PressureBox))
 	{
 		PressSlot->SetHorizontalAlignment(HAlign_Right);
-		PressSlot->SetPadding(FMargin(0.f, 1.f, 4.f, 0.f));
+		PressSlot->SetPadding(FMargin(0.f, 2.f, 4.f, 0.f));
 	}
 	if (UOverlaySlot* ProtocolSlot = Screen->AddChildToOverlay(ProtocolBox))
 	{

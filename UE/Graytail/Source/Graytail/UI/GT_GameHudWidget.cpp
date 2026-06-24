@@ -310,7 +310,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	// 第 3 层: 右上协议状态条(协议N 贴图 = 等级+描述 烤在图里) + 压力值。
 	UVerticalBox* ProtocolBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	ProtocolBarImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
-	ProtocolBarImage->SetDesiredSizeOverride(FVector2D(224.f, 76.f));
+	ProtocolBarImage->SetDesiredSizeOverride(FVector2D(205.f, 70.f));   // 占位; 刷新时按贴图比例锁高70自适应宽
 	if (UVerticalBoxSlot* BarSlot = ProtocolBox->AddChildToVerticalBox(ProtocolBarImage))
 	{
 		BarSlot->SetHorizontalAlignment(HAlign_Right);
@@ -318,18 +318,18 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	// 压力值: 数字底板(5.png #12)作背景 + 暖金文字居中其上。
 	UOverlay* PressureOverlay = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
 	UImage* PressurePlate = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
-	PressurePlate->SetDesiredSizeOverride(FVector2D(132.f, 40.f));
+	PressurePlate->SetDesiredSizeOverride(FVector2D(152.f, 42.f));
 	if (UTexture2D* PlateTex = LoadUiTexture(TEXT("/Game/Graytail/UI/Misc/pressure_plate")))
 	{
 		PressurePlate->SetBrushFromTexture(PlateTex);
-		PressurePlate->SetDesiredSizeOverride(FVector2D(132.f, 40.f));
+		PressurePlate->SetDesiredSizeOverride(FVector2D(152.f, 42.f));
 	}
 	PressureOverlay->AddChildToOverlay(PressurePlate);
 	ProtocolText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	ProtocolText->SetFont(GT_UIStyle::Font(13));
 	ProtocolText->SetColorAndOpacity(FSlateColor(FLinearColor(1.0f, 0.86f, 0.5f, 1.f)));   // 暖金, 配深底板
 	ProtocolText->SetJustification(ETextJustify::Center);
-	ProtocolText->SetText(FText::FromString(TEXT("压力 0 / 10")));
+	ProtocolText->SetText(FText::FromString(TEXT("压力 0/100")));
 	if (UOverlaySlot* TxtSlot = PressureOverlay->AddChildToOverlay(ProtocolText))
 	{
 		TxtSlot->SetHorizontalAlignment(HAlign_Center);
@@ -344,7 +344,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	{
 		ProtocolSlot->SetHorizontalAlignment(HAlign_Right);
 		ProtocolSlot->SetVerticalAlignment(VAlign_Top);
-		ProtocolSlot->SetPadding(FMargin(0.f, 8.f, 2.f, 0.f));   // 再往右(右边距 10->2)
+		ProtocolSlot->SetPadding(FMargin(0.f, 8.f, 0.f, 0.f));   // 贴右上角
 	}
 
 	// 第 4 层: 底部快捷键栏。
@@ -696,9 +696,11 @@ void UGT_GameHudWidget::RefreshPanels()
 		if (UTexture2D* Bar = LoadUiTexture(FString::Printf(TEXT("/Game/Graytail/UI/Misc/protocol_%d"), Level)))
 		{
 			ProtocolBarImage->SetBrushFromTexture(Bar);
-			ProtocolBarImage->SetDesiredSizeOverride(FVector2D(224.f, 76.f));
+			const float BarH = 70.f;
+			const float BarW = (Bar->GetSizeY() > 0) ? (Bar->GetSizeX() * BarH / Bar->GetSizeY()) : 205.f;
+			ProtocolBarImage->SetDesiredSizeOverride(FVector2D(BarW, BarH));   // 锁高70宽按比例 -> 右对齐真贴右
 		}
-		if (ProtocolText) { ProtocolText->SetText(FText::FromString(FString::Printf(TEXT("压力 %d / %d"), Pressure, MaxP))); }
+		if (ProtocolText) { ProtocolText->SetText(FText::FromString(FString::Printf(TEXT("压力 %d/%d"), Pressure, MaxP))); }
 	}
 
 	// 局终(死亡/撤离成功)弹结算面板, 每局只弹一次。

@@ -913,7 +913,7 @@ void UGT_GameHudWidget::RefreshMiniMapGrid()
 	FGT_DebugRunSnapshot Snapshot;
 	Debug->GetDebugRunSnapshot(Snapshot);
 
-	// 邻域感知天赋: 玩家相邻 8 格描黄框(进房高亮邻域威胁, 对齐 Lua mapHighlight)。
+	// 邻域感知天赋: 玩家相邻 8 格按真值威胁分色(有雷=红/无雷=黄), 取代原"一律黄框无情报"。
 	const UGT_RunContext* HudRunContext = GetRunContext();
 	const bool bMapHighlightActive = HudRunContext && HudRunContext->IsLoadoutMapHighlightActive();
 
@@ -963,18 +963,30 @@ void UGT_GameHudWidget::RefreshMiniMapGrid()
 			UOverlay* CellOverlay = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
 			CellBorder->SetContent(CellOverlay);
 
-			// 邻域感知天赋: 玩家相邻 8 格(非玩家格)描黄框, 高亮邻域威胁。
+			// 邻域感知天赋: 玩家相邻 8 格按真值威胁分色 —— 有雷=红(危险), 无雷=黄(安全)。
+			// 门控在天赋标志后: 只有解锁邻域感知才读相邻格真值, 不用花扫描就知道能否踏入。
 			if (bMapHighlightActive && !bPlayerHere
 				&& FMath::Abs(X - Snapshot.PlayerX) <= 1 && FMath::Abs(Y - Snapshot.PlayerY) <= 1)
 			{
+				bool bNeighborDanger = false;
+				FGT_TruthCell NeighborTruth;
+				if (HudRunContext && HudRunContext->GetTruthCellSnapshot(X, Y, NeighborTruth))
+				{
+					bNeighborDanger = NeighborTruth.bHasMine;
+				}
 				UBorder* NeighborHl = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 				FSlateBrush HlBrush;
 				HlBrush.DrawAs = ESlateBrushDrawType::RoundedBox;
-				HlBrush.TintColor = FSlateColor(FLinearColor(0.f, 0.f, 0.f, 0.f));
+				// 危险格加一层淡红内填(小地图小, 仅描边不够醒目); 安全格只描黄边、不填。
+				HlBrush.TintColor = bNeighborDanger
+					? FSlateColor(FLinearColor(1.f, 0.25f, 0.25f, 0.22f))
+					: FSlateColor(FLinearColor(0.f, 0.f, 0.f, 0.f));
 				HlBrush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
 				HlBrush.OutlineSettings.CornerRadii = FVector4(3.f, 3.f, 3.f, 3.f);
-				HlBrush.OutlineSettings.Color = FSlateColor(FLinearColor(FColor(255, 220, 80)));
-				HlBrush.OutlineSettings.Width = 2.f;
+				HlBrush.OutlineSettings.Color = bNeighborDanger
+					? FSlateColor(FLinearColor(FColor(255, 70, 70)))     // 危险红
+					: FSlateColor(FLinearColor(FColor(255, 220, 80)));   // 安全黄
+				HlBrush.OutlineSettings.Width = bNeighborDanger ? 2.5f : 2.f;
 				NeighborHl->SetBrush(HlBrush);
 				if (UOverlaySlot* HlSlot = CellOverlay->AddChildToOverlay(NeighborHl))
 				{

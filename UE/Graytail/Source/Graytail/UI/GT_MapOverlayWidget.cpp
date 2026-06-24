@@ -320,14 +320,14 @@ void UGT_MapOverlayWidget::RefreshGrid()
 							BadgeSlot->SetVerticalAlignment(VAlign_Bottom);
 						}
 					}
-					else if (!bSpecialIcon && !bPlayerHere && Cell.DisplayedNumber >= 1 && Cell.DisplayedNumber <= 3)
+					else if (!bSpecialIcon && !bPlayerHere && Cell.DisplayedNumber >= 1 && Cell.DisplayedNumber <= 8)
 					{
 						AddCellIcon(LoadUiTexture(FString::Printf(
 							TEXT("/Game/Graytail/UI/Icons64/1%d_shuzi_%d"), Cell.DisplayedNumber, Cell.DisplayedNumber)), 0.7f);
 					}
 					else if (!bSpecialIcon && !bPlayerHere)
 					{
-						// 0 与 4+: 文本数字(0 也显示)。
+						// 0: 文本数字(无 0 图标, 用户要求 0 也显示)。
 						UTextBlock* NumberText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 						NumberText->SetFont(GT_UIStyle::Font(26));
 						NumberText->SetText(FText::FromString(FString::FromInt(Cell.DisplayedNumber)));

@@ -984,14 +984,14 @@ void UGT_GameHudWidget::RefreshMiniMapGrid()
 							BadgeSlot->SetVerticalAlignment(VAlign_Bottom);
 						}
 					}
-					else if (!bSpecialIcon && Cell.DisplayedNumber >= 1 && Cell.DisplayedNumber <= 3)
+					else if (!bSpecialIcon && Cell.DisplayedNumber >= 1 && Cell.DisplayedNumber <= 8)
 					{
-						// 普通格 1-3: 专用数字贴图(11/12/13_shuzi_N)。
+						// 普通格 1-8: 专用数字贴图(1N_shuzi_N)。
 						AddCellIcon(LoadUiTexture(FString::Printf(TEXT("/Game/Graytail/UI/Icons64/1%d_shuzi_%d"), Cell.DisplayedNumber, Cell.DisplayedNumber)), 0.8f);
 					}
 					else if (!bSpecialIcon)
 					{
-						// 0 与 4+: 文本数字(0 也显示, 用户要求)。
+						// 0: 文本数字(无 0 图标, 用户要求 0 也显示)。
 						UTextBlock* NumberText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 						NumberText->SetFont(GT_UIStyle::Font(13));
 						NumberText->SetText(FText::FromString(FString::FromInt(Cell.DisplayedNumber)));

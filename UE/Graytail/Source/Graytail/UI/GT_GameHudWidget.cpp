@@ -315,21 +315,36 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	{
 		BarSlot->SetHorizontalAlignment(HAlign_Right);
 	}
-	ProtocolText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	ProtocolText->SetFont(GT_UIStyle::Font(12));
-	ProtocolText->SetColorAndOpacity(FSlateColor(FLinearColor(0.92f, 0.82f, 0.72f, 1.f)));
-	ProtocolText->SetJustification(ETextJustify::Right);
-	ProtocolText->SetText(FText::FromString(TEXT("压力 0 / 10")));
-	if (UVerticalBoxSlot* PtSlot = ProtocolBox->AddChildToVerticalBox(ProtocolText))
+	// 压力值: 数字底板(5.png #12)作背景 + 暖金文字居中其上。
+	UOverlay* PressureOverlay = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
+	UImage* PressurePlate = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+	PressurePlate->SetDesiredSizeOverride(FVector2D(132.f, 40.f));
+	if (UTexture2D* PlateTex = LoadUiTexture(TEXT("/Game/Graytail/UI/Misc/pressure_plate")))
 	{
-		PtSlot->SetHorizontalAlignment(HAlign_Right);
-		PtSlot->SetPadding(FMargin(0.f, 1.f, 8.f, 0.f));
+		PressurePlate->SetBrushFromTexture(PlateTex);
+		PressurePlate->SetDesiredSizeOverride(FVector2D(132.f, 40.f));
+	}
+	PressureOverlay->AddChildToOverlay(PressurePlate);
+	ProtocolText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+	ProtocolText->SetFont(GT_UIStyle::Font(13));
+	ProtocolText->SetColorAndOpacity(FSlateColor(FLinearColor(1.0f, 0.86f, 0.5f, 1.f)));   // 暖金, 配深底板
+	ProtocolText->SetJustification(ETextJustify::Center);
+	ProtocolText->SetText(FText::FromString(TEXT("压力 0 / 10")));
+	if (UOverlaySlot* TxtSlot = PressureOverlay->AddChildToOverlay(ProtocolText))
+	{
+		TxtSlot->SetHorizontalAlignment(HAlign_Center);
+		TxtSlot->SetVerticalAlignment(VAlign_Center);
+	}
+	if (UVerticalBoxSlot* PressSlot = ProtocolBox->AddChildToVerticalBox(PressureOverlay))
+	{
+		PressSlot->SetHorizontalAlignment(HAlign_Right);
+		PressSlot->SetPadding(FMargin(0.f, 1.f, 4.f, 0.f));
 	}
 	if (UOverlaySlot* ProtocolSlot = Screen->AddChildToOverlay(ProtocolBox))
 	{
 		ProtocolSlot->SetHorizontalAlignment(HAlign_Right);
 		ProtocolSlot->SetVerticalAlignment(VAlign_Top);
-		ProtocolSlot->SetPadding(FMargin(0.f, 10.f, 10.f, 0.f));
+		ProtocolSlot->SetPadding(FMargin(0.f, 8.f, 2.f, 0.f));   // 再往右(右边距 10->2)
 	}
 
 	// 第 4 层: 底部快捷键栏。

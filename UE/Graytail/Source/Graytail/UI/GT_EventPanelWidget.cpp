@@ -62,8 +62,7 @@ void UGT_EventPanelWidget::BuildWidgetTree()
 	FrameBorder = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 	FrameBorder->SetBrushColor(FLinearColor(FColor(150, 125, 80)));   // fallback 纯色(贴图缺失时保留)
 	FrameBorder->SetPadding(FMargin(2.f));
-	GT_UIStyle::SkinPanel9(FrameBorder, GT_UIStyle::PanelDialogSkin());   // 金属框换皮
-	FrameBorder->SetBrushColor(FLinearColor(FColor(205, 178, 125)));  // 暖黄铜 tint: 保留"事件"暖框识别
+	GT_UIStyle::SkinPanel9(FrameBorder, GT_UIStyle::PanelSkinCopper());   // 暖铜金属框(事件)
 	if (UOverlaySlot* FrameSlot = Root->AddChildToOverlay(FrameBorder))
 	{
 		FrameSlot->SetHorizontalAlignment(HAlign_Center);

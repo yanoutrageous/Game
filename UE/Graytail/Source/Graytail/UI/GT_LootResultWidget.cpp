@@ -185,10 +185,10 @@ void UGT_LootResultWidget::RebuildContent(const FGT_SearchOutcome& Outcome)
 		? TEXT("高价值物资已放入临时回收包")
 		: TEXT("可回收物已放入临时回收包")));
 	SubtitleText->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(180, 205, 210, 230))));
-	// 换皮后这层是金属框贴图, SetBrushColor 即叠色 tint: 宝箱=暖金框 / 普通=冷青框。
-	PanelFrame->SetBrushColor(Reward.bIsChest
-		? FLinearColor(FColor(248, 210, 140))
-		: FLinearColor(FColor(150, 205, 220)));
+	// 换皮: 离线烤好的金/青金属框, 按宝箱/普通直接换图(所见即所得, 不靠 multiply tint)。
+	GT_UIStyle::SkinPanel9(PanelFrame, Reward.bIsChest
+		? GT_UIStyle::PanelSkinGold()
+		: GT_UIStyle::PanelSkinTeal());
 
 	const int32 ItemValue = GT_ItemCatalog::GetCarriedItemsValue(Reward.Items);
 	SummaryText->SetText(FText::FromString(FString::Printf(

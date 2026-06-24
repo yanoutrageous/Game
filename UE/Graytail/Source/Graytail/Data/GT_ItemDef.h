@@ -35,10 +35,6 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Graytail|Item")
 	int32 Value = 0;
 
-	// 单件重量(背包容量限制用)。
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Graytail|Item")
-	int32 Weight = 1;
-
 	// 使用效果文案(对齐 Lua effectText; 数值化效果用 UseEffects)。
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Graytail|Item")
 	FString EffectText;

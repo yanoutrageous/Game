@@ -17,9 +17,6 @@ namespace GT_ItemCatalog
 	// 物品基础价值, 未知物品返回 0。
 	GRAYTAIL_API int32 GetItemValue(FName ItemId);
 
-	// 物品单件重量(背包容量限制用), 未知物品返回 1。
-	GRAYTAIL_API int32 GetItemWeight(FName ItemId);
-
 	// 掉落品质 -> 具体物品(对齐 Lua QUALITY_ITEMS 表)。None/未知品质返回 NAME_None。
 	GRAYTAIL_API FName GetQualityItemId(EGT_ItemQuality Quality);
 

@@ -48,8 +48,6 @@ void UGT_RunContext::InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec)
 	CombatRuntimeState = FGT_CombatRuntimeState();
 	RunSummary = FGT_RunSummary();
 	RunInventory.Reset();
-	// 背包容量按模式: Standard 20 上限; BasicDebug 不设限制(护 163 测试夹具, 搜索永不丢物)。
-	RunInventory.BackpackCapacity = (MapMode == EGT_MapMode::BasicDebug) ? TNumericLimits<int32>::Max() : 20;
 	LastSearchOutcome = FGT_SearchOutcome();
 	LastEventOutcome = FGT_EventOutcome();
 	LastConsumableOutcome = FGT_ConsumableOutcome();
@@ -901,25 +899,14 @@ bool UGT_RunContext::SearchCurrentRoom(FGT_SearchOutcome& OutOutcome)
 	// 大背包搜索奖励 +SearchBonus%(无背包 = 0% 不变, 对齐 Lua RunInventory.searchBonus)。
 	RunInventory.AddPendingGold((Reward.Gold * (100 + LoadoutSearchBonusPercent)) / 100);
 	RunInventory.Parts += Reward.Parts;
-	// 背包超重时按堆整堆拒收(AddCarriedItem 全有或全无)。结算面板只列实际入包的物品,
-	// 不把被丢弃的也算进"已放入回收包", 避免"说谎"。
-	FGT_SearchReward GrantedReward = Reward;
-	GrantedReward.Items.Reset();
-	int32 ItemsSkipped = 0;
+	// 回收物全部入包(已无背包容量限制)。
 	for (const FGT_ItemStack& Stack : Reward.Items)
 	{
-		if (RunInventory.AddCarriedItem(Stack.ItemId, Stack.Count, Stack.Source))
-		{
-			GrantedReward.Items.Add(Stack);
-		}
-		else
-		{
-			++ItemsSkipped;
-		}
+		RunInventory.AddCarriedItem(Stack.ItemId, Stack.Count, Stack.Source);
 	}
 	OutOutcome.bSearched = true;
-	OutOutcome.Status = (ItemsSkipped > 0) ? FName(TEXT("searched_overweight")) : FName(TEXT("searched"));
-	OutOutcome.Reward = GrantedReward;
+	OutOutcome.Status = FName(TEXT("searched"));
+	OutOutcome.Reward = Reward;
 	LastSearchOutcome = OutOutcome;
 	return true;
 }
@@ -1287,10 +1274,7 @@ bool UGT_RunContext::ExecuteEventOptionAtPlayer(FName OptionId, FGT_EventOutcome
 		{
 			return;
 		}
-		if (!RunInventory.AddCarriedItem(ItemId, 1, GTEventItemSource))
-		{
-			return;
-		}
+		RunInventory.AddCarriedItem(ItemId, 1, GTEventItemSource);
 		RunInventory.Parts += 1;
 		FGT_ItemStack& Granted = OutOutcome.GrantedItems.AddDefaulted_GetRef();
 		Granted.ItemId = ItemId;

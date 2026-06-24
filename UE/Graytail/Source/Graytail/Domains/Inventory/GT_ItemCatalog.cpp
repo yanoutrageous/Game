@@ -25,7 +25,6 @@ namespace
 		Entry.Kind = Asset.Kind;
 		Entry.Rarity = Asset.Rarity;
 		Entry.Value = Asset.Value;
-		Entry.Weight = Asset.Weight;
 		Entry.EffectText = Asset.EffectText;
 		Entry.Description = Asset.Description.ToString();
 		return Entry;
@@ -91,12 +90,6 @@ namespace GT_ItemCatalog
 	{
 		const FGT_ItemCatalogEntry* Def = FindItemDef(ItemId);
 		return Def ? Def->Value : 0;
-	}
-
-	int32 GetItemWeight(FName ItemId)
-	{
-		const FGT_ItemCatalogEntry* Def = FindItemDef(ItemId);
-		return Def ? Def->Weight : 1;
 	}
 
 	FName GetQualityItemId(EGT_ItemQuality Quality)

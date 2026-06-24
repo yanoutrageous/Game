@@ -20,7 +20,9 @@
 #include "Components/VerticalBoxSlot.h"
 #include "Core/GT_RunContext.h"
 #include "Core/GT_RunSubsystem.h"
+#include "Core/GT_SettingsSubsystem.h"
 #include "Debug/GT_DebugSubsystem.h"
+#include "Engine/GameInstance.h"
 #include "Domains/Events/GT_EventTypes.h"
 #include "Domains/Inventory/GT_ItemCatalog.h"
 #include "Domains/Meta/GT_MetaCatalog.h"
@@ -691,6 +693,16 @@ void UGT_GameHudWidget::RefreshRunEndPanel()
 	bRunEndShown = true;
 
 	const bool bSuccess = RunState == EGT_RunState::Succeeded;
+	if (bSuccess)
+	{
+		if (UGameInstance* GI = GetGameInstance())
+		{
+			if (UGT_SettingsSubsystem* Settings = GI->GetSubsystem<UGT_SettingsSubsystem>())
+			{
+				Settings->PlaySfx(this, FName(TEXT("sfx_extract")));   // 撤离成功琶音
+			}
+		}
+	}
 	RunEndTitle->SetText(FText::FromString(bSuccess ? TEXT("撤离成功") : TEXT("信号中断")));
 	RunEndTitle->SetColorAndOpacity(FSlateColor(bSuccess
 		? FLinearColor(FColor(120, 230, 150))

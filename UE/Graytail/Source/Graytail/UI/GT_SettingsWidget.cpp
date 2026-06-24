@@ -116,6 +116,47 @@ namespace
 			Slot->SetPadding(FMargin(0.f, 12.f, 0.f, 2.f));
 		}
 	}
+
+	// [标签 ──滑条── 百分比] 一行; 返回滑条(调用方绑 OnValueChanged), 百分比文本经 out 回传。
+	USlider* AddSliderRow(UWidgetTree* Tree, UVerticalBox* Column, const FString& Label, UTextBlock*& OutPercent)
+	{
+		UHorizontalBox* Row = Tree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+
+		UTextBlock* LabelText = Tree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		LabelText->SetFont(GT_UIStyle::Font(14));
+		LabelText->SetColorAndOpacity(FSlateColor(GTSetText));
+		LabelText->SetText(FText::FromString(Label));
+		if (UHorizontalBoxSlot* LS = Row->AddChildToHorizontalBox(LabelText)) { LS->SetVerticalAlignment(VAlign_Center); }
+
+		USlider* Slider = Tree->ConstructWidget<USlider>(USlider::StaticClass());
+		Slider->SetMinValue(0.f);
+		Slider->SetMaxValue(1.f);
+		Slider->SetStepSize(0.05f);
+		Slider->SetSliderBarColor(FLinearColor(0.30f, 0.34f, 0.42f));
+		Slider->SetSliderHandleColor(FLinearColor(0.55f, 0.85f, 1.0f));
+		if (UHorizontalBoxSlot* SS = Row->AddChildToHorizontalBox(Slider))
+		{
+			SS->SetVerticalAlignment(VAlign_Center);
+			SS->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+			SS->SetPadding(FMargin(10.f, 0.f));
+		}
+
+		OutPercent = Tree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		OutPercent->SetFont(GT_UIStyle::Font(14));
+		OutPercent->SetColorAndOpacity(FSlateColor(GTSetValue));
+		OutPercent->SetJustification(ETextJustify::Right);
+		USizeBox* PctBox = Tree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+		PctBox->SetWidthOverride(52.f);
+		PctBox->SetContent(OutPercent);
+		if (UHorizontalBoxSlot* PS = Row->AddChildToHorizontalBox(PctBox)) { PS->SetVerticalAlignment(VAlign_Center); }
+
+		if (UVerticalBoxSlot* RowSlot = Column->AddChildToVerticalBox(Row))
+		{
+			RowSlot->SetPadding(FMargin(0.f, 6.f));
+			RowSlot->SetHorizontalAlignment(HAlign_Fill);
+		}
+		return Slider;
+	}
 }
 
 UGT_DebugSubsystem* UGT_SettingsWidget::GetDebugSubsystem() const
@@ -212,44 +253,10 @@ void UGT_SettingsWidget::BuildWidgetTree()
 
 	// ── 音频 ──
 	AddSectionHeader(WidgetTree, Column, TEXT("音频"));
-	{
-		UHorizontalBox* MusicRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-
-		UTextBlock* MusicLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		MusicLabel->SetFont(GT_UIStyle::Font(14));
-		MusicLabel->SetColorAndOpacity(FSlateColor(GTSetText));
-		MusicLabel->SetText(FText::FromString(TEXT("主音量")));
-		if (UHorizontalBoxSlot* LS = MusicRow->AddChildToHorizontalBox(MusicLabel)) { LS->SetVerticalAlignment(VAlign_Center); }
-
-		MusicSlider = WidgetTree->ConstructWidget<USlider>(USlider::StaticClass());
-		MusicSlider->SetMinValue(0.f);
-		MusicSlider->SetMaxValue(1.f);
-		MusicSlider->SetStepSize(0.05f);
-		MusicSlider->SetSliderBarColor(FLinearColor(0.30f, 0.34f, 0.42f));
-		MusicSlider->SetSliderHandleColor(FLinearColor(0.55f, 0.85f, 1.0f));
-		MusicSlider->OnValueChanged.AddDynamic(this, &UGT_SettingsWidget::HandleMusicVolumeChanged);
-		if (UHorizontalBoxSlot* SS = MusicRow->AddChildToHorizontalBox(MusicSlider))
-		{
-			SS->SetVerticalAlignment(VAlign_Center);
-			SS->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-			SS->SetPadding(FMargin(10.f, 0.f));
-		}
-
-		MusicPercentText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		MusicPercentText->SetFont(GT_UIStyle::Font(14));
-		MusicPercentText->SetColorAndOpacity(FSlateColor(GTSetValue));
-		MusicPercentText->SetJustification(ETextJustify::Right);
-		USizeBox* PctBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-		PctBox->SetWidthOverride(52.f);
-		PctBox->SetContent(MusicPercentText);
-		if (UHorizontalBoxSlot* PS = MusicRow->AddChildToHorizontalBox(PctBox)) { PS->SetVerticalAlignment(VAlign_Center); }
-
-		if (UVerticalBoxSlot* MusicSlot = Column->AddChildToVerticalBox(MusicRow))
-		{
-			MusicSlot->SetPadding(FMargin(0.f, 6.f));
-			MusicSlot->SetHorizontalAlignment(HAlign_Fill);
-		}
-	}
+	MusicSlider = AddSliderRow(WidgetTree, Column, TEXT("主音量(BGM)"), MusicPercentText);
+	MusicSlider->OnValueChanged.AddDynamic(this, &UGT_SettingsWidget::HandleMusicVolumeChanged);
+	SfxSlider = AddSliderRow(WidgetTree, Column, TEXT("音效音量"), SfxPercentText);
+	SfxSlider->OnValueChanged.AddDynamic(this, &UGT_SettingsWidget::HandleSfxVolumeChanged);
 
 	// ── 其他(作弊) ──
 	AddSectionHeader(WidgetTree, Column, TEXT("其他"));
@@ -290,6 +297,7 @@ void UGT_SettingsWidget::RefreshAll()
 {
 	RefreshDisplayLabels();
 	RefreshMusicLabel();
+	RefreshSfxLabel();
 	RefreshCheatLabel();
 }
 
@@ -321,6 +329,17 @@ void UGT_SettingsWidget::RefreshMusicLabel()
 	const UGT_SettingsSubsystem* Settings = GetSettingsSubsystem();
 	const float Vol = Settings ? Settings->GetMusicVolume() : 0.5f;
 	MusicPercentText->SetText(FText::FromString(FString::Printf(TEXT("%d%%"), FMath::RoundToInt(Vol * 100.f))));
+}
+
+void UGT_SettingsWidget::RefreshSfxLabel()
+{
+	if (!SfxPercentText)
+	{
+		return;
+	}
+	const UGT_SettingsSubsystem* Settings = GetSettingsSubsystem();
+	const float Vol = Settings ? Settings->GetSfxVolume() : 0.7f;
+	SfxPercentText->SetText(FText::FromString(FString::Printf(TEXT("%d%%"), FMath::RoundToInt(Vol * 100.f))));
 }
 
 void UGT_SettingsWidget::RefreshCheatLabel()
@@ -383,12 +402,10 @@ void UGT_SettingsWidget::Open()
 		}
 	}
 	// 读当前音量到滑条。
-	if (MusicSlider)
+	if (const UGT_SettingsSubsystem* Settings = GetSettingsSubsystem())
 	{
-		if (const UGT_SettingsSubsystem* Settings = GetSettingsSubsystem())
-		{
-			MusicSlider->SetValue(Settings->GetMusicVolume());
-		}
+		if (MusicSlider) { MusicSlider->SetValue(Settings->GetMusicVolume()); }
+		if (SfxSlider) { SfxSlider->SetValue(Settings->GetSfxVolume()); }
 	}
 	RefreshAll();
 	SetVisibility(ESlateVisibility::Visible);
@@ -449,6 +466,15 @@ void UGT_SettingsWidget::HandleMusicVolumeChanged(float Value)
 		Settings->SetMusicVolume(Value);
 	}
 	RefreshMusicLabel();
+}
+
+void UGT_SettingsWidget::HandleSfxVolumeChanged(float Value)
+{
+	if (UGT_SettingsSubsystem* Settings = GetSettingsSubsystem())
+	{
+		Settings->SetSfxVolume(Value);
+	}
+	RefreshSfxLabel();
 }
 
 void UGT_SettingsWidget::HandleToggleCheat()

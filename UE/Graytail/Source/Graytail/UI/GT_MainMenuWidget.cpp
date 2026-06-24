@@ -575,6 +575,13 @@ void UGT_MainMenuWidget::ConfirmSelection()
 	{
 		return;
 	}
+	if (UGameInstance* GI = GetGameInstance())
+	{
+		if (UGT_SettingsSubsystem* Settings = GI->GetSubsystem<UGT_SettingsSubsystem>())
+		{
+			Settings->PlaySfx(this, FName(TEXT("sfx_click")));
+		}
+	}
 
 	switch (CurrentPage)
 	{

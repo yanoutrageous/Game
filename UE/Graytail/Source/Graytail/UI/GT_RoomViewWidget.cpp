@@ -9,6 +9,7 @@
 #include "Components/TextBlock.h"
 #include "Core/GT_RunContext.h"
 #include "Core/GT_RunSubsystem.h"
+#include "Core/GT_SettingsSubsystem.h"
 #include "Debug/GT_DebugSubsystem.h"
 #include "Domains/Combat/GT_MonsterCatalog.h"
 #include "Domains/Events/GT_EventRules.h"
@@ -575,6 +576,17 @@ const UGT_RunContext* UGT_RoomViewWidget::GetRunContext() const
 	return RunSubsystem ? RunSubsystem->GetCurrentRunContext() : nullptr;
 }
 
+void UGT_RoomViewWidget::PlaySfx(FName Key)
+{
+	if (UGameInstance* GI = GetGameInstance())
+	{
+		if (UGT_SettingsSubsystem* Settings = GI->GetSubsystem<UGT_SettingsSubsystem>())
+		{
+			Settings->PlaySfx(this, Key);
+		}
+	}
+}
+
 UTexture2D* UGT_RoomViewWidget::LoadTextureAsset(const FString& AssetPath)
 {
 	if (UTexture2D** Cached = TextureCache.Find(AssetPath))
@@ -937,6 +949,7 @@ void UGT_RoomViewWidget::SetHeldMovementKey(const FKey& Key, bool bDown)
 
 void UGT_RoomViewWidget::PlayChestRewardBurst(int32 Gold, int32 Parts)
 {
+	PlaySfx(FName(TEXT("sfx_pickup")));
 	ChestOpenTimer = GTChestOpenDuration;
 	RewardBurstTimer = GTChestRewardDuration;
 	BurstParts = Parts;
@@ -1089,6 +1102,7 @@ void UGT_RoomViewWidget::UpdateChestBurstAnim(float DeltaTime)
 
 void UGT_RoomViewWidget::PlayHealGlow()
 {
+	PlaySfx(FName(TEXT("sfx_heal")));
 	HealGlowTimer = GTHealGlowDuration;
 	// 每颗光子随机环绕参数(纯表现, 用 FRand 即可): 角度铺满一圈, 半径 14-32 包住人物。
 	for (int32 ParticleIndex = 0; ParticleIndex < 8; ++ParticleIndex)
@@ -1120,6 +1134,7 @@ bool UGT_RoomViewWidget::TryConsumePlayerAttack()
 		return false;
 	}
 	PlayerAttackCooldownTimer = GTPlayerAttackCooldown;
+	PlaySfx(FName(TEXT("sfx_attack")));
 	return true;
 }
 
@@ -1150,7 +1165,7 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 			const FGT_MonsterArchetype& Arch = GT_MonsterCatalog::GetArchetype(Snapshot.EnemyType);
 			CurrentPlayerAttackRange = Arch.PlayerAttackRange;
 			// 怪物受击闪白: HP 下降帧触发亮白 tint(配合本体 scale punch), 随后衰减。
-			if (PrevEnemyHp >= 0 && Snapshot.EnemyHp < PrevEnemyHp) { EnemyHitFlashTimer = 0.13f; }
+			if (PrevEnemyHp >= 0 && Snapshot.EnemyHp < PrevEnemyHp) { EnemyHitFlashTimer = 0.13f; PlaySfx(FName(TEXT("sfx_hit"))); }
 			PrevEnemyHp = Snapshot.EnemyHp;
 			if (EnemyHitFlashTimer > 0.f) { EnemyHitFlashTimer = FMath::Max(0.f, EnemyHitFlashTimer - InDeltaTime); }
 			const float EnemyHitFlash = FMath::Clamp(EnemyHitFlashTimer / 0.13f, 0.f, 1.f);
@@ -1183,6 +1198,7 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 				{
 					PlayerIFrameTimer = GTPlayerInvincibleDuration;
 					PlayMineFlash();
+					PlaySfx(FName(TEXT("sfx_hurt")));
 					Snapshot = HitSnapshot;            // 本帧血条用最新血量
 					OnCombatStateChanged.ExecuteIfBound();
 				}
@@ -1637,6 +1653,7 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 			if (bPrevInCombat && Snapshot.PlayerHp > 0 && !bPlayingDeathShatter)
 			{
 				bPlayingDeathShatter = true;
+				PlaySfx(FName(TEXT("sfx_death")));
 				DeathShatterTimer = 0.f;
 				DeathShatterFrame = -1;
 				DeathEffectPos = LastEnemyNormPos;
@@ -1882,6 +1899,7 @@ void UGT_RoomViewWidget::TryCrossDoor(int32 DirX, int32 DirY)
 		&& PrevPlayerHp >= 0 && Snapshot.PlayerHp < PrevPlayerHp)
 	{
 		PlayMineFlash();
+		PlaySfx(FName(TEXT("sfx_explosion")));
 	}
 	PrevPlayerHp = Snapshot.PlayerHp;
 

@@ -60,12 +60,44 @@ void UGT_SettingsSubsystem::SetMusicVolume(float Volume)
 	SaveConfig();
 }
 
+void UGT_SettingsSubsystem::PlaySfx(const UObject* WorldContext, FName Key)
+{
+	if (Key.IsNone() || !WorldContext)
+	{
+		return;
+	}
+	USoundBase* Sound = nullptr;
+	if (USoundBase** Cached = SfxCache.Find(Key))
+	{
+		Sound = *Cached;
+	}
+	else
+	{
+		Sound = LoadObject<USoundBase>(nullptr, *FString::Printf(TEXT("/Game/Graytail/Audio/SFX/%s"), *Key.ToString()));
+		SfxCache.Add(Key, Sound);   // 缓存(含 null), 缺资源时不反复尝试加载
+	}
+	if (Sound)
+	{
+		UGameplayStatics::PlaySound2D(WorldContext, Sound, SfxVolume);
+	}
+}
+
+void UGT_SettingsSubsystem::SetSfxVolume(float Volume)
+{
+	SfxVolume = FMath::Clamp(Volume, 0.f, 1.f);
+	SaveConfig();
+}
+
 void UGT_SettingsSubsystem::LoadConfig()
 {
-	float Value = 0.5f;
+	float Value = 0.f;
 	if (GConfig && GConfig->GetFloat(GTSettingsSection, TEXT("MusicVolume"), Value, GGameUserSettingsIni))
 	{
 		MusicVolume = FMath::Clamp(Value, 0.f, 1.f);
+	}
+	if (GConfig && GConfig->GetFloat(GTSettingsSection, TEXT("SfxVolume"), Value, GGameUserSettingsIni))
+	{
+		SfxVolume = FMath::Clamp(Value, 0.f, 1.f);
 	}
 }
 
@@ -74,6 +106,7 @@ void UGT_SettingsSubsystem::SaveConfig() const
 	if (GConfig)
 	{
 		GConfig->SetFloat(GTSettingsSection, TEXT("MusicVolume"), MusicVolume, GGameUserSettingsIni);
+		GConfig->SetFloat(GTSettingsSection, TEXT("SfxVolume"), SfxVolume, GGameUserSettingsIni);
 		GConfig->Flush(false, GGameUserSettingsIni);
 	}
 }

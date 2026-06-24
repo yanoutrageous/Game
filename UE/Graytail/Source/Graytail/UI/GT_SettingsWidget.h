@@ -40,6 +40,7 @@ private:
 	void RefreshCheatLabel();
 	void RefreshDisplayLabels();
 	void RefreshMusicLabel();
+	void RefreshSfxLabel();
 	void ApplyDisplaySettings();
 
 	UFUNCTION() void HandleWindowModePrev();
@@ -48,6 +49,7 @@ private:
 	UFUNCTION() void HandleResolutionNext();
 	UFUNCTION() void HandleVSyncToggle();
 	UFUNCTION() void HandleMusicVolumeChanged(float Value);
+	UFUNCTION() void HandleSfxVolumeChanged(float Value);
 	UFUNCTION() void HandleToggleCheat();
 	UFUNCTION() void HandleBack();
 
@@ -57,6 +59,8 @@ private:
 	UPROPERTY(Transient) UTextBlock* VSyncText = nullptr;
 	UPROPERTY(Transient) USlider* MusicSlider = nullptr;
 	UPROPERTY(Transient) UTextBlock* MusicPercentText = nullptr;
+	UPROPERTY(Transient) USlider* SfxSlider = nullptr;
+	UPROPERTY(Transient) UTextBlock* SfxPercentText = nullptr;
 	UPROPERTY(Transient) UTextBlock* CheatToggleText = nullptr;
 
 	// 显示设置的当前选择(Open 时从 UGameUserSettings 读入)。

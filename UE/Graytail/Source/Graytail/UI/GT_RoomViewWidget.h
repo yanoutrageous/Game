@@ -80,6 +80,7 @@ private:
 	void BuildWidgetTree();
 	UGT_DebugSubsystem* GetDebugSubsystem() const;
 	const UGT_RunContext* GetRunContext() const;
+	void PlaySfx(FName Key);   // 经 GT_SettingsSubsystem 播一次性音效(走 SfxVolume)
 	UTexture2D* LoadTextureAsset(const FString& AssetPath);
 	UTexture2D* GetWalkFrame(int32 DirX, int32 DirY, int32 FrameIndex);
 	UTexture2D* GetIdleFrame(int32 DirX, int32 DirY);

@@ -29,6 +29,22 @@ namespace
 		return FLinearColor(FColor(180, 200, 210)); // common
 	}
 
+	// 稀有度档序(common<uncommon<rare), 取本次战利品最高稀有度 -> 面板框色。
+	int32 GTRarityRank(FName Rarity)
+	{
+		if (Rarity == FName(TEXT("rare"))) { return 2; }
+		if (Rarity == FName(TEXT("uncommon"))) { return 1; }
+		return 0; // common / 未知
+	}
+
+	// 稀有度 -> 面板框贴图(common=中性灰 / uncommon=绿 / rare=蓝, 与 per-item 卡边色统一)。
+	const TCHAR* GTRaritySkin(int32 Rank)
+	{
+		if (Rank >= 2) { return GT_UIStyle::PanelSkinRare(); }
+		if (Rank >= 1) { return GT_UIStyle::PanelSkinUncommon(); }
+		return GT_UIStyle::PanelDialogSkin();
+	}
+
 	// 对齐 Lua ITEM_DEFS 的 typeName / rarityName 文案。
 	const TCHAR* GTKindLabel(EGT_ItemKind Kind)
 	{
@@ -185,10 +201,16 @@ void UGT_LootResultWidget::RebuildContent(const FGT_SearchOutcome& Outcome)
 		? TEXT("高价值物资已放入临时回收包")
 		: TEXT("可回收物已放入临时回收包")));
 	SubtitleText->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(180, 205, 210, 230))));
-	// 换皮: 离线烤好的金/青金属框, 按宝箱/普通直接换图(所见即所得, 不靠 multiply tint)。
-	GT_UIStyle::SkinPanel9(PanelFrame, Reward.bIsChest
-		? GT_UIStyle::PanelSkinGold()
-		: GT_UIStyle::PanelSkinTeal());
+	// 面板框按本次回收物最高稀有度换皮(离线烤好的灰/绿/蓝, 所见即所得): common灰 / uncommon绿 / rare蓝。
+	int32 MaxRarityRank = 0;
+	for (const FGT_ItemStack& Stack : Reward.Items)
+	{
+		if (const FGT_ItemCatalogEntry* Def = GT_ItemCatalog::FindItemDef(Stack.ItemId))
+		{
+			MaxRarityRank = FMath::Max(MaxRarityRank, GTRarityRank(Def->Rarity));
+		}
+	}
+	GT_UIStyle::SkinPanel9(PanelFrame, GTRaritySkin(MaxRarityRank));
 
 	const int32 ItemValue = GT_ItemCatalog::GetCarriedItemsValue(Reward.Items);
 	SummaryText->SetText(FText::FromString(FString::Printf(

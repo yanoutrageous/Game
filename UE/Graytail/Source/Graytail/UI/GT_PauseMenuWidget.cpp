@@ -81,13 +81,14 @@ void UGT_PauseMenuWidget::BuildWidgetTree()
 	}
 
 	UBorder* CardEdge = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-	CardEdge->SetBrushColor(GTPauseCardEdge);
+	CardEdge->SetBrushColor(GTPauseCardEdge);   // fallback 纯色(贴图缺失时保留)
 	CardEdge->SetPadding(FMargin(2.f));
+	GT_UIStyle::SkinPanel9(CardEdge, GT_UIStyle::PanelDialogSkin());   // 组员金属边框换皮
 	CardSize->SetContent(CardEdge);
 
 	UBorder* Card = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-	Card->SetBrushColor(GTPauseCardBg);
-	Card->SetPadding(FMargin(24.f, 20.f, 24.f, 20.f));
+	Card->SetBrushColor(FLinearColor(0.f, 0.f, 0.f, 0.f));   // 透明: 让 CardEdge 的边框贴图透出
+	Card->SetPadding(FMargin(30.f, 26.f, 30.f, 26.f));        // 内缩避开金属框
 	CardEdge->SetContent(Card);
 
 	UVerticalBox* Column = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());

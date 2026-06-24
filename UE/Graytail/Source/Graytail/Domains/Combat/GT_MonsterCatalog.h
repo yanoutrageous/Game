@@ -59,6 +59,12 @@ struct FGT_MonsterArchetype
 	float SpreadHalfAngleDeg = 0.f;   // RangedSpread 左右偏角(度)
 	float LaserDuration = 0.f;        // RangedLaser 光束持续时长
 	float LaserTickInterval = 0.f;    // RangedLaser 站内扣血间隔
+	float LaserTurnRateDeg = 0.f;     // RangedLaser 发射后光束每秒朝玩家旋转的最大角度(0=锁死不追)
+
+	// KeepDistance 走位权重(让不同远程怪手感不同)。
+	float KiteStrength = 1.0f;        // kiting 方向权重(低=更随机/只轻微远离, 易被追打)
+	float WanderWeight = 0.5f;        // 随机游走权重
+	bool bChaseWhenFar = false;       // 太远是否追回保持射程(false=只远离+乱窜, 不黏射程)
 
 	const TCHAR* SpritePath = TEXT("/Game/Graytail/Sprites/enemy_slime");
 	FLinearColor TintColor = FLinearColor::White;   // 占位染色(区分怪种; 真贴图后置 White)

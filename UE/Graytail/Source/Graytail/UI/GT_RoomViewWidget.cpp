@@ -1213,14 +1213,14 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 				{
 					const FVector2D Dir = (PlayerPos - EnemyNormPos).GetSafeNormal();
 					EnemyNormPos += Dir * Arch.MoveSpeed * InDeltaTime;
-					EnemyNormPos.X = FMath::Clamp(EnemyNormPos.X, 0.08f, 0.92f);
-					EnemyNormPos.Y = FMath::Clamp(EnemyNormPos.Y, 0.08f, 0.92f);
+					EnemyNormPos.X = FMath::Clamp(EnemyNormPos.X, 0.12f, 0.88f);
+					EnemyNormPos.Y = FMath::Clamp(EnemyNormPos.Y, 0.12f, 0.88f);
 					Distance = FVector2D::Distance(PlayerPos, EnemyNormPos);
 				}
 			}
 			else if (!bMonsterFleeing && Arch.MovePattern == EGT_MonsterMovePattern::KeepDistance)
 			{
-				// 远程 kiting: 太近后撤、到理想距离停下打、太远(快怪)跟近。撞墙 clamp 背靠墙继续打。
+				// 远程走位: 太近后撤(权重 KiteStrength)叠加随机游走(WanderWeight); 只有 bChaseWhenFar 的怪才太远跟近。
 				const float Ideal = Arch.IdealDistance;
 				const float Buffer = 0.08f;
 				FVector2D KiteDir = FVector2D::ZeroVector;
@@ -1228,9 +1228,9 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 				{
 					KiteDir = (EnemyNormPos - PlayerPos).GetSafeNormal();   // 太近: 远离玩家
 				}
-				else if (Distance > Ideal + Buffer && Arch.MoveSpeed > 0.2f)
+				else if (Arch.bChaseWhenFar && Distance > Ideal + Buffer)
 				{
-					KiteDir = (PlayerPos - EnemyNormPos).GetSafeNormal();   // 太远且快怪(蝙蝠): 跟近保持射程
+					KiteDir = (PlayerPos - EnemyNormPos).GetSafeNormal();   // 太远跟近保持射程
 				}
 				// 随机游走: 每隔一段换一个随机方向叠加, 让怪到处乱窜、别太规律。
 				WanderTimer -= InDeltaTime;
@@ -1240,13 +1240,12 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 					const float WanderRad = FMath::FRandRange(-PI, PI);
 					WanderDir = FVector2D(FMath::Cos(WanderRad), FMath::Sin(WanderRad));
 				}
-				const FVector2D MoveDir = KiteDir + WanderDir * 0.5f;   // kiting 主导 + 随机游走
+				const FVector2D MoveDir = KiteDir * Arch.KiteStrength + WanderDir * Arch.WanderWeight;   // 方向混合, 速度恒为 MoveSpeed
 				if (!MoveDir.IsNearlyZero())
 				{
-					const float SpeedScale = KiteDir.IsNearlyZero() ? 0.55f : 1.0f;   // 停下时半速乱晃
-					EnemyNormPos += MoveDir.GetSafeNormal() * Arch.MoveSpeed * SpeedScale * InDeltaTime;
-					EnemyNormPos.X = FMath::Clamp(EnemyNormPos.X, 0.08f, 0.92f);
-					EnemyNormPos.Y = FMath::Clamp(EnemyNormPos.Y, 0.08f, 0.92f);
+					EnemyNormPos += MoveDir.GetSafeNormal() * Arch.MoveSpeed * InDeltaTime;
+					EnemyNormPos.X = FMath::Clamp(EnemyNormPos.X, 0.12f, 0.88f);
+					EnemyNormPos.Y = FMath::Clamp(EnemyNormPos.Y, 0.12f, 0.88f);
 					Distance = FVector2D::Distance(PlayerPos, EnemyNormPos);
 				}
 			}
@@ -1415,6 +1414,20 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 				if (bLaserFiring)
 				{
 					LaserActiveTimer -= InDeltaTime;
+					// 发射后光束朝玩家限速旋转(发射端始终锚在无人机 EnemyNormPos, 随其移动)。
+					if (Arch.LaserTurnRateDeg > 0.f)
+					{
+						const FVector2D ToPlayerDir = (PlayerPos - EnemyNormPos).GetSafeNormal();
+						if (!ToPlayerDir.IsNearlyZero())
+						{
+							const float CurAng = FMath::Atan2(LaserDir.Y, LaserDir.X);
+							const float TgtAng = FMath::Atan2(ToPlayerDir.Y, ToPlayerDir.X);
+							const float MaxStep = FMath::DegreesToRadians(Arch.LaserTurnRateDeg) * InDeltaTime;
+							const float Step = FMath::Clamp(FMath::FindDeltaAngleRadians(CurAng, TgtAng), -MaxStep, MaxStep);
+							const float NewAng = CurAng + Step;
+							LaserDir = FVector2D(FMath::Cos(NewAng), FMath::Sin(NewAng));
+						}
+					}
 					if (LaserBeamImage)
 					{
 						LaserBeamImage->SetVisibility(ESlateVisibility::HitTestInvisible);
@@ -1831,7 +1844,7 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 
 	// 越界 + 对准门 -> 尝试过门(对齐 Lua isAlignedWithDoor)。
 	// 刚被内核拒绝过(地图边界等)的冷却内不重试, 落到下方撞墙逻辑: 人物贴墙原地踏步, 不来回闪现。
-	const float EdgeMargin = GTPlayerSize * 0.5f / GTRoomSize;
+	const float EdgeMargin = 0.12f;   // 玩家活动边界(也是过门触发线): 缩进留在地板内, 别走到墙/背景外
 	CrossRetryCooldown = FMath::Max(0.f, CrossRetryCooldown - InDeltaTime);
 	if (CrossRetryCooldown <= 0.f)
 	{
@@ -1887,8 +1900,8 @@ void UGT_RoomViewWidget::TryCrossDoor(int32 DirX, int32 DirY)
 
 	CurrentCellX = Snapshot.PlayerX;
 	CurrentCellY = Snapshot.PlayerY;
-	// 从新房间对面的门走进来。
-	PlayerPos = FVector2D(0.5 - DirX * 0.42, 0.5 - DirY * 0.42);
+	// 从新房间对面的门走进来(落在活动边界 0.12 内, 避免入场瞬间被夹回)。
+	PlayerPos = FVector2D(0.5 - DirX * 0.36, 0.5 - DirY * 0.36);
 	MoveVelocity = FVector2D::ZeroVector;
 	RefreshRoomDecor();
 	UpdatePlayerImagePosition();

@@ -17,6 +17,15 @@ void UGT_SettingsSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	LoadConfig();
 	// 资源可能尚未导入(返回 null 则静默无 BGM, 不报错)。
 	MusicSound = LoadObject<USoundBase>(nullptr, GTMusicAssetPath);
+	// 预加载全部 SFX 进缓存: 消除首次播放的资源加载延迟。
+	static const TCHAR* SfxKeys[] = {
+		TEXT("sfx_attack"), TEXT("sfx_hit"), TEXT("sfx_death"), TEXT("sfx_hurt"),
+		TEXT("sfx_explosion"), TEXT("sfx_pickup"), TEXT("sfx_extract"), TEXT("sfx_heal"), TEXT("sfx_click")
+	};
+	for (const TCHAR* Key : SfxKeys)
+	{
+		SfxCache.Add(FName(Key), LoadObject<USoundBase>(nullptr, *FString::Printf(TEXT("/Game/Graytail/Audio/SFX/%s"), Key)));
+	}
 }
 
 void UGT_SettingsSubsystem::Deinitialize()

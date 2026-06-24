@@ -38,7 +38,10 @@ namespace GT_MonsterCatalog
 				A.HpBase = 12;                 // 脆
 				A.MoveSpeed = 0.28f;           // 快(slime 0.16)
 				A.PlayerAttackRange = 0.21f;   // 玩家砍它的射程
-				A.IdealDistance = 0.40f;       // kiting 理想距离(中)
+				A.IdealDistance = 0.34f;       // 只在很近时才轻微后撤
+				A.KiteStrength = 0.45f;        // 远离权重低 -> 主要随机游走, 易被追打(修"太难打")
+				A.WanderWeight = 1.1f;         // 随机游走主导
+				A.bChaseWhenFar = false;       // 不追回保持射程: 随机乱窜 + 小小远离
 				A.AimDuration = 0.5f;          // 散射前短瞄准
 				A.AttackInterval = 1.5f;
 				A.SpreadCount = 3;
@@ -66,6 +69,9 @@ namespace GT_MonsterCatalog
 				A.AttackInterval = 2.5f;
 				A.LaserDuration = 1.2f;        // 光束持续
 				A.LaserTickInterval = 0.3f;    // 站内扣血间隔
+				A.LaserTurnRateDeg = 70.f;     // 发射后光束朝玩家旋转(70°/s, 难一步躲开); 发射端跟随无人机移动
+				A.KiteStrength = 1.0f;         // 严格保持距离(慢肉怪靠激光压制)
+				A.WanderWeight = 0.5f;
 				A.SpritePath = TEXT("/Game/Graytail/Sprites/Monsters/drone_idle_0");
 				A.TintColor = FLinearColor::White;   // 真彩贴图自带蓝灰, 不再占位染色
 				return A;

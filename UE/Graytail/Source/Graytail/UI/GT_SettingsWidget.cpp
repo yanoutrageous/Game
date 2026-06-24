@@ -213,7 +213,7 @@ void UGT_SettingsWidget::BuildWidgetTree()
 
 	UBorder* Card = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 	Card->SetBrushColor(FLinearColor(0.f, 0.f, 0.f, 0.f));   // 透明: 让 CardEdge 的边框贴图透出
-	Card->SetPadding(FMargin(28.f, 24.f, 28.f, 24.f));        // 内缩避开金属框
+	Card->SetPadding(FMargin(28.f, 30.f, 28.f, 48.f));       // 内缩避开金属框; 底部加大避开内阴影压字
 	CardEdge->SetContent(Card);
 
 	UScrollBox* Scroll = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass());

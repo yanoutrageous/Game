@@ -88,7 +88,7 @@ void UGT_PauseMenuWidget::BuildWidgetTree()
 
 	UBorder* Card = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 	Card->SetBrushColor(FLinearColor(0.f, 0.f, 0.f, 0.f));   // 透明: 让 CardEdge 的边框贴图透出
-	Card->SetPadding(FMargin(30.f, 26.f, 30.f, 26.f));        // 内缩避开金属框
+	Card->SetPadding(FMargin(30.f, 32.f, 30.f, 50.f));       // 内缩避开金属框; 底部加大避开内阴影压字
 	CardEdge->SetContent(Card);
 
 	UVerticalBox* Column = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());

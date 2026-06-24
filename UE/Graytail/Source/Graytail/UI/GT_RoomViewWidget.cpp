@@ -1164,6 +1164,8 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 			// 行为原型(决定移动/攻击模式/数值; 见 GT_MonsterCatalog)。
 			const FGT_MonsterArchetype& Arch = GT_MonsterCatalog::GetArchetype(Snapshot.EnemyType);
 			CurrentPlayerAttackRange = Arch.PlayerAttackRange;
+			LastCombatCellX = CurrentCellX;   // 记开战格(战斗结束时比对: 同格=击杀播碎裂, 换格=逃跑不播)
+			LastCombatCellY = CurrentCellY;
 			// 怪物受击闪白: HP 下降帧触发亮白 tint(配合本体 scale punch), 随后衰减。
 			if (PrevEnemyHp >= 0 && Snapshot.EnemyHp < PrevEnemyHp) { EnemyHitFlashTimer = 0.13f; PlaySfx(FName(TEXT("sfx_hit"))); }
 			PrevEnemyHp = Snapshot.EnemyHp;
@@ -1663,7 +1665,9 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 		else
 		{
 			// 战斗刚结束(上一帧还在战斗)且玩家未死 → 怪物被击杀, 在其末位置触发碎裂演出。
-			if (bPrevInCombat && Snapshot.PlayerHp > 0 && !bPlayingDeathShatter)
+			// 战斗结束=击杀(仍在开战格)才播碎裂+死亡音; 逃跑(换了格)不播。
+			if (bPrevInCombat && Snapshot.PlayerHp > 0 && !bPlayingDeathShatter
+				&& CurrentCellX == LastCombatCellX && CurrentCellY == LastCombatCellY)
 			{
 				bPlayingDeathShatter = true;
 				PlaySfx(FName(TEXT("sfx_death")));

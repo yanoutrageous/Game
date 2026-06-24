@@ -225,6 +225,9 @@ private:
 	FString CurrentEnemyFrameKey;         // 当前已设贴图路径缓存(跳过逐帧重复 SetBrush)
 	EGT_MonsterType LastEnemyType = EGT_MonsterType::Slime;       // 逐帧记录当前怪种(死亡碎裂选图用)
 	EGT_MonsterType DeathShatterType = EGT_MonsterType::Slime;    // 触发碎裂时定格的怪种
+	// 逐帧记录开战所在格: 战斗结束时若仍在此格=击杀(播碎裂); 换了格=逃跑(不播)。
+	int32 LastCombatCellX = -1;
+	int32 LastCombatCellY = -1;
 
 	// 怪物死亡碎裂演出(独立于战斗状态机): 怪物被击杀时在其末位置叠播 5 帧。
 	bool bPlayingDeathShatter = false;

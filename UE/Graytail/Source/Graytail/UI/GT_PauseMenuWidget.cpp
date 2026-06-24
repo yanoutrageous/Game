@@ -177,7 +177,7 @@ void UGT_PauseMenuWidget::BuildCheatBox(UVerticalBox* Column)
 	// 索引约定: 0=无敌切换; 1..7=进房型; 8=+金币; 9=给止血贴; 10=满血; 11=残血; 12=蝙蝠房; 13=无人机房。
 	CheatGodText = AddCheatButton(CheatBox, TEXT("无敌: 关"), 0, GTPauseWarn);
 	AddCheatButton(CheatBox, TEXT("进宝箱房"), 1, GTPauseBtnText);
-	AddCheatButton(CheatBox, TEXT("进怪物房(随机)"), 2, GTPauseBtnText);
+	AddCheatButton(CheatBox, TEXT("进史莱姆房"), 2, GTPauseBtnText);
 	AddCheatButton(CheatBox, TEXT("进蝙蝠房"), 12, GTPauseBtnText);
 	AddCheatButton(CheatBox, TEXT("进无人机房"), 13, GTPauseBtnText);
 	AddCheatButton(CheatBox, TEXT("进旅商房"), 3, GTPauseBtnText);
@@ -306,11 +306,12 @@ void UGT_PauseMenuWidget::HandleCheatIndex(int32 Index)
 	}
 	FGT_DebugRunSnapshot Snapshot;
 	bool bCloseAfter = false;
+	bool bCombatGotoFailed = false;   // 进史莱姆/蝙蝠/无人机房失败(都打过了)-> 弹提示
 	switch (Index)
 	{
 	case 0:  Debug->DebugSetGodMode(!ReadGodMode(), Snapshot); RefreshGodLabel(); break;
 	case 1:  Debug->DebugGotoRoomType(TEXT("chest"),  Snapshot); bCloseAfter = true; break;
-	case 2:  Debug->DebugGotoRoomType(TEXT("combat"), Snapshot); bCloseAfter = true; break;
+	case 2:  bCombatGotoFailed = !Debug->DebugGotoRoomType(TEXT("slime"), Snapshot); bCloseAfter = true; break;
 	case 3:  Debug->DebugGotoRoomType(TEXT("trader"), Snapshot); bCloseAfter = true; break;
 	case 4:  Debug->DebugGotoRoomType(TEXT("dice"),   Snapshot); bCloseAfter = true; break;
 	case 5:  Debug->DebugGotoRoomType(TEXT("altar"),  Snapshot); bCloseAfter = true; break;
@@ -320,11 +321,15 @@ void UGT_PauseMenuWidget::HandleCheatIndex(int32 Index)
 	case 9:  Debug->DebugGiveItem(FName(TEXT("emergency_bandage")), 1, Snapshot); break;
 	case 10: Debug->DebugSetHp(9999, Snapshot); break;
 	case 11: Debug->DebugSetHp(1, Snapshot); break;
-	case 12: Debug->DebugGotoRoomType(TEXT("bat"),   Snapshot); bCloseAfter = true; break;
-	case 13: Debug->DebugGotoRoomType(TEXT("drone"), Snapshot); bCloseAfter = true; break;
+	case 12: bCombatGotoFailed = !Debug->DebugGotoRoomType(TEXT("bat"),   Snapshot); bCloseAfter = true; break;
+	case 13: bCombatGotoFailed = !Debug->DebugGotoRoomType(TEXT("drone"), Snapshot); bCloseAfter = true; break;
 	default: return;
 	}
 	OnCheatApplied.ExecuteIfBound();   // 请 HUD 整体刷新(金币/血量/背包/房间)
+	if (bCombatGotoFailed)
+	{
+		OnToast.ExecuteIfBound(TEXT("没有可传送的怪物房了(都打过了)"));   // 关菜单后在游戏里显示
+	}
 	if (bCloseAfter)
 	{
 		OnResume.ExecuteIfBound();      // 进房型后关菜单, 直接看到房间

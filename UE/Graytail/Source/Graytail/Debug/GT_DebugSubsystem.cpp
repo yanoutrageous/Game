@@ -407,6 +407,7 @@ bool UGT_DebugSubsystem::DebugGotoRoomType(const FString& TypeArg, FGT_DebugRunS
 	bool bForceMonster = false;
 	if (T == TEXT("chest") || T == TEXT("宝箱")) { WantBase = EGT_RoomBaseType::Chest; }
 	else if (T == TEXT("combat") || T == TEXT("monster") || T == TEXT("怪物") || T == TEXT("怪")) { WantBase = EGT_RoomBaseType::Combat; }
+	else if (T == TEXT("slime") || T == TEXT("史莱姆")) { WantBase = EGT_RoomBaseType::Combat; ForcedMonster = EGT_MonsterType::Slime; bForceMonster = true; }
 	else if (T == TEXT("bat") || T == TEXT("蝙蝠")) { WantBase = EGT_RoomBaseType::Combat; ForcedMonster = EGT_MonsterType::Bat; bForceMonster = true; }
 	else if (T == TEXT("drone") || T == TEXT("无人机") || T == TEXT("机器人")) { WantBase = EGT_RoomBaseType::Combat; ForcedMonster = EGT_MonsterType::Drone; bForceMonster = true; }
 	else if (T == TEXT("exit") || T == TEXT("撤离") || T == TEXT("出口")) { bWantExit = true; }
@@ -452,6 +453,11 @@ bool UGT_DebugSubsystem::DebugGotoRoomType(const FString& TypeArg, FGT_DebugRunS
 			{
 				bMatch = (WantBase != EGT_RoomBaseType::Event || WantEvent == EGT_EventKind::None
 					|| GT_EventRules::GetEventKindAt(Seed, X, Y) == WantEvent);
+				// 作弊传送只去未清的战斗房: 已打过的跳过(全清了由上层弹提示)。
+				if (bMatch && WantBase == EGT_RoomBaseType::Combat && RunContext->IsCombatRoomDefeated(X, Y))
+				{
+					bMatch = false;
+				}
 			}
 			if (!bMatch)
 			{
@@ -504,13 +510,9 @@ bool UGT_DebugSubsystem::DebugGotoRoomType(const FString& TypeArg, FGT_DebugRunS
 		return DebugTeleport(BestX, BestY, OutSnapshot);
 	}
 
-	// gt.Goto bat/drone: 走入战斗房前设强制怪物类型(战斗解析 374 用; 普通 combat bForceMonster=false 即清除残留)。
+	// gt.Goto slime/bat/drone: 走入战斗房前设强制怪物类型(战斗解析用; 普通 combat bForceMonster=false 清残留)。
+	// 目标房已保证未清(匹配时跳过了已打的), 不再复活已清房。
 	RunContext->SetDebugForcedMonsterType(ForcedMonster, bForceMonster);
-	// 修"传送到已清房=空房": 战斗房传送时清掉目标格的已消灭标记, 让它重新开战。
-	if (WantBase == EGT_RoomBaseType::Combat)
-	{
-		RunContext->DebugClearDefeatedCombatRoom(BestX, BestY);
-	}
 	FGT_DebugRunSnapshot Discard;
 	DebugTeleport(AdjX, AdjY, Discard);
 	const bool bMoved = DebugMoveTo(BestX, BestY, OutSnapshot);

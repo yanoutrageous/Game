@@ -572,6 +572,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		PauseMenu->OnQuitGame.BindUObject(this, &UGT_GameHudWidget::HandlePauseQuitGame);
 		PauseMenu->OnOpenCheatPanel.BindUObject(this, &UGT_GameHudWidget::HandleOpenCheatPanel);
 		PauseMenu->OnCheatApplied.BindUObject(this, &UGT_GameHudWidget::RefreshAll);
+		PauseMenu->OnToast.BindWeakLambda(this, [this](const FString& Msg) { ShowToast(Msg); });
 		PauseMenu->SetVisibility(ESlateVisibility::Collapsed);
 		if (UOverlaySlot* PauseSlot = Screen->AddChildToOverlay(PauseMenu))
 		{

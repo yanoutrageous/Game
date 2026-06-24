@@ -35,6 +35,7 @@ public:
 	TDelegate<void()> OnQuitGame;        // 退出游戏
 	TDelegate<void()> OnOpenCheatPanel;  // (预留)由 HUD 处理的作弊入口; 当前作弊面板内置于本控件
 	TDelegate<void()> OnCheatApplied;    // 作弊动作后请 HUD 整体刷新(金币/血量/背包/房间)
+	TDelegate<void(const FString&)> OnToast;   // 作弊提示(如"没有可传送的怪物房了") -> HUD 居中 toast
 
 private:
 	void BuildWidgetTree();

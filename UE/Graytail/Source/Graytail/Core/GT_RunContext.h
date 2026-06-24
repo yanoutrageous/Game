@@ -238,6 +238,8 @@ public:
 	void SetDebugForcedMonsterType(EGT_MonsterType Type, bool bEnable);
 	// 调试: 清掉某战斗房的"已消灭"标记, 让作弊传送能重新开战(修"传送到已清房=空房")。
 	void DebugClearDefeatedCombatRoom(int32 X, int32 Y);
+	// 调试: 该战斗房是否已打过(作弊传送只去未清的房, 全清了弹提示)。
+	bool IsCombatRoomDefeated(int32 X, int32 Y) const { return DefeatedCombatRooms.Contains(FIntPoint(X, Y)); }
 
 	// S6 回收磁石: 进宝箱房额外掉 1 件低价值回收物(每格一次)。内部判激活/宝箱房/去重; 返回是否真发了。
 	bool TryGrantChestMagnetLoot(int32 X, int32 Y);

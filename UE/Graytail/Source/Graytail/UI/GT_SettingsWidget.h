@@ -4,15 +4,17 @@
 #include "Blueprint/UserWidget.h"
 #include "GT_SettingsWidget.generated.h"
 
-class UBorder;
 class UButton;
 class UCanvasPanel;
+class USlider;
 class UTextBlock;
+class UVerticalBox;
 
 class UGT_DebugSubsystem;
+class UGT_SettingsSubsystem;
 
-// 标题界面「设置」面板(纯 C++ UMG)。当前只有一个「作弊模式」总开关,
-// 开启后局内 ESC 暂停菜单才显示「作弊面板」入口。后续真实设置(画面/音量)可往这里加。
+// 标题界面「设置」面板(纯 C++ UMG): 显示(模式/分辨率/垂同, 走 UGameUserSettings)
+// + 音频(BGM 主音量, 走 UGT_SettingsSubsystem) + 作弊模式开关。
 UCLASS()
 class GRAYTAIL_API UGT_SettingsWidget : public UUserWidget
 {
@@ -31,12 +33,35 @@ public:
 
 private:
 	void BuildWidgetTree();
-	void RefreshCheatLabel();
 	UGT_DebugSubsystem* GetDebugSubsystem() const;
+	UGT_SettingsSubsystem* GetSettingsSubsystem() const;
 
+	void RefreshAll();
+	void RefreshCheatLabel();
+	void RefreshDisplayLabels();
+	void RefreshMusicLabel();
+	void ApplyDisplaySettings();
+
+	UFUNCTION() void HandleWindowModePrev();
+	UFUNCTION() void HandleWindowModeNext();
+	UFUNCTION() void HandleResolutionPrev();
+	UFUNCTION() void HandleResolutionNext();
+	UFUNCTION() void HandleVSyncToggle();
+	UFUNCTION() void HandleMusicVolumeChanged(float Value);
 	UFUNCTION() void HandleToggleCheat();
 	UFUNCTION() void HandleBack();
 
 	UPROPERTY(Transient) UCanvasPanel* Root = nullptr;
+	UPROPERTY(Transient) UTextBlock* WindowModeText = nullptr;
+	UPROPERTY(Transient) UTextBlock* ResolutionText = nullptr;
+	UPROPERTY(Transient) UTextBlock* VSyncText = nullptr;
+	UPROPERTY(Transient) USlider* MusicSlider = nullptr;
+	UPROPERTY(Transient) UTextBlock* MusicPercentText = nullptr;
 	UPROPERTY(Transient) UTextBlock* CheatToggleText = nullptr;
+
+	// 显示设置的当前选择(Open 时从 UGameUserSettings 读入)。
+	int32 WindowModeIndex = 0;   // 0 全屏 / 1 无边框窗口 / 2 窗口
+	int32 ResolutionIndex = 0;
+	bool bVSyncOn = true;
+	TArray<FIntPoint> Resolutions;
 };

@@ -1,5 +1,6 @@
 #include "UI/GT_SettingsWidget.h"
 
+#include "Core/GT_SettingsSubsystem.h"
 #include "Debug/GT_DebugSubsystem.h"
 #include "UI/GT_UIStyle.h"
 #include "Blueprint/WidgetTree.h"
@@ -7,11 +8,17 @@
 #include "Components/Button.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
+#include "Components/HorizontalBox.h"
+#include "Components/HorizontalBoxSlot.h"
+#include "Components/ScrollBox.h"
 #include "Components/SizeBox.h"
+#include "Components/Slider.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
+#include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
+#include "GameFramework/GameUserSettings.h"
 
 namespace
 {
@@ -19,17 +26,108 @@ namespace
 	const FLinearColor GTSetCardBg(FColor(26, 30, 40, 250));
 	const FLinearColor GTSetCardEdge(FColor(120, 150, 200, 255));
 	const FLinearColor GTSetTitle(FColor(255, 226, 150));
+	const FLinearColor GTSetHeader(FColor(150, 185, 235));
 	const FLinearColor GTSetText(FColor(222, 228, 240));
+	const FLinearColor GTSetValue(FColor(255, 226, 150));
 	const FLinearColor GTSetOn(FColor(150, 225, 160));
 	const FLinearColor GTSetOff(FColor(170, 178, 190));
 
-	constexpr float GTSetCardWidth = 380.f;
+	constexpr float GTSetCardWidth = 430.f;
+
+	const TCHAR* GTWindowModeNames[] = { TEXT("全屏"), TEXT("无边框窗口"), TEXT("窗口") };
+
+	// ── 行构件(纯构造期助手, 取 WidgetTree 直接建) ──
+	UButton* MakeStepButton(UWidgetTree* Tree, const FString& Glyph)
+	{
+		UButton* Button = Tree->ConstructWidget<UButton>(UButton::StaticClass());
+		Button->SetStyle(GT_UIStyle::DarkButton());
+		UTextBlock* Text = Tree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		Text->SetFont(GT_UIStyle::Font(15));
+		Text->SetColorAndOpacity(FSlateColor(GTSetText));
+		Text->SetJustification(ETextJustify::Center);
+		Text->SetText(FText::FromString(Glyph));
+		Button->AddChild(Text);
+		return Button;
+	}
+
+	// [标签 .... ◀ 值 ▶] 一行; 返回 prev/next 按钮与值文本供调用方绑定/刷新。
+	void AddCyclerRow(UWidgetTree* Tree, UVerticalBox* Column, const FString& Label,
+		UButton*& OutPrev, UTextBlock*& OutValue, UButton*& OutNext)
+	{
+		UHorizontalBox* Row = Tree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+
+		UTextBlock* LabelText = Tree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		LabelText->SetFont(GT_UIStyle::Font(14));
+		LabelText->SetColorAndOpacity(FSlateColor(GTSetText));
+		LabelText->SetText(FText::FromString(Label));
+		if (UHorizontalBoxSlot* LS = Row->AddChildToHorizontalBox(LabelText))
+		{
+			LS->SetVerticalAlignment(VAlign_Center);
+			LS->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+		}
+
+		OutPrev = MakeStepButton(Tree, TEXT("<"));
+		if (UHorizontalBoxSlot* PS = Row->AddChildToHorizontalBox(OutPrev)) { PS->SetVerticalAlignment(VAlign_Center); }
+
+		OutValue = Tree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		OutValue->SetFont(GT_UIStyle::Font(14));
+		OutValue->SetColorAndOpacity(FSlateColor(GTSetValue));
+		OutValue->SetJustification(ETextJustify::Center);
+		USizeBox* ValBox = Tree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+		ValBox->SetWidthOverride(130.f);
+		ValBox->SetContent(OutValue);
+		if (UHorizontalBoxSlot* VS = Row->AddChildToHorizontalBox(ValBox)) { VS->SetVerticalAlignment(VAlign_Center); }
+
+		OutNext = MakeStepButton(Tree, TEXT(">"));
+		if (UHorizontalBoxSlot* NS = Row->AddChildToHorizontalBox(OutNext)) { NS->SetVerticalAlignment(VAlign_Center); }
+
+		if (UVerticalBoxSlot* RowSlot = Column->AddChildToVerticalBox(Row))
+		{
+			RowSlot->SetPadding(FMargin(0.f, 4.f));
+			RowSlot->SetHorizontalAlignment(HAlign_Fill);
+		}
+	}
+
+	// 整宽状态按钮(文字反映开关状态), 返回按钮 + 文本。
+	UButton* AddStateButton(UWidgetTree* Tree, UVerticalBox* Column, UTextBlock*& OutText)
+	{
+		UButton* Button = Tree->ConstructWidget<UButton>(UButton::StaticClass());
+		Button->SetStyle(GT_UIStyle::DarkButton());
+		OutText = Tree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		OutText->SetFont(GT_UIStyle::Font(15));
+		OutText->SetJustification(ETextJustify::Center);
+		Button->AddChild(OutText);
+		if (UVerticalBoxSlot* Slot = Column->AddChildToVerticalBox(Button))
+		{
+			Slot->SetPadding(FMargin(0.f, 4.f));
+			Slot->SetHorizontalAlignment(HAlign_Fill);
+		}
+		return Button;
+	}
+
+	void AddSectionHeader(UWidgetTree* Tree, UVerticalBox* Column, const FString& Title)
+	{
+		UTextBlock* Header = Tree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		Header->SetFont(GT_UIStyle::Font(13));
+		Header->SetColorAndOpacity(FSlateColor(GTSetHeader));
+		Header->SetText(FText::FromString(Title));
+		if (UVerticalBoxSlot* Slot = Column->AddChildToVerticalBox(Header))
+		{
+			Slot->SetPadding(FMargin(0.f, 12.f, 0.f, 2.f));
+		}
+	}
 }
 
 UGT_DebugSubsystem* UGT_SettingsWidget::GetDebugSubsystem() const
 {
 	const UGameInstance* GameInstance = GetGameInstance();
 	return GameInstance ? GameInstance->GetSubsystem<UGT_DebugSubsystem>() : nullptr;
+}
+
+UGT_SettingsSubsystem* UGT_SettingsWidget::GetSettingsSubsystem() const
+{
+	const UGameInstance* GameInstance = GetGameInstance();
+	return GameInstance ? GameInstance->GetSubsystem<UGT_SettingsSubsystem>() : nullptr;
 }
 
 TSharedRef<SWidget> UGT_SettingsWidget::RebuildWidget()
@@ -43,6 +141,8 @@ TSharedRef<SWidget> UGT_SettingsWidget::RebuildWidget()
 
 void UGT_SettingsWidget::BuildWidgetTree()
 {
+	Resolutions = { FIntPoint(1280, 720), FIntPoint(1366, 768), FIntPoint(1600, 900), FIntPoint(1920, 1080), FIntPoint(2560, 1440) };
+
 	Root = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass());
 	WidgetTree->RootWidget = Root;
 
@@ -56,6 +156,7 @@ void UGT_SettingsWidget::BuildWidgetTree()
 
 	USizeBox* CardSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
 	CardSize->SetWidthOverride(GTSetCardWidth);
+	CardSize->SetMaxDesiredHeight(620.f);
 	if (UCanvasPanelSlot* CardSlot = Cast<UCanvasPanelSlot>(Root->AddChild(CardSize)))
 	{
 		CardSlot->SetAnchors(FAnchors(0.5f, 0.5f));
@@ -70,11 +171,14 @@ void UGT_SettingsWidget::BuildWidgetTree()
 
 	UBorder* Card = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 	Card->SetBrushColor(GTSetCardBg);
-	Card->SetPadding(FMargin(24.f, 20.f, 24.f, 20.f));
+	Card->SetPadding(FMargin(24.f, 18.f, 24.f, 18.f));
 	CardEdge->SetContent(Card);
 
+	UScrollBox* Scroll = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass());
+	Card->SetContent(Scroll);
+
 	UVerticalBox* Column = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
-	Card->SetContent(Column);
+	Scroll->AddChild(Column);
 
 	UTextBlock* TitleText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	TitleText->SetFont(GT_UIStyle::Font(20));
@@ -83,33 +187,85 @@ void UGT_SettingsWidget::BuildWidgetTree()
 	TitleText->SetText(FText::FromString(TEXT("设置")));
 	if (UVerticalBoxSlot* TitleSlot = Column->AddChildToVerticalBox(TitleText))
 	{
-		TitleSlot->SetPadding(FMargin(0.f, 0.f, 0.f, 16.f));
+		TitleSlot->SetPadding(FMargin(0.f, 0.f, 0.f, 6.f));
 		TitleSlot->SetHorizontalAlignment(HAlign_Fill);
 	}
 
-	// 作弊模式开关(单按钮, 文字反映当前状态)。
-	UButton* CheatButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
-	CheatButton->SetStyle(GT_UIStyle::DarkButton());
-	CheatToggleText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	CheatToggleText->SetFont(GT_UIStyle::Font(16));
-	CheatToggleText->SetJustification(ETextJustify::Center);
-	CheatButton->AddChild(CheatToggleText);
-	CheatButton->OnClicked.AddDynamic(this, &UGT_SettingsWidget::HandleToggleCheat);
-	if (UVerticalBoxSlot* CheatSlot = Column->AddChildToVerticalBox(CheatButton))
+	// ── 显示 ──
+	AddSectionHeader(WidgetTree, Column, TEXT("显示"));
 	{
-		CheatSlot->SetPadding(FMargin(0.f, 5.f, 0.f, 5.f));
-		CheatSlot->SetHorizontalAlignment(HAlign_Fill);
+		UButton* Prev = nullptr; UButton* Next = nullptr;
+		AddCyclerRow(WidgetTree, Column, TEXT("显示模式"), Prev, WindowModeText, Next);
+		Prev->OnClicked.AddDynamic(this, &UGT_SettingsWidget::HandleWindowModePrev);
+		Next->OnClicked.AddDynamic(this, &UGT_SettingsWidget::HandleWindowModeNext);
+	}
+	{
+		UButton* Prev = nullptr; UButton* Next = nullptr;
+		AddCyclerRow(WidgetTree, Column, TEXT("分辨率"), Prev, ResolutionText, Next);
+		Prev->OnClicked.AddDynamic(this, &UGT_SettingsWidget::HandleResolutionPrev);
+		Next->OnClicked.AddDynamic(this, &UGT_SettingsWidget::HandleResolutionNext);
+	}
+	{
+		UButton* VSyncButton = AddStateButton(WidgetTree, Column, VSyncText);
+		VSyncButton->OnClicked.AddDynamic(this, &UGT_SettingsWidget::HandleVSyncToggle);
 	}
 
+	// ── 音频 ──
+	AddSectionHeader(WidgetTree, Column, TEXT("音频"));
+	{
+		UHorizontalBox* MusicRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+
+		UTextBlock* MusicLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		MusicLabel->SetFont(GT_UIStyle::Font(14));
+		MusicLabel->SetColorAndOpacity(FSlateColor(GTSetText));
+		MusicLabel->SetText(FText::FromString(TEXT("主音量")));
+		if (UHorizontalBoxSlot* LS = MusicRow->AddChildToHorizontalBox(MusicLabel)) { LS->SetVerticalAlignment(VAlign_Center); }
+
+		MusicSlider = WidgetTree->ConstructWidget<USlider>(USlider::StaticClass());
+		MusicSlider->SetMinValue(0.f);
+		MusicSlider->SetMaxValue(1.f);
+		MusicSlider->SetStepSize(0.05f);
+		MusicSlider->SetSliderBarColor(FLinearColor(0.30f, 0.34f, 0.42f));
+		MusicSlider->SetSliderHandleColor(FLinearColor(0.55f, 0.85f, 1.0f));
+		MusicSlider->OnValueChanged.AddDynamic(this, &UGT_SettingsWidget::HandleMusicVolumeChanged);
+		if (UHorizontalBoxSlot* SS = MusicRow->AddChildToHorizontalBox(MusicSlider))
+		{
+			SS->SetVerticalAlignment(VAlign_Center);
+			SS->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+			SS->SetPadding(FMargin(10.f, 0.f));
+		}
+
+		MusicPercentText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		MusicPercentText->SetFont(GT_UIStyle::Font(14));
+		MusicPercentText->SetColorAndOpacity(FSlateColor(GTSetValue));
+		MusicPercentText->SetJustification(ETextJustify::Right);
+		USizeBox* PctBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+		PctBox->SetWidthOverride(52.f);
+		PctBox->SetContent(MusicPercentText);
+		if (UHorizontalBoxSlot* PS = MusicRow->AddChildToHorizontalBox(PctBox)) { PS->SetVerticalAlignment(VAlign_Center); }
+
+		if (UVerticalBoxSlot* MusicSlot = Column->AddChildToVerticalBox(MusicRow))
+		{
+			MusicSlot->SetPadding(FMargin(0.f, 6.f));
+			MusicSlot->SetHorizontalAlignment(HAlign_Fill);
+		}
+	}
+
+	// ── 其他(作弊) ──
+	AddSectionHeader(WidgetTree, Column, TEXT("其他"));
+	{
+		UButton* CheatButton = AddStateButton(WidgetTree, Column, CheatToggleText);
+		CheatButton->OnClicked.AddDynamic(this, &UGT_SettingsWidget::HandleToggleCheat);
+	}
 	UTextBlock* HintText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	HintText->SetFont(GT_UIStyle::Font(11));
 	HintText->SetColorAndOpacity(FSlateColor(GTSetOff));
 	HintText->SetJustification(ETextJustify::Center);
 	HintText->SetAutoWrapText(true);
-	HintText->SetText(FText::FromString(TEXT("开启后, 局内按 ESC / = 暂停菜单里会出现「作弊面板」。")));
+	HintText->SetText(FText::FromString(TEXT("作弊开启后, 局内按 ESC / = 暂停菜单里会出现「作弊面板」。")));
 	if (UVerticalBoxSlot* HintSlot = Column->AddChildToVerticalBox(HintText))
 	{
-		HintSlot->SetPadding(FMargin(0.f, 2.f, 0.f, 12.f));
+		HintSlot->SetPadding(FMargin(0.f, 2.f, 0.f, 10.f));
 	}
 
 	UButton* BackButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
@@ -123,11 +279,48 @@ void UGT_SettingsWidget::BuildWidgetTree()
 	BackButton->OnClicked.AddDynamic(this, &UGT_SettingsWidget::HandleBack);
 	if (UVerticalBoxSlot* BackSlot = Column->AddChildToVerticalBox(BackButton))
 	{
-		BackSlot->SetPadding(FMargin(0.f, 5.f, 0.f, 0.f));
+		BackSlot->SetPadding(FMargin(0.f, 8.f, 0.f, 0.f));
 		BackSlot->SetHorizontalAlignment(HAlign_Fill);
 	}
 
 	SetVisibility(ESlateVisibility::Collapsed);
+}
+
+void UGT_SettingsWidget::RefreshAll()
+{
+	RefreshDisplayLabels();
+	RefreshMusicLabel();
+	RefreshCheatLabel();
+}
+
+void UGT_SettingsWidget::RefreshDisplayLabels()
+{
+	if (WindowModeText)
+	{
+		const int32 Idx = FMath::Clamp(WindowModeIndex, 0, 2);
+		WindowModeText->SetText(FText::FromString(GTWindowModeNames[Idx]));
+	}
+	if (ResolutionText && Resolutions.IsValidIndex(ResolutionIndex))
+	{
+		const FIntPoint R = Resolutions[ResolutionIndex];
+		ResolutionText->SetText(FText::FromString(FString::Printf(TEXT("%d×%d"), R.X, R.Y)));
+	}
+	if (VSyncText)
+	{
+		VSyncText->SetText(FText::FromString(bVSyncOn ? TEXT("垂直同步: 开") : TEXT("垂直同步: 关")));
+		VSyncText->SetColorAndOpacity(FSlateColor(bVSyncOn ? GTSetOn : GTSetOff));
+	}
+}
+
+void UGT_SettingsWidget::RefreshMusicLabel()
+{
+	if (!MusicPercentText)
+	{
+		return;
+	}
+	const UGT_SettingsSubsystem* Settings = GetSettingsSubsystem();
+	const float Vol = Settings ? Settings->GetMusicVolume() : 0.5f;
+	MusicPercentText->SetText(FText::FromString(FString::Printf(TEXT("%d%%"), FMath::RoundToInt(Vol * 100.f))));
 }
 
 void UGT_SettingsWidget::RefreshCheatLabel()
@@ -142,13 +335,62 @@ void UGT_SettingsWidget::RefreshCheatLabel()
 	CheatToggleText->SetColorAndOpacity(FSlateColor(bOn ? GTSetOn : GTSetOff));
 }
 
+void UGT_SettingsWidget::ApplyDisplaySettings()
+{
+	UGameUserSettings* GS = GEngine ? GEngine->GetGameUserSettings() : nullptr;
+	if (!GS)
+	{
+		return;
+	}
+	EWindowMode::Type Mode = EWindowMode::Fullscreen;
+	switch (WindowModeIndex)
+	{
+	case 1: Mode = EWindowMode::WindowedFullscreen; break;
+	case 2: Mode = EWindowMode::Windowed; break;
+	default: Mode = EWindowMode::Fullscreen; break;
+	}
+	GS->SetFullscreenMode(Mode);
+	if (Resolutions.IsValidIndex(ResolutionIndex))
+	{
+		GS->SetScreenResolution(Resolutions[ResolutionIndex]);
+	}
+	GS->SetVSyncEnabled(bVSyncOn);
+	GS->ApplyResolutionSettings(false);
+	GS->SaveSettings();
+}
+
 void UGT_SettingsWidget::Open()
 {
 	if (!Root)
 	{
 		return;
 	}
-	RefreshCheatLabel();
+	// 读当前显示设置。
+	if (UGameUserSettings* GS = GEngine ? GEngine->GetGameUserSettings() : nullptr)
+	{
+		switch (GS->GetFullscreenMode())
+		{
+		case EWindowMode::WindowedFullscreen: WindowModeIndex = 1; break;
+		case EWindowMode::Windowed: WindowModeIndex = 2; break;
+		default: WindowModeIndex = 0; break;
+		}
+		bVSyncOn = GS->IsVSyncEnabled();
+		ResolutionIndex = Resolutions.IndexOfByKey(GS->GetScreenResolution());
+		if (ResolutionIndex == INDEX_NONE)
+		{
+			ResolutionIndex = Resolutions.IndexOfByKey(FIntPoint(1920, 1080));
+			if (ResolutionIndex == INDEX_NONE) { ResolutionIndex = Resolutions.Num() / 2; }
+		}
+	}
+	// 读当前音量到滑条。
+	if (MusicSlider)
+	{
+		if (const UGT_SettingsSubsystem* Settings = GetSettingsSubsystem())
+		{
+			MusicSlider->SetValue(Settings->GetMusicVolume());
+		}
+	}
+	RefreshAll();
 	SetVisibility(ESlateVisibility::Visible);
 	SetKeyboardFocus();
 }
@@ -161,6 +403,52 @@ void UGT_SettingsWidget::Close()
 bool UGT_SettingsWidget::IsOpen() const
 {
 	return GetVisibility() != ESlateVisibility::Collapsed;
+}
+
+void UGT_SettingsWidget::HandleWindowModePrev()
+{
+	WindowModeIndex = (WindowModeIndex + 2) % 3;
+	ApplyDisplaySettings();
+	RefreshDisplayLabels();
+}
+
+void UGT_SettingsWidget::HandleWindowModeNext()
+{
+	WindowModeIndex = (WindowModeIndex + 1) % 3;
+	ApplyDisplaySettings();
+	RefreshDisplayLabels();
+}
+
+void UGT_SettingsWidget::HandleResolutionPrev()
+{
+	if (Resolutions.Num() == 0) { return; }
+	ResolutionIndex = (ResolutionIndex + Resolutions.Num() - 1) % Resolutions.Num();
+	ApplyDisplaySettings();
+	RefreshDisplayLabels();
+}
+
+void UGT_SettingsWidget::HandleResolutionNext()
+{
+	if (Resolutions.Num() == 0) { return; }
+	ResolutionIndex = (ResolutionIndex + 1) % Resolutions.Num();
+	ApplyDisplaySettings();
+	RefreshDisplayLabels();
+}
+
+void UGT_SettingsWidget::HandleVSyncToggle()
+{
+	bVSyncOn = !bVSyncOn;
+	ApplyDisplaySettings();
+	RefreshDisplayLabels();
+}
+
+void UGT_SettingsWidget::HandleMusicVolumeChanged(float Value)
+{
+	if (UGT_SettingsSubsystem* Settings = GetSettingsSubsystem())
+	{
+		Settings->SetMusicVolume(Value);
+	}
+	RefreshMusicLabel();
 }
 
 void UGT_SettingsWidget::HandleToggleCheat()

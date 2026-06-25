@@ -60,6 +60,7 @@ struct FGT_MonsterArchetype
 	float LaserDuration = 0.f;        // RangedLaser 光束持续时长
 	float LaserTickInterval = 0.f;    // RangedLaser 站内扣血间隔
 	float LaserTurnRateDeg = 0.f;     // RangedLaser 发射后光束每秒朝玩家旋转的最大角度(0=锁死不追)
+	float AimTurnRateDeg = 0.f;       // RangedLaser 蓄力期红线每秒朝玩家旋转的最大角度(0=蓄力开始即锁死方向, 红线固定预警, 移开线即脱靶)
 
 	// KeepDistance 走位权重(让不同远程怪手感不同)。
 	float KiteStrength = 1.0f;        // kiting 方向权重(低=更随机/只轻微远离, 易被追打)

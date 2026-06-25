@@ -1389,13 +1389,25 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 				if (!bLaserFiring && EnemyAimTimer <= 0.f)
 				{
 					if (EnemyAttackCooldownTimer > 0.f) { EnemyAttackCooldownTimer -= InDeltaTime; }
-					else { EnemyAimTimer = Arch.AimDuration; EnemyWarningLine->SetVisibility(ESlateVisibility::HitTestInvisible); }
+					else { EnemyAimTimer = Arch.AimDuration; AimDirection = (PlayerPos - EnemyNormPos).GetSafeNormal(); EnemyWarningLine->SetVisibility(ESlateVisibility::HitTestInvisible); }
 				}
 
 				if (EnemyAimTimer > 0.f && !bLaserFiring)
 				{
 					EnemyAimTimer -= InDeltaTime;
-					AimDirection = (PlayerPos - EnemyNormPos).GetSafeNormal();   // 蓄力跟随玩家
+					// 蓄力期: AimTurnRateDeg>0 限速跟随; =0 保持蓄力开始锁定的方向(固定预警红线, 蓄力期移开即脱靶)。
+					if (Arch.AimTurnRateDeg > 0.f)
+					{
+						const FVector2D ToPlayerAim = (PlayerPos - EnemyNormPos).GetSafeNormal();
+						if (!ToPlayerAim.IsNearlyZero() && !AimDirection.IsNearlyZero())
+						{
+							const float CurAimAng = FMath::Atan2(AimDirection.Y, AimDirection.X);
+							const float TgtAimAng = FMath::Atan2(ToPlayerAim.Y, ToPlayerAim.X);
+							const float MaxAimStep = FMath::DegreesToRadians(Arch.AimTurnRateDeg) * InDeltaTime;
+							const float AimStep = FMath::Clamp(FMath::FindDeltaAngleRadians(CurAimAng, TgtAimAng), -MaxAimStep, MaxAimStep);
+							AimDirection = FVector2D(FMath::Cos(CurAimAng + AimStep), FMath::Sin(CurAimAng + AimStep));
+						}
+					}
 					if (UCanvasPanelSlot* LineSlot = Cast<UCanvasPanelSlot>(EnemyWarningLine->Slot))
 					{
 						LineSlot->SetPosition(FVector2D(EnemyNormPos.X * GTRoomSize, EnemyNormPos.Y * GTRoomSize) - FVector2D(0.f, 2.f));

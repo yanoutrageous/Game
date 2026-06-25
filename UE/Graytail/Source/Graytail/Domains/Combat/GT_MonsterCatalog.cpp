@@ -71,7 +71,8 @@ namespace GT_MonsterCatalog
 				A.AttackInterval = 2.5f;
 				A.LaserDuration = 1.2f;        // 光束持续
 				A.LaserTickInterval = 0.3f;    // 站内扣血间隔
-				A.LaserTurnRateDeg = 12.f;     // 再调慢(70->32->12): 发射后仅 12°/s 朝玩家旋转, 侧移就能甩开
+				A.LaserTurnRateDeg = 18.f;     // 发射后跟随(70->32->12->18 回调): 侧移可甩开
+				A.AimTurnRateDeg = 0.f;        // 蓄力开始即锁死发射方向(红线固定预警): 蓄力期移开红线 -> 发射必脱靶
 				A.KiteStrength = 1.0f;         // 严格保持距离(慢肉怪靠激光压制)
 				A.WanderWeight = 0.5f;
 				A.SpritePath = TEXT("/Game/Graytail/Sprites/Monsters/drone_idle_0");

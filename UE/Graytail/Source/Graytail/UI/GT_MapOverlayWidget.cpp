@@ -264,36 +264,6 @@ void UGT_MapOverlayWidget::RefreshGrid()
 			UOverlay* CellOverlay = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
 			CellBg->SetContent(CellOverlay);
 
-			// 邻域感知天赋: 玩家相邻 8 格按真值威胁分色 —— 有雷=红 / 无雷=黄(54px 大格用更粗边 + 淡内填)。
-			if (bMapHl && !bPlayerHere
-				&& FMath::Abs(X - Snapshot.PlayerX) <= 1 && FMath::Abs(Y - Snapshot.PlayerY) <= 1)
-			{
-				bool bNeighborDanger = false;
-				FGT_TruthCell NeighborTruth;
-				if (OvRunContext && OvRunContext->GetTruthCellSnapshot(X, Y, NeighborTruth))
-				{
-					bNeighborDanger = NeighborTruth.bHasMine;
-				}
-				UBorder* NeighborHl = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-				FSlateBrush HlBrush;
-				HlBrush.DrawAs = ESlateBrushDrawType::RoundedBox;
-				HlBrush.TintColor = bNeighborDanger
-					? FSlateColor(FLinearColor(1.f, 0.25f, 0.25f, 0.28f))
-					: FSlateColor(FLinearColor(1.f, 0.85f, 0.30f, 0.12f));
-				HlBrush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
-				HlBrush.OutlineSettings.CornerRadii = FVector4(4.f, 4.f, 4.f, 4.f);
-				HlBrush.OutlineSettings.Color = bNeighborDanger
-					? FSlateColor(FLinearColor(FColor(255, 70, 70)))
-					: FSlateColor(FLinearColor(FColor(255, 220, 80)));
-				HlBrush.OutlineSettings.Width = bNeighborDanger ? 4.f : 3.f;
-				NeighborHl->SetBrush(HlBrush);
-				if (UOverlaySlot* HlSlot = CellOverlay->AddChildToOverlay(NeighborHl))
-				{
-					HlSlot->SetHorizontalAlignment(HAlign_Fill);
-					HlSlot->SetVerticalAlignment(VAlign_Fill);
-				}
-			}
-
 			auto AddCellIcon = [this, CellOverlay](UTexture2D* Texture, float Scale, float Opacity = 1.f)
 			{
 				if (!Texture)
@@ -397,6 +367,37 @@ void UGT_MapOverlayWidget::RefreshGrid()
 					DotSlot->SetHorizontalAlignment(HAlign_Left);
 					DotSlot->SetVerticalAlignment(VAlign_Bottom);
 					DotSlot->SetPadding(FMargin(3.f));
+				}
+			}
+
+			// 邻域感知天赋: 玩家相邻 8 格按真值威胁分色, 画在最上层(盖过 ? 砖块/房型图标) ——
+			// 有雷=红框+红内填, 无雷=黄框+淡黄内填。**未探索 ? 格同样生效**(天赋核心: 看穿相邻未知格)。
+			if (bMapHl && !bPlayerHere
+				&& FMath::Abs(X - Snapshot.PlayerX) <= 1 && FMath::Abs(Y - Snapshot.PlayerY) <= 1)
+			{
+				bool bNeighborDanger = false;
+				FGT_TruthCell NeighborTruth;
+				if (OvRunContext && OvRunContext->GetTruthCellSnapshot(X, Y, NeighborTruth))
+				{
+					bNeighborDanger = NeighborTruth.bHasMine;
+				}
+				UBorder* NeighborHl = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+				FSlateBrush HlBrush;
+				HlBrush.DrawAs = ESlateBrushDrawType::RoundedBox;
+				HlBrush.TintColor = bNeighborDanger
+					? FSlateColor(FLinearColor(1.f, 0.22f, 0.22f, 0.32f))   // 危险: 红内填
+					: FSlateColor(FLinearColor(1.f, 0.86f, 0.32f, 0.16f));  // 安全: 淡黄内填
+				HlBrush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+				HlBrush.OutlineSettings.CornerRadii = FVector4(4.f, 4.f, 4.f, 4.f);
+				HlBrush.OutlineSettings.Color = bNeighborDanger
+					? FSlateColor(FLinearColor(FColor(255, 70, 70)))
+					: FSlateColor(FLinearColor(FColor(255, 220, 80)));
+				HlBrush.OutlineSettings.Width = bNeighborDanger ? 4.f : 3.f;
+				NeighborHl->SetBrush(HlBrush);
+				if (UOverlaySlot* HlSlot = CellOverlay->AddChildToOverlay(NeighborHl))
+				{
+					HlSlot->SetHorizontalAlignment(HAlign_Fill);
+					HlSlot->SetVerticalAlignment(VAlign_Fill);
 				}
 			}
 

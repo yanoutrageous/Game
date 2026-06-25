@@ -381,7 +381,9 @@ bool UGT_RunContext::StartDummyCombat(int32 X, int32 Y, FName RoomContentId, FNa
 		const FGT_MonsterArchetype& Archetype = GT_MonsterCatalog::GetArchetype(CombatRuntimeState.EnemyType);
 		CombatRuntimeState.EnemyMaxHp = Archetype.HpBase + FMath::Max(0, CombatRuntimeState.EnemyPower);
 		CombatRuntimeState.EnemyHp = CombatRuntimeState.EnemyMaxHp;
-		CombatRuntimeState.EnemyDamage = GT_CombatRules::MonsterDamageForPower(CombatRuntimeState.EnemyPower);
+		// 按怪种伤害系数分层(无人机最疼/史莱姆次之/蝙蝠基准)。
+		CombatRuntimeState.EnemyDamage = FMath::Max(1, FMath::RoundToInt(
+			GT_CombatRules::MonsterDamageForPower(CombatRuntimeState.EnemyPower) * Archetype.DamageMult));
 		// DummyEnemyHp 镜像真血量, 供仍读旧字段的快照/UI 平滑过渡。
 		CombatRuntimeState.DummyEnemyHp = CombatRuntimeState.EnemyHp;
 	}

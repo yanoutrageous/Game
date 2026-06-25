@@ -66,6 +66,9 @@ struct FGT_MonsterArchetype
 	float WanderWeight = 0.5f;        // 随机游走权重
 	bool bChaseWhenFar = false;       // 太远是否追回保持射程(false=只远离+乱窜, 不黏射程)
 
+	// 每怪种伤害系数(乘进 EnemyDamage; 1.0=基准 max(4,战力/3))。让不同怪种威胁分层。
+	float DamageMult = 1.0f;
+
 	const TCHAR* SpritePath = TEXT("/Game/Graytail/Sprites/enemy_slime");
 	FLinearColor TintColor = FLinearColor::White;   // 占位染色(区分怪种; 真贴图后置 White)
 };

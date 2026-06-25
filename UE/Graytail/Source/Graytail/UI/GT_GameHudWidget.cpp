@@ -1518,14 +1518,18 @@ void UGT_GameHudWidget::OnSearch()
 	FGT_DebugRunSnapshot Probe;
 	if (Debug->GetDebugRunSnapshot(Probe) && Probe.bCombatActive && Probe.CurrentRoomBaseType == EGT_RoomBaseType::Combat)
 	{
-		// 实时战斗: F = 挥砍, 受挥砍冷却门控(多刀削怪血, 不再一击必杀)。冷却未到则忽略本次。
-		if (RoomView && !RoomView->TryConsumePlayerAttack())
+		// 实时战斗: F = 挥砍。发起只看冷却(冷却未到整次忽略, 不发命令); 是否命中由表现层朝向锥裁决。
+		// 命中才提交内核 Attack 命令扣血; 挥空照常走冷却 + 播挥砍/whiff 音(表现层已处理), 不扣血。
+		bool bHit = false;
+		if (RoomView && RoomView->TryConsumePlayerAttack(bHit))
 		{
-			return;
+			if (bHit)
+			{
+				FGT_DebugRunSnapshot AttackSnapshot;
+				Debug->DebugAttack(AttackSnapshot);
+			}
+			RefreshAll();
 		}
-		FGT_DebugRunSnapshot AttackSnapshot;
-		Debug->DebugAttack(AttackSnapshot);
-		RefreshAll();
 		return;
 	}
 
@@ -1760,6 +1764,12 @@ void UGT_GameHudWidget::OnReturnToMenu()
 	if (MainMenu)
 	{
 		MainMenu->Open();
+	}
+	// 回标题: 清空房间视图残留(怪物/血条/弹道等)。否则本局放弃后 RunContext 残留的 bCombatActive
+	// 会让 RoomView 继续模拟怪物, 透过半透明设置背景在标题里"飘来飘去"。
+	if (RoomView)
+	{
+		RoomView->ResetForTitle();
 	}
 }
 

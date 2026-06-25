@@ -347,6 +347,15 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 		DeathSlot->SetSize(FVector2D(80.f, 80.f));
 	}
 
+	// 玩家挥砍弧光特效层(单组弧光帧, 贴在玩家前方按 facing 旋转; 中心轴心原地旋转, 素材缺失静默跳过)。
+	PlayerSwingImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+	PlayerSwingImage->SetVisibility(ESlateVisibility::Collapsed);
+	PlayerSwingImage->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
+	if (UCanvasPanelSlot* SwingSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(PlayerSwingImage)))
+	{
+		SwingSlot->SetSize(FVector2D(80.f, 80.f));
+	}
+
 	// ==========================================
 	// 1. 创建预警瞄准线 (半透明红色细长条)
 	EnemyWarningLine = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
@@ -544,7 +553,7 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 	CombatHintLabel->SetFont(GT_UIStyle::Font(13));
 	CombatHintLabel->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(255, 225, 150, 235))));
 	CombatHintLabel->SetJustification(ETextJustify::Center);
-	CombatHintLabel->SetText(FText::FromString(TEXT("靠近怪物 · F 攻击")));
+	CombatHintLabel->SetText(FText::FromString(TEXT("靠近并面向怪物 · F 挥砍")));
 	if (UCanvasPanelSlot* HintSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(CombatHintLabel)))
 	{
 		HintSlot->SetSize(FVector2D(220.f, 20.f));
@@ -639,6 +648,46 @@ void UGT_RoomViewWidget::SyncToCurrentCell(bool bCenterPlayer)
 	PrevPlayerHp = Snapshot.PlayerHp;
 	RefreshRoomDecor();
 	UpdatePlayerImagePosition();
+}
+
+void UGT_RoomViewWidget::ResetForTitle()
+{
+	// 置 -1 → NativeTick 顶部直接早退(不再模拟/绘制); 再显式隐藏所有战斗视觉, 防残留一帧透到标题。
+	CurrentCellX = -1;
+	CurrentCellY = -1;
+	bPrevInCombat = false;
+	CombatFleeTimer = 0.f;
+	bPlayingDeathShatter = false;
+	bPlayingSwing = false;
+	bLaserFiring = false;
+	CurrentEnemyFrameKey.Reset();   // 本体帧缓存清掉, 下局按怪种重刷(防 desync)
+
+	auto Hide = [](UWidget* W) { if (W) { W->SetVisibility(ESlateVisibility::Collapsed); } };
+	Hide(EnemyImage);
+	Hide(EnemyShadow);
+	Hide(EnemyHpBarBg);
+	Hide(EnemyHpBarFill);
+	Hide(EnemyNameLabel);
+	Hide(PlayerHpBarBg);
+	Hide(PlayerHpBarFill);
+	Hide(EnemyAttackCircle);
+	Hide(EnemyWarningLine);
+	Hide(EnemyProjectileImage);
+	Hide(CombatHintLabel);
+	Hide(DeathEffectImage);
+	Hide(PlayerSwingImage);
+	Hide(LaserBeamImage);
+	Hide(LaserMuzzleImage);
+	Hide(LaserImpactImage);
+	for (int32 i = 0; i < GTMaxSpreadProjectiles; ++i)
+	{
+		bSpreadProjActive[i] = false;
+		Hide(SpreadProjImages[i]);
+	}
+	for (int32 t = 0; t < GTMaxSpreadProjectiles * 2; ++t)
+	{
+		Hide(SpreadTrailImages[t]);
+	}
 }
 
 void UGT_RoomViewWidget::RefreshRoomDecor()
@@ -1121,20 +1170,46 @@ void UGT_RoomViewWidget::PlayMineFlash()
 	UpdateChestBurstAnim(0.f);
 }
 
-bool UGT_RoomViewWidget::TryConsumePlayerAttack()
+bool UGT_RoomViewWidget::TryConsumePlayerAttack(bool& bOutHit)
 {
-	// 攻击射程门控(对齐 Combat.lua playerAttackRange): 玩家必须在怪物攻击射程内才能挥砍。
-	if (FVector2D::Distance(PlayerPos, EnemyNormPos) > CurrentPlayerAttackRange)
-	{
-		return false;
-	}
-	// 挥砍冷却未到则拒绝(防 F 自动重复连发秒杀); 就绪则起冷却并放行。
+	bOutHit = false;
+
+	// 发起只看冷却: 冷却未到则整次忽略(防 F 自动重复连发秒杀)。
 	if (PlayerAttackCooldownTimer > 0.f)
 	{
 		return false;
 	}
+	// 冷却到 -> 发起挥砍: 起冷却 + 播挥砍音(挥空/命中通用)。
 	PlayerAttackCooldownTimer = GTPlayerAttackCooldown;
 	PlaySfx(FName(TEXT("sfx_attack")));
+
+	// 朝向: facing 为主(LastDirX/LastDirY 已被移动输入维护, 战斗段不重置), 兜底朝下。
+	FVector2D Facing(static_cast<float>(LastDirX), static_cast<float>(LastDirY));
+	if (Facing.IsNearlyZero()) { Facing = FVector2D(0.f, 1.f); }
+	Facing = Facing.GetSafeNormal();
+
+	// 触发朝向弧光 VFX(纯表现, 与命中判定解耦; SwingAngleDeg 让弧光按朝向旋转, 贴图源朝右=0°)。
+	SwingDir = Facing;
+	SwingAngleDeg = FMath::RadiansToDegrees(FMath::Atan2(Facing.Y, Facing.X));
+	bPlayingSwing = true;
+	SwingTimer = 0.f;
+	SwingFrame = -1;
+
+	// 朝向锥形命中测试: 射程内 + 落在前方 120° 弧(半角 60°, cos60°=0.5)。
+	// 屏幕空间 Y 向下, D 与 Facing 同坐标系, 点积一致。贴脸(|D|≈0)直接判命中。
+	const FVector2D D = EnemyNormPos - PlayerPos;
+	const float Dist = D.Size();
+	if (Dist <= CurrentPlayerAttackRange)
+	{
+		if (D.IsNearlyZero())
+		{
+			bOutHit = true;
+		}
+		else
+		{
+			bOutHit = FVector2D::DotProduct(D / Dist, Facing) >= 0.5f;
+		}
+	}
 	return true;
 }
 
@@ -1161,6 +1236,14 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 
 		if (bIsCombatRoom && EnemyImage->GetVisibility() == ESlateVisibility::HitTestInvisible)
 		{
+			// 暂停门控: ESC 暂停菜单(或任何抢走键盘焦点的顶层界面)打开时, 冻结整段战斗模拟 ——
+			// 怪物不移动、不进入攻击相位、不发射弹道、不扣血。表现层保持当前帧, 恢复焦点后接着算。
+			// 玩家移动在下方同样以 HasKeyboardFocus 门控, 这里补上怪物侧, 真正实现"暂停=全停"。
+			// 直接 return: 不可改 if 条件落入下面的 else(那会被误判为战斗结束 → 重置状态并触发死亡碎裂)。
+			if (!HasKeyboardFocus())
+			{
+				return;
+			}
 			// 行为原型(决定移动/攻击模式/数值; 见 GT_MonsterCatalog)。
 			const FGT_MonsterArchetype& Arch = GT_MonsterCatalog::GetArchetype(Snapshot.EnemyType);
 			CurrentPlayerAttackRange = Arch.PlayerAttackRange;
@@ -1698,6 +1781,9 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 			bProjectileActive = false;
 			PlayerAttackCooldownTimer = 0.f;
 			PlayerIFrameTimer = 0.f;
+			// 挥砍弧光复位(切房/战斗结束防残留)。
+			bPlayingSwing = false;
+			if (PlayerSwingImage) PlayerSwingImage->SetVisibility(ESlateVisibility::Collapsed);
 			EnemyNormPos = FVector2D(0.35f, 0.45f);
 			EnemyMeleePhase = 0;
 			EnemyMeleePhaseTimer = 0.f;
@@ -1775,8 +1861,43 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 			}
 		}
 	}
+
+	// 玩家挥砍弧光演出推进(套死亡碎裂模板): 单组弧光帧, 贴玩家前方半身位 + 按 SwingDir 旋转, ~0.24s 后自隐。
+	// 帧数/帧长先按占位参数(实际等素材定); 贴图缺失时只 Warning, 不切贴图、不报错(LoadTextureAsset 已静默)。
+	if (bPlayingSwing && PlayerSwingImage)
+	{
+		SwingTimer += InDeltaTime;
+		constexpr int32 GTSwingFrameCount = 4;     // 帧数占位(3-5 帧), 等素材定
+		constexpr float GTSwingPerFrame = 0.06f;   // 每帧时长 -> 总时长约 0.24s
+		const int32 Frame = FMath::FloorToInt(SwingTimer / GTSwingPerFrame);
+		if (Frame >= GTSwingFrameCount)
+		{
+			bPlayingSwing = false;
+			PlayerSwingImage->SetVisibility(ESlateVisibility::Collapsed);
+		}
+		else
+		{
+			if (Frame != SwingFrame)
+			{
+				SwingFrame = Frame;
+				// 单组弧光帧(按朝向旋转, 不分四向画); 缺失返回 null 则跳过切图、不崩, 素材后补。
+				if (UTexture2D* SwingTex = LoadTextureAsset(FString::Printf(TEXT("/Game/Graytail/Sprites/Effects/player_slash_%d"), Frame)))
+				{
+					PlayerSwingImage->SetBrushFromTexture(SwingTex);
+				}
+			}
+			PlayerSwingImage->SetVisibility(ESlateVisibility::HitTestInvisible);
+			// 定位玩家前方半身位(玩家中心沿 SwingDir 推出), 居中后按 SwingAngleDeg 旋转(参照预警红线旋转)。
+			const FVector2D SwingCenterPx = PlayerPos * GTRoomSize + SwingDir * (GTPlayerSize * 0.55f);
+			if (UCanvasPanelSlot* SwingSlot = Cast<UCanvasPanelSlot>(PlayerSwingImage->Slot))
+			{
+				SwingSlot->SetPosition(SwingCenterPx - FVector2D(40.f, 40.f));   // 80x80 半尺寸居中
+			}
+			PlayerSwingImage->SetRenderTransform(FWidgetTransform(FVector2D::ZeroVector, FVector2D(1.f, 1.f), FVector2D::ZeroVector, SwingAngleDeg));
+		}
+	}
 	// ==========================================
-	
+
 
 	// 玩家受击闪白(亮白 tint 衰减; 配合 PlayMineFlash 全屏红光, 双反馈)。
 	if (PlayerImage)

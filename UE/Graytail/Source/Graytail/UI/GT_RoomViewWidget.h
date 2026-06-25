@@ -47,9 +47,17 @@ public:
 	// 房间状态变化后(开局/外部移动)由 HUD 调用, 重读当前格并重绘。
 	void SyncToCurrentCell(bool bCenterPlayer);
 
-	// 玩家挥砍冷却闸门(对齐 Combat.lua playerAttackCooldown): 冷却到则起冷却并返回 true 放行攻击。
-	// HUD 的 F 攻击分支调用, 防 F 自动重复连发秒杀。
-	bool TryConsumePlayerAttack();
+	// 返回标题时由 HUD 调用: 把房间视图清回空态(同刚启动未开局)。
+	// 本局结束/放弃后 RunContext 仍残留 bCombatActive, 若不清, NativeTick 会继续按"战斗中"
+	// 模拟怪物, 透过半透明设置背景在标题里"飘来飘去"。置格 -1 让 tick 早退 + 隐藏全部战斗视觉。
+	void ResetForTitle();
+
+	// 玩家挥砍发起 + 朝向锥形命中判定(解耦"是否发起"与"是否命中"):
+	//   返回值 = 本次是否发起(冷却到了; 冷却未到整次忽略, 防 F 自动重复连发)。
+	//   bOutHit = 朝向锥(前方 120° 弧, 半角 60°, 射程 CurrentPlayerAttackRange)是否覆盖到怪。
+	// 发起即起冷却 + 播挥砍音 + 触发朝向弧光 VFX(纯表现); 是否命中由 facing 锥独立裁决。
+	// HUD 命中才提交内核 Attack 命令扣血(挥空照常走冷却, 不扣血)。
+	bool TryConsumePlayerAttack(bool& bOutHit);
 
 	// WASD 过门移动成功后通知 HUD 刷新信息面板(不含房间视图自身)。
 	FSimpleDelegate OnRoomChanged;
@@ -228,6 +236,15 @@ private:
 	// 逐帧记录开战所在格: 战斗结束时若仍在此格=击杀(播碎裂); 换了格=逃跑(不播)。
 	int32 LastCombatCellX = -1;
 	int32 LastCombatCellY = -1;
+
+	// 玩家挥砍弧光演出(套死亡碎裂模板): 单组弧光帧, 按 facing 朝向旋转贴在玩家前方。
+	// 纯表现 ~0.2-0.3s, 与命中判定解耦(挥空也播); 素材缺失静默跳过不崩(LoadTextureAsset 返回 null)。
+	UPROPERTY(Transient) UImage* PlayerSwingImage = nullptr;
+	bool bPlayingSwing = false;
+	float SwingTimer = 0.f;
+	int32 SwingFrame = -1;
+	FVector2D SwingDir = FVector2D(0.f, 1.f);   // 挥砍朝向(归一化 facing; 默认朝下)
+	float SwingAngleDeg = 90.f;                  // 弧光旋转角(由 SwingDir 算 Atan2; 贴图源朝右=0°)
 
 	// 怪物死亡碎裂演出(独立于战斗状态机): 怪物被击杀时在其末位置叠播 5 帧。
 	bool bPlayingDeathShatter = false;

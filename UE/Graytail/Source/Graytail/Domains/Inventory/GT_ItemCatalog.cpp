@@ -15,6 +15,15 @@ namespace
 		TEXT("/Game/Graytail/Items/Defs/emergency_bandage"),
 		TEXT("/Game/Graytail/Items/Defs/static_lens"),
 		TEXT("/Game/Graytail/Items/Defs/blackbox_tag"),
+		// 2026-06-24 新增 8 件异常回收物(Zuhe2 §9)。
+		TEXT("/Game/Graytail/Items/Defs/old_gear"),
+		TEXT("/Game/Graytail/Items/Defs/broken_terminal"),
+		TEXT("/Game/Graytail/Items/Defs/dead_battery"),
+		TEXT("/Game/Graytail/Items/Defs/old_gauge"),
+		TEXT("/Game/Graytail/Items/Defs/damaged_circuit"),
+		TEXT("/Game/Graytail/Items/Defs/data_disk"),
+		TEXT("/Game/Graytail/Items/Defs/fluorescent_shard"),
+		TEXT("/Game/Graytail/Items/Defs/anomaly_core_shard"),
 	};
 
 	FGT_ItemCatalogEntry MakeEntryFromAsset(const UGT_ItemDef& Asset)
@@ -25,7 +34,6 @@ namespace
 		Entry.Kind = Asset.Kind;
 		Entry.Rarity = Asset.Rarity;
 		Entry.Value = Asset.Value;
-		Entry.Weight = Asset.Weight;
 		Entry.EffectText = Asset.EffectText;
 		Entry.Description = Asset.Description.ToString();
 		return Entry;
@@ -54,7 +62,7 @@ namespace
 			Coin.ItemId = FName(TEXT("lucky_coin"));
 			Coin.DisplayName = TEXT("幸运硬币");
 			Coin.Kind = EGT_ItemKind::Consumable;
-			Coin.Rarity = FName(TEXT("uncommon"));
+			Coin.Rarity = FName(TEXT("epic"));
 			Coin.Value = 50;
 			Coin.EffectText = TEXT("使用: 50% 得 30 金 / 50% 揭示相邻未知房");
 			Coin.Description = TEXT("一枚来历不明的硬币, 抛掷决定命运。");
@@ -93,30 +101,38 @@ namespace GT_ItemCatalog
 		return Def ? Def->Value : 0;
 	}
 
-	int32 GetItemWeight(FName ItemId)
+	FName GetQualityItemId(EGT_ItemQuality Quality, int32 Selector)
 	{
-		const FGT_ItemCatalogEntry* Def = FindItemDef(ItemId);
-		return Def ? Def->Weight : 1;
-	}
+		// 掉落档位(品质) -> 该档一组回收物, Selector 在组内确定性选一个。
+		// 档位↔稀有度 1:1: Low=白 / Common=蓝 / Rare=紫 / Precious=金 / Abnormal=红。
+		static const TArray<FName> Low = {
+			FName(TEXT("broken_copper_wire")), FName(TEXT("dim_capacitor")),
+			FName(TEXT("old_gear")), FName(TEXT("broken_terminal")) };
+		static const TArray<FName> Common = {
+			FName(TEXT("dead_battery")), FName(TEXT("old_gauge")), FName(TEXT("damaged_circuit")) };
+		static const TArray<FName> Rare = {
+			FName(TEXT("static_lens")), FName(TEXT("blackbox_tag")), FName(TEXT("data_disk")) };
+		static const TArray<FName> Precious = {
+			FName(TEXT("whisper_wick")), FName(TEXT("fluorescent_shard")) };
+		static const TArray<FName> Abnormal = {
+			FName(TEXT("sealed_core_shard")), FName(TEXT("anomaly_core_shard")) };
 
-	FName GetQualityItemId(EGT_ItemQuality Quality)
-	{
-		// 对齐 Lua QUALITY_ITEMS 表。掉落档位 -> 物品是平衡性规则, 留在代码里。
+		const TArray<FName>* Pool = nullptr;
 		switch (Quality)
 		{
-		case EGT_ItemQuality::Low:
-			return FName(TEXT("broken_copper_wire"));
-		case EGT_ItemQuality::Common:
-			return FName(TEXT("dim_capacitor"));
-		case EGT_ItemQuality::Rare:
-			return FName(TEXT("static_lens"));
-		case EGT_ItemQuality::Precious:
-			return FName(TEXT("whisper_wick"));
-		case EGT_ItemQuality::Abnormal:
-			return FName(TEXT("sealed_core_shard"));
-		default:
+		case EGT_ItemQuality::Low:      Pool = &Low; break;
+		case EGT_ItemQuality::Common:   Pool = &Common; break;
+		case EGT_ItemQuality::Rare:     Pool = &Rare; break;
+		case EGT_ItemQuality::Precious: Pool = &Precious; break;
+		case EGT_ItemQuality::Abnormal: Pool = &Abnormal; break;
+		default: return NAME_None;
+		}
+		if (Pool->Num() == 0)
+		{
 			return NAME_None;
 		}
+		const int32 Idx = ((Selector % Pool->Num()) + Pool->Num()) % Pool->Num();
+		return (*Pool)[Idx];
 	}
 
 	int32 GetCarriedItemsValue(const TArray<FGT_ItemStack>& Stacks)
@@ -140,6 +156,14 @@ namespace GT_ItemCatalog
 			{ FName(TEXT("sealed_core_shard")),  TEXT("/Game/Graytail/Items/Recovered/sealed_core_shard") },
 			{ FName(TEXT("static_lens")),        TEXT("/Game/Graytail/Items/Recovered/static_lens") },
 			{ FName(TEXT("blackbox_tag")),       TEXT("/Game/Graytail/Items/Recovered/blackbox_tag") },
+			{ FName(TEXT("old_gear")),           TEXT("/Game/Graytail/Items/Recovered/old_gear") },
+			{ FName(TEXT("broken_terminal")),    TEXT("/Game/Graytail/Items/Recovered/broken_terminal") },
+			{ FName(TEXT("dead_battery")),       TEXT("/Game/Graytail/Items/Recovered/dead_battery") },
+			{ FName(TEXT("old_gauge")),          TEXT("/Game/Graytail/Items/Recovered/old_gauge") },
+			{ FName(TEXT("damaged_circuit")),    TEXT("/Game/Graytail/Items/Recovered/damaged_circuit") },
+			{ FName(TEXT("data_disk")),          TEXT("/Game/Graytail/Items/Recovered/data_disk") },
+			{ FName(TEXT("fluorescent_shard")),  TEXT("/Game/Graytail/Items/Recovered/fluorescent_shard") },
+			{ FName(TEXT("anomaly_core_shard")), TEXT("/Game/Graytail/Items/Recovered/anomaly_core_shard") },
 		};
 		if (const TCHAR* const* Found = IconById.Find(ItemId))
 		{

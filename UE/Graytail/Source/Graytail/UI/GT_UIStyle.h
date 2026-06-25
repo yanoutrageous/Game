@@ -2,10 +2,14 @@
 
 #include "CoreMinimal.h"
 #include "Engine/FontFace.h"
+#include "Engine/Texture2D.h"
 #include "Fonts/CompositeFont.h"
 #include "Fonts/SlateFontInfo.h"
 #include "Styling/CoreStyle.h"
 #include "Styling/SlateTypes.h"
+#include "Styling/SlateBrush.h"
+#include "Components/Border.h"
+#include "Misc/PackageName.h"
 
 // 全 UI 共用的中文像素字体(FusionPixel)。
 // 引擎默认 Roboto/RobotoMono 无中文字形, 中文走平滑矢量回退字, 在像素美术 + 小字号下显糊;
@@ -65,5 +69,54 @@ namespace GT_UIStyle
 		S.NormalPadding = FMargin(14.f, 7.f);
 		S.PressedPadding = FMargin(14.f, 7.f);
 		return S;
+	}
+
+	// 弹窗/卡片换皮用的中性金属框(从组员框去饱和+对比重映射, 离线烤色相)。
+	// 运行时按面板直接换对应色版(不靠 multiply tint -> 不踩绿底染不出金/色彩空间的坑, 所见即所得)。
+	// 5 档稀有度框(白蓝紫金红)+ 中性(设置/暂停)+ 铜(事件)。
+	inline const TCHAR* PanelDialogSkin() { return TEXT("/Game/Graytail/UI/common/ui_panel_metal_neutral"); }  // 设置/暂停/战利品-common 白
+	inline const TCHAR* PanelSkinRare()   { return TEXT("/Game/Graytail/UI/common/ui_panel_metal_rare"); }     // 蓝 rare
+	inline const TCHAR* PanelSkinEpic()   { return TEXT("/Game/Graytail/UI/common/ui_panel_metal_epic"); }     // 紫 epic
+	inline const TCHAR* PanelSkinGold()   { return TEXT("/Game/Graytail/UI/common/ui_panel_metal_gold"); }     // 金 legendary
+	inline const TCHAR* PanelSkinMythic() { return TEXT("/Game/Graytail/UI/common/ui_panel_metal_mythic"); }   // 红 mythic
+	inline const TCHAR* PanelSkinCopper() { return TEXT("/Game/Graytail/UI/common/ui_panel_metal_copper"); }   // 事件
+
+	// 稀有度 -> per-item 文字/卡边色(白/蓝/紫/金/红)。战利品 + 作业包摘要共用, 单一真源。
+	inline FLinearColor RarityColor(FName Rarity)
+	{
+		if (Rarity == FName(TEXT("mythic")))    { return FLinearColor(FColor(250, 95, 85)); }   // 红
+		if (Rarity == FName(TEXT("legendary"))) { return FLinearColor(FColor(255, 195, 70)); }  // 金
+		if (Rarity == FName(TEXT("epic")))      { return FLinearColor(FColor(190, 120, 255)); } // 紫
+		if (Rarity == FName(TEXT("rare")))      { return FLinearColor(FColor(95, 165, 255)); }  // 蓝
+		return FLinearColor(FColor(208, 216, 224)); // common 白
+	}
+
+	// 稀有度 -> 中文档名(一般/稀有/史诗/传说/异常)。
+	inline const TCHAR* RarityLabel(FName Rarity)
+	{
+		if (Rarity == FName(TEXT("mythic")))    { return TEXT("异常"); }
+		if (Rarity == FName(TEXT("legendary"))) { return TEXT("传说"); }
+		if (Rarity == FName(TEXT("epic")))      { return TEXT("史诗"); }
+		if (Rarity == FName(TEXT("rare")))      { return TEXT("稀有"); }
+		return TEXT("一般"); // common
+	}
+
+	// 把组员的边框贴图作为面板背景刷(9-slice): 四角原始像素不拉伸、只拉中段, 面板与贴图长宽比差异大也不变形。
+	// 调用方传外层 UBorder(自身仍保留纯色 SetBrushColor 作 fallback); 贴图缺失时静默返回, 不崩。
+	// MarginFrac = 边框占贴图的比例(0.2 ≈ 金属角占两成); Opacity 给整图叠一层透明度。
+	inline void SkinPanel9(UBorder* Panel, const TCHAR* AssetPath, float MarginFrac = 0.2f, float Opacity = 1.f)
+	{
+		if (!Panel) { return; }
+		const FString Path(AssetPath);
+		const FString ObjectPath = Path + TEXT(".") + FPackageName::GetShortName(Path);
+		UTexture2D* Texture = LoadObject<UTexture2D>(nullptr, *ObjectPath);
+		if (!Texture) { return; }   // 缺资产: 保留调用方已设的纯色底
+		FSlateBrush Brush;
+		Brush.SetResourceObject(Texture);
+		Brush.ImageSize = FVector2D(Texture->GetSizeX(), Texture->GetSizeY());
+		Brush.DrawAs = ESlateBrushDrawType::Box;
+		Brush.Margin = FMargin(MarginFrac);
+		Panel->SetBrush(Brush);
+		Panel->SetBrushColor(FLinearColor(1.f, 1.f, 1.f, Opacity));
 	}
 }

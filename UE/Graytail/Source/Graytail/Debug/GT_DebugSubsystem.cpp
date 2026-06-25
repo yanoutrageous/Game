@@ -7,6 +7,7 @@
 #include "Core/GT_RunContext.h"
 #include "Core/GT_RunSubsystem.h"
 #include "Debug/GT_RuntimeSmokeValidator.h"
+#include "Domains/Combat/GT_MonsterCatalog.h"
 #include "Domains/Events/GT_EventRules.h"
 #include "Domains/Inventory/GT_ItemCatalog.h"
 #include "Domains/Map/GT_MapGenerator.h"
@@ -402,8 +403,13 @@ bool UGT_DebugSubsystem::DebugGotoRoomType(const FString& TypeArg, FGT_DebugRunS
 	EGT_RoomBaseType WantBase = EGT_RoomBaseType::Unknown;
 	EGT_EventKind WantEvent = EGT_EventKind::None;   // None = 任意事件房
 	bool bWantExit = false;
+	EGT_MonsterType ForcedMonster = EGT_MonsterType::Slime;   // gt.Goto bat/drone: 强制进入房的怪物类型
+	bool bForceMonster = false;
 	if (T == TEXT("chest") || T == TEXT("宝箱")) { WantBase = EGT_RoomBaseType::Chest; }
 	else if (T == TEXT("combat") || T == TEXT("monster") || T == TEXT("怪物") || T == TEXT("怪")) { WantBase = EGT_RoomBaseType::Combat; }
+	else if (T == TEXT("slime") || T == TEXT("史莱姆")) { WantBase = EGT_RoomBaseType::Combat; ForcedMonster = EGT_MonsterType::Slime; bForceMonster = true; }
+	else if (T == TEXT("bat") || T == TEXT("蝙蝠")) { WantBase = EGT_RoomBaseType::Combat; ForcedMonster = EGT_MonsterType::Bat; bForceMonster = true; }
+	else if (T == TEXT("drone") || T == TEXT("无人机") || T == TEXT("机器人")) { WantBase = EGT_RoomBaseType::Combat; ForcedMonster = EGT_MonsterType::Drone; bForceMonster = true; }
 	else if (T == TEXT("exit") || T == TEXT("撤离") || T == TEXT("出口")) { bWantExit = true; }
 	else if (T == TEXT("event") || T == TEXT("事件")) { WantBase = EGT_RoomBaseType::Event; }
 	else if (T == TEXT("trader") || T == TEXT("旅商")) { WantBase = EGT_RoomBaseType::Event; WantEvent = EGT_EventKind::Trader; }
@@ -412,7 +418,7 @@ bool UGT_DebugSubsystem::DebugGotoRoomType(const FString& TypeArg, FGT_DebugRunS
 	else if (T == TEXT("trap") || T == TEXT("机关")) { WantBase = EGT_RoomBaseType::Event; WantEvent = EGT_EventKind::Trap; }
 	else
 	{
-		OutSnapshot.Summary = FString::Printf(TEXT("Goto: unknown type '%s'. Use chest/combat/event/exit/trader/dice/altar/trap."), *TypeArg);
+		OutSnapshot.Summary = FString::Printf(TEXT("Goto: unknown type '%s'. Use chest/combat/bat/drone/event/exit/trader/dice/altar/trap."), *TypeArg);
 		return false;
 	}
 
@@ -447,6 +453,11 @@ bool UGT_DebugSubsystem::DebugGotoRoomType(const FString& TypeArg, FGT_DebugRunS
 			{
 				bMatch = (WantBase != EGT_RoomBaseType::Event || WantEvent == EGT_EventKind::None
 					|| GT_EventRules::GetEventKindAt(Seed, X, Y) == WantEvent);
+				// 作弊传送只去未清的战斗房: 已打过的跳过(全清了由上层弹提示)。
+				if (bMatch && WantBase == EGT_RoomBaseType::Combat && RunContext->IsCombatRoomDefeated(X, Y))
+				{
+					bMatch = false;
+				}
 			}
 			if (!bMatch)
 			{
@@ -499,6 +510,9 @@ bool UGT_DebugSubsystem::DebugGotoRoomType(const FString& TypeArg, FGT_DebugRunS
 		return DebugTeleport(BestX, BestY, OutSnapshot);
 	}
 
+	// gt.Goto slime/bat/drone: 走入战斗房前设强制怪物类型(战斗解析用; 普通 combat bForceMonster=false 清残留)。
+	// 目标房已保证未清(匹配时跳过了已打的), 不再复活已清房。
+	RunContext->SetDebugForcedMonsterType(ForcedMonster, bForceMonster);
 	FGT_DebugRunSnapshot Discard;
 	DebugTeleport(AdjX, AdjY, Discard);
 	const bool bMoved = DebugMoveTo(BestX, BestY, OutSnapshot);
@@ -995,7 +1009,7 @@ bool UGT_DebugSubsystem::GetDebugInventoryText(FString& OutInventoryText) const
 	const FGT_ProtocolState& Protocol = RunContext->GetProtocolState();
 
 	OutInventoryText = FString::Printf(
-		TEXT("gt.Bag: Hp=%d/%d Power=%d%s Protocol=L%d:%d/%d PendingGold=%d SafeGold=%d Parts=%d LooseParts=%d CarriedItemCount=%d CarriedItemValue=%d BackpackWeight=%d/%d SearchedRooms=%d Items={%s}"),
+		TEXT("gt.Bag: Hp=%d/%d Power=%d%s Protocol=L%d:%d/%d PendingGold=%d SafeGold=%d Parts=%d LooseParts=%d CarriedItemCount=%d CarriedItemValue=%d SearchedRooms=%d Items={%s}"),
 		PlayerCombat.Hp,
 		PlayerCombat.MaxHp,
 		PlayerCombat.Power,
@@ -1009,8 +1023,6 @@ bool UGT_DebugSubsystem::GetDebugInventoryText(FString& OutInventoryText) const
 		Inventory.GetLooseParts(),
 		Inventory.GetCarriedItemCount(),
 		GT_ItemCatalog::GetCarriedItemsValue(Inventory.CarriedItems),
-		Inventory.GetCurrentWeight(),
-		Inventory.BackpackCapacity,
 		Inventory.SearchedRooms.Num(),
 		ItemsText.IsEmpty() ? TEXT("none") : *ItemsText);
 	return true;

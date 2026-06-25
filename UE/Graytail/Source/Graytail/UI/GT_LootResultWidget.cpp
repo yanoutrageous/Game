@@ -22,11 +22,29 @@
 namespace
 {
 	// 对齐 Lua ITEM_RARITY_COLORS。
-	FLinearColor GTRarityColor(FName Rarity)
+	// 稀有度色/档名移至 GT_UIStyle::RarityColor / RarityLabel(战利品+作业包共用单一真源)。
+
+	// 稀有度档序(common<rare<epic<legendary<mythic), 取本次战利品最高档 -> 面板框色。
+	int32 GTRarityRank(FName Rarity)
 	{
-		if (Rarity == FName(TEXT("uncommon"))) { return FLinearColor(FColor(120, 220, 170)); }
-		if (Rarity == FName(TEXT("rare"))) { return FLinearColor(FColor(115, 180, 255)); }
-		return FLinearColor(FColor(180, 200, 210)); // common
+		if (Rarity == FName(TEXT("mythic")))    { return 4; }
+		if (Rarity == FName(TEXT("legendary"))) { return 3; }
+		if (Rarity == FName(TEXT("epic")))      { return 2; }
+		if (Rarity == FName(TEXT("rare")))      { return 1; }
+		return 0; // common / 未知
+	}
+
+	// 稀有度档 -> 面板框贴图(common灰 / rare蓝 / epic紫 / legendary金 / mythic红)。
+	const TCHAR* GTRaritySkin(int32 Rank)
+	{
+		switch (Rank)
+		{
+		case 4:  return GT_UIStyle::PanelSkinMythic();
+		case 3:  return GT_UIStyle::PanelSkinGold();
+		case 2:  return GT_UIStyle::PanelSkinEpic();
+		case 1:  return GT_UIStyle::PanelSkinRare();
+		default: return GT_UIStyle::PanelDialogSkin();
+		}
 	}
 
 	// 对齐 Lua ITEM_DEFS 的 typeName / rarityName 文案。
@@ -35,10 +53,6 @@ namespace
 		return Kind == EGT_ItemKind::Consumable ? TEXT("作业消耗品") : TEXT("异常回收物");
 	}
 
-	const TCHAR* GTRarityLabel(FName Rarity)
-	{
-		return Rarity == FName(TEXT("common")) ? TEXT("一般") : TEXT("稀有");
-	}
 }
 
 TSharedRef<SWidget> UGT_LootResultWidget::RebuildWidget()
@@ -84,6 +98,7 @@ void UGT_LootResultWidget::BuildWidgetTree()
 	// 居中面板: 外层描边(宝箱金框/普通青框, Open 时着色) + 内层深底。
 	PanelFrame = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 	PanelFrame->SetPadding(FMargin(2.f));
+	GT_UIStyle::SkinPanel9(PanelFrame, GT_UIStyle::PanelDialogSkin());   // 金属框换皮(刷新时按宝箱/稀有度叠色 tint)
 	if (UOverlaySlot* PanelSlot = Root->AddChildToOverlay(PanelFrame))
 	{
 		PanelSlot->SetHorizontalAlignment(HAlign_Center);
@@ -91,8 +106,8 @@ void UGT_LootResultWidget::BuildWidgetTree()
 	}
 
 	UBorder* PanelBg = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-	PanelBg->SetBrushColor(FLinearColor(FColor(17, 23, 32, 242)));
-	PanelBg->SetPadding(FMargin(26.f, 20.f));
+	PanelBg->SetBrushColor(FLinearColor(0.f, 0.f, 0.f, 0.f));   // 透明: 透出金属框贴图
+	PanelBg->SetPadding(FMargin(26.f, 26.f, 26.f, 46.f));        // 底部加大避开框内阴影
 	PanelFrame->SetContent(PanelBg);
 
 	USizeBox* PanelWidth = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
@@ -180,23 +195,20 @@ void UGT_LootResultWidget::RebuildContent(const FGT_SearchOutcome& Outcome)
 
 	// 标题/副标题/描边色按是否宝箱切换(对齐 OpenLootResultPanel)。
 	TitleText->SetText(FText::FromString(Reward.bIsChest ? TEXT("未登记物资箱") : TEXT("搜索结果")));
-	// 背包超重: 部分回收物已被丢弃, 副标题改为醒目暖色提示(下方列表只含实际入包的物品)。
-	// 面板复用同一控件, 两个分支都显式设色, 防上次超重的暖色残留。
-	if (Outcome.Status == FName(TEXT("searched_overweight")))
+	SubtitleText->SetText(FText::FromString(Reward.bIsChest
+		? TEXT("高价值物资已放入临时回收包")
+		: TEXT("可回收物已放入临时回收包")));
+	SubtitleText->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(180, 205, 210, 230))));
+	// 面板框按本次回收物最高稀有度换皮(离线烤好的灰/绿/蓝, 所见即所得): common灰 / uncommon绿 / rare蓝。
+	int32 MaxRarityRank = 0;
+	for (const FGT_ItemStack& Stack : Reward.Items)
 	{
-		SubtitleText->SetText(FText::FromString(TEXT("背包已满 · 部分回收物已丢弃")));
-		SubtitleText->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(245, 170, 90, 245))));
+		if (const FGT_ItemCatalogEntry* Def = GT_ItemCatalog::FindItemDef(Stack.ItemId))
+		{
+			MaxRarityRank = FMath::Max(MaxRarityRank, GTRarityRank(Def->Rarity));
+		}
 	}
-	else
-	{
-		SubtitleText->SetText(FText::FromString(Reward.bIsChest
-			? TEXT("高价值物资已放入临时回收包")
-			: TEXT("可回收物已放入临时回收包")));
-		SubtitleText->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(180, 205, 210, 230))));
-	}
-	PanelFrame->SetBrushColor(Reward.bIsChest
-		? FLinearColor(FColor(240, 190, 90, 220))
-		: FLinearColor(FColor(90, 170, 190, 210)));
+	GT_UIStyle::SkinPanel9(PanelFrame, GTRaritySkin(MaxRarityRank));
 
 	const int32 ItemValue = GT_ItemCatalog::GetCarriedItemsValue(Reward.Items);
 	SummaryText->SetText(FText::FromString(FString::Printf(
@@ -226,7 +238,7 @@ void UGT_LootResultWidget::AddItemCard(const FGT_ItemStack& Stack)
 	{
 		return;
 	}
-	const FLinearColor RarityColor = GTRarityColor(Def->Rarity);
+	const FLinearColor RarityColor = GT_UIStyle::RarityColor(Def->Rarity);
 
 	// 卡片: 稀有度描边 + 深底(对齐 drawLootItemCard)。
 	UBorder* CardFrame = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
@@ -284,7 +296,7 @@ void UGT_LootResultWidget::AddItemCard(const FGT_ItemStack& Stack)
 	KindText->SetFont(GT_UIStyle::Font(11));
 	KindText->SetColorAndOpacity(FSlateColor(RarityColor));
 	KindText->SetText(FText::FromString(FString::Printf(
-		TEXT("%s · %s"), GTKindLabel(Def->Kind), GTRarityLabel(Def->Rarity))));
+		TEXT("%s · %s"), GTKindLabel(Def->Kind), GT_UIStyle::RarityLabel(Def->Rarity))));
 	if (UVerticalBoxSlot* KindSlot = TextColumn->AddChildToVerticalBox(KindText))
 	{
 		KindSlot->SetPadding(FMargin(0.f, 4.f, 0.f, 0.f));

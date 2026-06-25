@@ -8,6 +8,7 @@
 class UBorder;
 class UTextBlock;
 class UButton;
+class UImage;
 class UHorizontalBox;
 class UVerticalBox;
 class UProgressBar;
@@ -64,6 +65,8 @@ private:
 		const FVector2D& TextureSize = FVector2D::ZeroVector, float FramePx = 0.f);
 	UButton* MakeButton(UHorizontalBox* Row, const FString& Label);
 	UTextBlock* MakePanelText(UVerticalBox* Panel, int32 FontSize, const FLinearColor& Color);
+	// 状态栏行: [小图标][文字], 套用 2UI 风格。返回文字块供 RefreshStatusPanel 赋值。
+	UTextBlock* MakeIconStatRow(UVerticalBox* Col, const FString& IconPath, int32 FontSize, const FLinearColor& Color);
 
 	UFUNCTION() void OnSearch();
 	UFUNCTION() void OnExtract();
@@ -132,10 +135,12 @@ private:
 	int32 SelectedConsumableSlot = 1;                              // 当前选中道具槽(1-based)
 	UPROPERTY(Transient) UTextBlock* LogText = nullptr;
 	UPROPERTY(Transient) UTextBlock* ProtocolText = nullptr;
+	UPROPERTY(Transient) UImage* ProtocolBarImage = nullptr;   // 协议N 状态条贴图(组员美术)
 
 	// 局终结算弹窗(死亡/撤离后弹出, 含 重新出发/返回菜单 按钮)。
 	UPROPERTY(Transient) UWidget* RunEndRoot = nullptr;
 	UPROPERTY(Transient) UBorder* RunEndFrame = nullptr;
+	UPROPERTY(Transient) UImage* RunEndBanner = nullptr;       // 局终横幅(作业完成/信号中断)
 	UPROPERTY(Transient) UTextBlock* RunEndTitle = nullptr;
 	UPROPERTY(Transient) UTextBlock* RunEndBody = nullptr;
 	UPROPERTY(Transient) UButton* RunEndButton = nullptr;

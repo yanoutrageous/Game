@@ -9,6 +9,7 @@
 #include "Components/TextBlock.h"
 #include "Core/GT_RunContext.h"
 #include "Core/GT_RunSubsystem.h"
+#include "Core/GT_SettingsSubsystem.h"
 #include "Debug/GT_DebugSubsystem.h"
 #include "Domains/Combat/GT_MonsterCatalog.h"
 #include "Domains/Events/GT_EventRules.h"
@@ -308,13 +309,42 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 		}
 	}
 
+	// 阴影(纯代码深色软椭圆, 地面层在怪/人之下, 卖立体/悬空感)。
+	auto MakeShadow = [&](float W, float H) -> UImage*
+	{
+		UImage* Shadow = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+		Shadow->SetVisibility(ESlateVisibility::Collapsed);
+		FSlateBrush B;
+		B.DrawAs = ESlateBrushDrawType::RoundedBox;
+		B.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+		B.OutlineSettings.CornerRadii = FVector4(H * 0.5f, H * 0.5f, H * 0.5f, H * 0.5f);
+		B.TintColor = FSlateColor(FLinearColor(0.f, 0.f, 0.f, 0.32f));
+		Shadow->SetBrush(B);
+		if (UCanvasPanelSlot* S = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(Shadow)))
+		{
+			S->SetSize(FVector2D(W, H));
+		}
+		return Shadow;
+	};
+	EnemyShadow = MakeShadow(56.f, 18.f);     // 战斗中显示
+	PlayerShadow = MakeShadow(46.f, 16.f);    // 进房后由 UpdatePlayerImagePosition 显示+定位
+
 	// 怪物(史莱姆), 战斗激活时显示在房间偏左上(对齐 Lua monsterPosition 0.35/0.45)。
 	EnemyImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
 	EnemyImage->SetVisibility(ESlateVisibility::Collapsed);
+	EnemyImage->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));   // 中心轴心: 面向玩家水平翻转时原地镜像不偏移
 	if (UCanvasPanelSlot* EnemySlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(EnemyImage)))
 	{
 		EnemySlot->SetPosition(FVector2D(GTRoomSize * 0.35f - 40.f, GTRoomSize * 0.45f - 40.f));
 		EnemySlot->SetSize(FVector2D(80.f, 80.f));
+	}
+
+	// 怪物死亡碎裂特效层(独立于 EnemyImage, 怪物死后在其末位置叠播 5 帧 80x80 序列)。
+	DeathEffectImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+	DeathEffectImage->SetVisibility(ESlateVisibility::Collapsed);
+	if (UCanvasPanelSlot* DeathSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(DeathEffectImage)))
+	{
+		DeathSlot->SetSize(FVector2D(80.f, 80.f));
 	}
 
 	// ==========================================
@@ -335,6 +365,79 @@ void UGT_RoomViewWidget::BuildWidgetTree()
 	if (UCanvasPanelSlot* ProjSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(EnemyProjectileImage)))
 	{
 		ProjSlot->SetSize(FVector2D(16.f, 16.f));
+	}
+
+	// 2a-trail. 散弹拖尾: 每发 2 个渐隐紫色残影点(z 在弹丸之下)。
+	for (int32 TrailIndex = 0; TrailIndex < GTMaxSpreadProjectiles * 2; ++TrailIndex)
+	{
+		UImage* Trail = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+		Trail->SetVisibility(ESlateVisibility::Collapsed);
+		FSlateBrush B;
+		B.DrawAs = ESlateBrushDrawType::RoundedBox;
+		B.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+		const float R = (TrailIndex % 2 == 0) ? 7.f : 5.f;
+		B.OutlineSettings.CornerRadii = FVector4(R, R, R, R);
+		B.TintColor = FSlateColor(FLinearColor(0.72f, 0.40f, 1.0f, 1.f));   // 紫
+		Trail->SetBrush(B);
+		if (UCanvasPanelSlot* TrailSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(Trail)))
+		{
+			TrailSlot->SetSize(FVector2D(R * 2.f, R * 2.f));
+		}
+		SpreadTrailImages[TrailIndex] = Trail;
+	}
+
+	// 2b. 散射飞弹(蝙蝠 RangedSpread): 预建 5 个, 用紫色能量弹贴图(无则回退纯色点)。
+	UTexture2D* BoltTex = LoadTextureAsset(TEXT("/Game/Graytail/Sprites/Effects/bat_bolt"));
+	for (int32 SpreadIndex = 0; SpreadIndex < GTMaxSpreadProjectiles; ++SpreadIndex)
+	{
+		UImage* Proj = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+		Proj->SetVisibility(ESlateVisibility::Collapsed);
+		if (BoltTex) { Proj->SetBrushFromTexture(BoltTex); }
+		else { Proj->SetBrushTintColor(FSlateColor(FLinearColor(1.0f, 0.35f, 0.5f, 1.f))); } // 回退粉红
+		Proj->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));   // 中心轴心: 弹丸旋转对齐飞行方向
+		if (UCanvasPanelSlot* PSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(Proj)))
+		{
+			PSlot->SetSize(FVector2D(24.f, 24.f));
+		}
+		SpreadProjImages[SpreadIndex] = Proj;
+	}
+
+	// 2c. 激光光束(无人机 RangedLaser): 青蓝光束贴图(左端亮帽=镜头侧), 左中心轴心旋转。
+	LaserBeamImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+	LaserBeamImage->SetVisibility(ESlateVisibility::Collapsed);
+	if (UTexture2D* BeamTex = LoadTextureAsset(TEXT("/Game/Graytail/Sprites/Effects/drone_laser_beam")))
+	{
+		LaserBeamImage->SetBrushFromTexture(BeamTex);
+	}
+	else { LaserBeamImage->SetBrushTintColor(FSlateColor(FLinearColor(0.5f, 0.85f, 1.0f, 0.9f))); } // 回退纯色
+	LaserBeamImage->SetRenderTransformPivot(FVector2D(0.f, 0.5f));
+	if (UCanvasPanelSlot* LaserSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(LaserBeamImage)))
+	{
+		LaserSlot->SetSize(FVector2D(800.f, 20.f)); // 长贯穿房间, 粗 20px
+	}
+
+	// 2d. 激光起手闪光(镜头端 46px) + 命中爆点(玩家端 52px): 发射时按需闪现, 平时隐藏。
+	LaserMuzzleImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+	LaserMuzzleImage->SetVisibility(ESlateVisibility::Collapsed);
+	LaserMuzzleImage->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
+	if (UTexture2D* MzTex = LoadTextureAsset(TEXT("/Game/Graytail/Sprites/Effects/drone_laser_muzzle")))
+	{
+		LaserMuzzleImage->SetBrushFromTexture(MzTex);
+	}
+	if (UCanvasPanelSlot* MzSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(LaserMuzzleImage)))
+	{
+		MzSlot->SetSize(FVector2D(46.f, 46.f));
+	}
+	LaserImpactImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+	LaserImpactImage->SetVisibility(ESlateVisibility::Collapsed);
+	LaserImpactImage->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
+	if (UTexture2D* ImTex = LoadTextureAsset(TEXT("/Game/Graytail/Sprites/Effects/drone_laser_impact")))
+	{
+		LaserImpactImage->SetBrushFromTexture(ImTex);
+	}
+	if (UCanvasPanelSlot* ImSlot = Cast<UCanvasPanelSlot>(RoomCanvas->AddChild(LaserImpactImage)))
+	{
+		ImSlot->SetSize(FVector2D(52.f, 52.f));
 	}
 	// ==========================================
 
@@ -473,6 +576,17 @@ const UGT_RunContext* UGT_RoomViewWidget::GetRunContext() const
 	return RunSubsystem ? RunSubsystem->GetCurrentRunContext() : nullptr;
 }
 
+void UGT_RoomViewWidget::PlaySfx(FName Key)
+{
+	if (UGameInstance* GI = GetGameInstance())
+	{
+		if (UGT_SettingsSubsystem* Settings = GI->GetSubsystem<UGT_SettingsSubsystem>())
+		{
+			Settings->PlaySfx(this, Key);
+		}
+	}
+}
+
 UTexture2D* UGT_RoomViewWidget::LoadTextureAsset(const FString& AssetPath)
 {
 	if (UTexture2D** Cached = TextureCache.Find(AssetPath))
@@ -578,6 +692,7 @@ void UGT_RoomViewWidget::RefreshRoomDecor()
 		{
 			EnemyImage->SetBrushFromTexture(SlimeTexture);
 		}
+		CurrentEnemyFrameKey.Reset();   // 占位后让战斗 tick 重新按怪种刷新本体帧
 	}
 	EnemyImage->SetVisibility(bShowEnemy ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 
@@ -724,6 +839,17 @@ void UGT_RoomViewWidget::UpdatePlayerImagePosition()
 			PlayerPos.X * GTRoomSize - GTPlayerSize * 0.5f,
 			PlayerPos.Y * GTRoomSize - GTPlayerSize * 0.5f));
 	}
+	// 玩家脚下阴影(46x16, 进房后常驻跟随)。
+	if (PlayerShadow)
+	{
+		PlayerShadow->SetVisibility(ESlateVisibility::HitTestInvisible);
+		if (UCanvasPanelSlot* PShadowSlot = Cast<UCanvasPanelSlot>(PlayerShadow->Slot))
+		{
+			PShadowSlot->SetPosition(FVector2D(
+				PlayerPos.X * GTRoomSize - 23.f,
+				PlayerPos.Y * GTRoomSize + GTPlayerSize * 0.30f));
+		}
+	}
 }
 
 FReply UGT_RoomViewWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
@@ -823,6 +949,7 @@ void UGT_RoomViewWidget::SetHeldMovementKey(const FKey& Key, bool bDown)
 
 void UGT_RoomViewWidget::PlayChestRewardBurst(int32 Gold, int32 Parts)
 {
+	PlaySfx(FName(TEXT("sfx_pickup")));
 	ChestOpenTimer = GTChestOpenDuration;
 	RewardBurstTimer = GTChestRewardDuration;
 	BurstParts = Parts;
@@ -975,6 +1102,7 @@ void UGT_RoomViewWidget::UpdateChestBurstAnim(float DeltaTime)
 
 void UGT_RoomViewWidget::PlayHealGlow()
 {
+	PlaySfx(FName(TEXT("sfx_heal")));
 	HealGlowTimer = GTHealGlowDuration;
 	// 每颗光子随机环绕参数(纯表现, 用 FRand 即可): 角度铺满一圈, 半径 14-32 包住人物。
 	for (int32 ParticleIndex = 0; ParticleIndex < 8; ++ParticleIndex)
@@ -989,6 +1117,7 @@ void UGT_RoomViewWidget::PlayHealGlow()
 void UGT_RoomViewWidget::PlayMineFlash()
 {
 	MineFlashTimer = GTMineFlashDuration;
+	PlayerHitFlashTimer = 0.14f;   // 玩家受击本体闪白(配合全屏红光)
 	UpdateChestBurstAnim(0.f);
 }
 
@@ -1005,6 +1134,7 @@ bool UGT_RoomViewWidget::TryConsumePlayerAttack()
 		return false;
 	}
 	PlayerAttackCooldownTimer = GTPlayerAttackCooldown;
+	PlaySfx(FName(TEXT("sfx_attack")));
 	return true;
 }
 
@@ -1034,6 +1164,14 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 			// 行为原型(决定移动/攻击模式/数值; 见 GT_MonsterCatalog)。
 			const FGT_MonsterArchetype& Arch = GT_MonsterCatalog::GetArchetype(Snapshot.EnemyType);
 			CurrentPlayerAttackRange = Arch.PlayerAttackRange;
+			LastCombatCellX = CurrentCellX;   // 记开战格(战斗结束时比对: 同格=击杀播碎裂, 换格=逃跑不播)
+			LastCombatCellY = CurrentCellY;
+			// 怪物受击闪白: HP 下降帧触发亮白 tint(配合本体 scale punch), 随后衰减。
+			if (PrevEnemyHp >= 0 && Snapshot.EnemyHp < PrevEnemyHp) { EnemyHitFlashTimer = 0.13f; PlaySfx(FName(TEXT("sfx_hit"))); }
+			PrevEnemyHp = Snapshot.EnemyHp;
+			if (EnemyHitFlashTimer > 0.f) { EnemyHitFlashTimer = FMath::Max(0.f, EnemyHitFlashTimer - InDeltaTime); }
+			const float EnemyHitFlash = FMath::Clamp(EnemyHitFlashTimer / 0.13f, 0.f, 1.f);
+			EnemyImage->SetBrushTintColor(FSlateColor(FMath::Lerp(FLinearColor::White, FLinearColor(3.5f, 3.5f, 3.5f, 1.f), EnemyHitFlash)));
 			CombatAnimTime += InDeltaTime;
 
 			// 怪物避让天赋(monsterFleeBonus): 战斗刚开始给一段"犹豫窗口", 期间怪既不追击也不攻击,
@@ -1062,6 +1200,7 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 				{
 					PlayerIFrameTimer = GTPlayerInvincibleDuration;
 					PlayMineFlash();
+					PlaySfx(FName(TEXT("sfx_hurt")));
 					Snapshot = HitSnapshot;            // 本帧血条用最新血量
 					OnCombatStateChanged.ExecuteIfBound();
 				}
@@ -1076,8 +1215,39 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 				{
 					const FVector2D Dir = (PlayerPos - EnemyNormPos).GetSafeNormal();
 					EnemyNormPos += Dir * Arch.MoveSpeed * InDeltaTime;
-					EnemyNormPos.X = FMath::Clamp(EnemyNormPos.X, 0.08f, 0.92f);
-					EnemyNormPos.Y = FMath::Clamp(EnemyNormPos.Y, 0.08f, 0.92f);
+					EnemyNormPos.X = FMath::Clamp(EnemyNormPos.X, 0.12f, 0.88f);
+					EnemyNormPos.Y = FMath::Clamp(EnemyNormPos.Y, 0.12f, 0.88f);
+					Distance = FVector2D::Distance(PlayerPos, EnemyNormPos);
+				}
+			}
+			else if (!bMonsterFleeing && Arch.MovePattern == EGT_MonsterMovePattern::KeepDistance)
+			{
+				// 远程走位: 太近后撤(权重 KiteStrength)叠加随机游走(WanderWeight); 只有 bChaseWhenFar 的怪才太远跟近。
+				const float Ideal = Arch.IdealDistance;
+				const float Buffer = 0.08f;
+				FVector2D KiteDir = FVector2D::ZeroVector;
+				if (Distance < Ideal - Buffer)
+				{
+					KiteDir = (EnemyNormPos - PlayerPos).GetSafeNormal();   // 太近: 远离玩家
+				}
+				else if (Arch.bChaseWhenFar && Distance > Ideal + Buffer)
+				{
+					KiteDir = (PlayerPos - EnemyNormPos).GetSafeNormal();   // 太远跟近保持射程
+				}
+				// 随机游走: 每隔一段换一个随机方向叠加, 让怪到处乱窜、别太规律。
+				WanderTimer -= InDeltaTime;
+				if (WanderTimer <= 0.f)
+				{
+					WanderTimer = 0.35f + FMath::FRand() * 0.45f;
+					const float WanderRad = FMath::FRandRange(-PI, PI);
+					WanderDir = FVector2D(FMath::Cos(WanderRad), FMath::Sin(WanderRad));
+				}
+				const FVector2D MoveDir = KiteDir * Arch.KiteStrength + WanderDir * Arch.WanderWeight;   // 方向混合, 速度恒为 MoveSpeed
+				if (!MoveDir.IsNearlyZero())
+				{
+					EnemyNormPos += MoveDir.GetSafeNormal() * Arch.MoveSpeed * InDeltaTime;
+					EnemyNormPos.X = FMath::Clamp(EnemyNormPos.X, 0.12f, 0.88f);
+					EnemyNormPos.Y = FMath::Clamp(EnemyNormPos.Y, 0.12f, 0.88f);
 					Distance = FVector2D::Distance(PlayerPos, EnemyNormPos);
 				}
 			}
@@ -1127,7 +1297,202 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 					}
 				}
 			}
-			else // RangedProjectile: 红线瞄准 -> 飞弹(PR#9 远程, 留给未来远程怪类型)。
+			else if (Arch.AttackPattern == EGT_MonsterAttackPattern::RangedSpread)
+			{
+				// 蝙蝠散射: 短蓄力瞄准 -> 发射 SpreadCount 发 ±SpreadHalfAngle 直线飞弹 -> AttackInterval 冷却。
+				bool bAnySpreadActive = false;
+				for (int32 i = 0; i < GTMaxSpreadProjectiles; ++i) { if (bSpreadProjActive[i]) { bAnySpreadActive = true; break; } }
+
+				if (!bAnySpreadActive && EnemyAimTimer <= 0.f)
+				{
+					if (EnemyAttackCooldownTimer > 0.f) { EnemyAttackCooldownTimer -= InDeltaTime; }
+					else { EnemyAimTimer = Arch.AimDuration; }   // 蝙蝠不用长条预警, 改怪物本体闪烁(见下)
+				}
+
+				if (EnemyAimTimer > 0.f)
+				{
+					EnemyAimTimer -= InDeltaTime;
+					AimDirection = (PlayerPos - EnemyNormPos).GetSafeNormal();
+					// 蝙蝠本体预警(替代指向玩家的长条红线): 蓄力时怪物快速闪烁示意"要攻击了"。
+					EnemyImage->SetRenderOpacity(0.35f + 0.55f * FMath::Abs(FMath::Sin(CombatAnimTime * 22.f)));
+					if (EnemyAimTimer <= 0.f)
+					{
+						EnemyImage->SetRenderOpacity(1.f);   // 发射瞬间恢复不透明
+						const int32 Count = FMath::Clamp(Arch.SpreadCount, 1, GTMaxSpreadProjectiles);
+						const float BaseDeg = FMath::RadiansToDegrees(FMath::Atan2(AimDirection.Y, AimDirection.X));
+						for (int32 i = 0; i < Count; ++i)
+						{
+							const float Frac = (Count > 1) ? (static_cast<float>(i) / (Count - 1)) : 0.5f;
+							const float OffsetDeg = -Arch.SpreadHalfAngleDeg + Frac * (2.f * Arch.SpreadHalfAngleDeg);
+							const float Rad = FMath::DegreesToRadians(BaseDeg + OffsetDeg);
+							SpreadProjDir[i] = FVector2D(FMath::Cos(Rad), FMath::Sin(Rad));
+							SpreadProjPos[i] = EnemyNormPos;
+							bSpreadProjActive[i] = true;
+							if (SpreadProjImages[i]) { SpreadProjImages[i]->SetVisibility(ESlateVisibility::HitTestInvisible); }
+						}
+						EnemyShakeTimer = 0.3f;
+						EnemyFireFlashTimer = 0.18f;   // 张大嘴发射帧短暂闪现
+						EnemyAttackCooldownTimer = Arch.AttackInterval;
+					}
+				}
+
+				for (int32 i = 0; i < GTMaxSpreadProjectiles; ++i)
+				{
+					auto HideTrail = [&]()
+					{
+						for (int32 g = 0; g < 2; ++g) { if (SpreadTrailImages[i * 2 + g]) SpreadTrailImages[i * 2 + g]->SetVisibility(ESlateVisibility::Collapsed); }
+					};
+					if (!bSpreadProjActive[i]) { continue; }
+					SpreadProjPos[i] += SpreadProjDir[i] * ProjectileSpeed * InDeltaTime;
+					if (SpreadProjImages[i])
+					{
+						if (UCanvasPanelSlot* PSlot = Cast<UCanvasPanelSlot>(SpreadProjImages[i]->Slot))
+						{
+							PSlot->SetPosition(FVector2D(SpreadProjPos[i].X * GTRoomSize - 12.f, SpreadProjPos[i].Y * GTRoomSize - 12.f));
+						}
+						const float BoltDeg = FMath::RadiansToDegrees(FMath::Atan2(SpreadProjDir[i].Y, SpreadProjDir[i].X));
+						SpreadProjImages[i]->SetRenderTransform(FWidgetTransform(FVector2D::ZeroVector, FVector2D(1.f, 1.f), FVector2D::ZeroVector, BoltDeg));
+					}
+					// 拖尾: 两残影点跟在弹丸后(越后越淡越小)。
+					for (int32 g = 0; g < 2; ++g)
+					{
+						UImage* Trail = SpreadTrailImages[i * 2 + g];
+						if (!Trail) { continue; }
+						const float Back = (g == 0) ? 0.022f : 0.044f;
+						const float Rr = (g == 0) ? 7.f : 5.f;
+						const FVector2D TP = SpreadProjPos[i] - SpreadProjDir[i] * Back;
+						Trail->SetVisibility(ESlateVisibility::HitTestInvisible);
+						Trail->SetRenderOpacity((g == 0) ? 0.5f : 0.28f);
+						if (UCanvasPanelSlot* TS = Cast<UCanvasPanelSlot>(Trail->Slot))
+						{
+							TS->SetPosition(FVector2D(TP.X * GTRoomSize - Rr, TP.Y * GTRoomSize - Rr));
+						}
+					}
+					if (FVector2D::Distance(SpreadProjPos[i], PlayerPos) < 0.06f)
+					{
+						bSpreadProjActive[i] = false;
+						if (SpreadProjImages[i]) { SpreadProjImages[i]->SetVisibility(ESlateVisibility::Collapsed); }
+						HideTrail();
+						TryApplyMonsterHit();
+					}
+					else if (SpreadProjPos[i].X < 0.f || SpreadProjPos[i].X > 1.f || SpreadProjPos[i].Y < 0.f || SpreadProjPos[i].Y > 1.f)
+					{
+						bSpreadProjActive[i] = false;
+						if (SpreadProjImages[i]) { SpreadProjImages[i]->SetVisibility(ESlateVisibility::Collapsed); }
+						HideTrail();
+					}
+				}
+			}
+			else if (Arch.AttackPattern == EGT_MonsterAttackPattern::RangedLaser)
+			{
+				// 无人机激光: 蓄力(红线跟随玩家) -> 锁向发射粗光束(持续, 站内每隔扣血) -> AttackInterval 冷却。
+				if (!bLaserFiring && EnemyAimTimer <= 0.f)
+				{
+					if (EnemyAttackCooldownTimer > 0.f) { EnemyAttackCooldownTimer -= InDeltaTime; }
+					else { EnemyAimTimer = Arch.AimDuration; AimDirection = (PlayerPos - EnemyNormPos).GetSafeNormal(); EnemyWarningLine->SetVisibility(ESlateVisibility::HitTestInvisible); }
+				}
+
+				if (EnemyAimTimer > 0.f && !bLaserFiring)
+				{
+					EnemyAimTimer -= InDeltaTime;
+					// 蓄力期: AimTurnRateDeg>0 限速跟随; =0 保持蓄力开始锁定的方向(固定预警红线, 蓄力期移开即脱靶)。
+					if (Arch.AimTurnRateDeg > 0.f)
+					{
+						const FVector2D ToPlayerAim = (PlayerPos - EnemyNormPos).GetSafeNormal();
+						if (!ToPlayerAim.IsNearlyZero() && !AimDirection.IsNearlyZero())
+						{
+							const float CurAimAng = FMath::Atan2(AimDirection.Y, AimDirection.X);
+							const float TgtAimAng = FMath::Atan2(ToPlayerAim.Y, ToPlayerAim.X);
+							const float MaxAimStep = FMath::DegreesToRadians(Arch.AimTurnRateDeg) * InDeltaTime;
+							const float AimStep = FMath::Clamp(FMath::FindDeltaAngleRadians(CurAimAng, TgtAimAng), -MaxAimStep, MaxAimStep);
+							AimDirection = FVector2D(FMath::Cos(CurAimAng + AimStep), FMath::Sin(CurAimAng + AimStep));
+						}
+					}
+					if (UCanvasPanelSlot* LineSlot = Cast<UCanvasPanelSlot>(EnemyWarningLine->Slot))
+					{
+						LineSlot->SetPosition(FVector2D(EnemyNormPos.X * GTRoomSize, EnemyNormPos.Y * GTRoomSize) - FVector2D(0.f, 2.f));
+					}
+					const float AimDeg = FMath::RadiansToDegrees(FMath::Atan2(AimDirection.Y, AimDirection.X));
+					EnemyWarningLine->SetRenderTransform(FWidgetTransform(FVector2D::ZeroVector, FVector2D(1.f, 1.f), FVector2D::ZeroVector, AimDeg));
+					if (EnemyAimTimer <= 0.f)
+					{
+						EnemyWarningLine->SetVisibility(ESlateVisibility::Collapsed);
+						LaserDir = AimDirection;   // 锁定方向, 之后不再追
+						bLaserFiring = true;
+						LaserActiveTimer = Arch.LaserDuration;
+						LaserTickTimer = 0.f;
+						EnemyShakeTimer = 0.3f;
+					}
+				}
+
+				if (bLaserFiring)
+				{
+					LaserActiveTimer -= InDeltaTime;
+					// 发射后光束朝玩家限速旋转(发射端始终锚在无人机 EnemyNormPos, 随其移动)。
+					if (Arch.LaserTurnRateDeg > 0.f)
+					{
+						const FVector2D ToPlayerDir = (PlayerPos - EnemyNormPos).GetSafeNormal();
+						if (!ToPlayerDir.IsNearlyZero())
+						{
+							const float CurAng = FMath::Atan2(LaserDir.Y, LaserDir.X);
+							const float TgtAng = FMath::Atan2(ToPlayerDir.Y, ToPlayerDir.X);
+							const float MaxStep = FMath::DegreesToRadians(Arch.LaserTurnRateDeg) * InDeltaTime;
+							const float Step = FMath::Clamp(FMath::FindDeltaAngleRadians(CurAng, TgtAng), -MaxStep, MaxStep);
+							const float NewAng = CurAng + Step;
+							LaserDir = FVector2D(FMath::Cos(NewAng), FMath::Sin(NewAng));
+						}
+					}
+					if (LaserBeamImage)
+					{
+						LaserBeamImage->SetVisibility(ESlateVisibility::HitTestInvisible);
+						if (UCanvasPanelSlot* LaserSlot = Cast<UCanvasPanelSlot>(LaserBeamImage->Slot))
+						{
+							LaserSlot->SetPosition(FVector2D(EnemyNormPos.X * GTRoomSize, EnemyNormPos.Y * GTRoomSize) - FVector2D(0.f, 10.f));
+						}
+						const float LaserDeg = FMath::RadiansToDegrees(FMath::Atan2(LaserDir.Y, LaserDir.X));
+						LaserBeamImage->SetRenderTransform(FWidgetTransform(FVector2D::ZeroVector, FVector2D(1.f, 1.f), FVector2D::ZeroVector, LaserDeg));
+					}
+					// 镜头起手闪光: 跟随发射端(无人机本体)。
+					if (LaserMuzzleImage)
+					{
+						LaserMuzzleImage->SetVisibility(ESlateVisibility::HitTestInvisible);
+						if (UCanvasPanelSlot* MzSlot = Cast<UCanvasPanelSlot>(LaserMuzzleImage->Slot))
+						{
+							MzSlot->SetPosition(FVector2D(EnemyNormPos.X * GTRoomSize - 23.f, EnemyNormPos.Y * GTRoomSize - 23.f));
+						}
+					}
+					LaserTickTimer -= InDeltaTime;
+					if (LaserTickTimer <= 0.f)
+					{
+						const FVector2D ToPlayer = PlayerPos - EnemyNormPos;
+						const float Proj = FVector2D::DotProduct(ToPlayer, LaserDir);
+						const FVector2D Closest = EnemyNormPos + LaserDir * FMath::Max(0.f, Proj);
+						const float PerpDist = FVector2D::Distance(PlayerPos, Closest);
+						if (Proj > 0.f && PerpDist < 0.05f)
+						{
+							TryApplyMonsterHit();   // 站光束前方且贴近线 -> 扣血
+							if (LaserImpactImage)
+							{
+								LaserImpactTimer = 0.14f;
+								LaserImpactImage->SetVisibility(ESlateVisibility::HitTestInvisible);
+								if (UCanvasPanelSlot* ImSlot = Cast<UCanvasPanelSlot>(LaserImpactImage->Slot))
+								{
+									ImSlot->SetPosition(FVector2D(PlayerPos.X * GTRoomSize - 26.f, PlayerPos.Y * GTRoomSize - 26.f));
+								}
+							}
+						}
+						LaserTickTimer = Arch.LaserTickInterval;
+					}
+					if (LaserActiveTimer <= 0.f)
+					{
+						bLaserFiring = false;
+						if (LaserBeamImage) { LaserBeamImage->SetVisibility(ESlateVisibility::Collapsed); }
+						if (LaserMuzzleImage) { LaserMuzzleImage->SetVisibility(ESlateVisibility::Collapsed); }
+						EnemyAttackCooldownTimer = Arch.AttackInterval;
+					}
+				}
+			}
+			else // RangedProjectile: 红线瞄准 -> 单发飞弹(PR#9 远程, 未指定远程模式的兜底)。
 			{
 				if (!bProjectileActive && EnemyAimTimer <= 0.f)
 				{
@@ -1184,8 +1549,47 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 				}
 			}
 
-			// 怪物图像: 跟随 EnemyNormPos(逐帧移动)+ 攻击抖动偏移。
+			// 激光命中爆点衰减 + 非发射时确保镜头闪光隐藏。
+			if (LaserImpactTimer > 0.f)
 			{
+				LaserImpactTimer -= InDeltaTime;
+				if (LaserImpactTimer <= 0.f && LaserImpactImage) { LaserImpactImage->SetVisibility(ESlateVisibility::Collapsed); }
+			}
+			if (!bLaserFiring && LaserMuzzleImage && LaserMuzzleImage->GetVisibility() != ESlateVisibility::Collapsed)
+			{
+				LaserMuzzleImage->SetVisibility(ESlateVisibility::Collapsed);
+			}
+
+			// 怪物本体: 帧动画(待机循环/蓄力姿态/蝙蝠发射张嘴) + 朝向(源贴图朝右, 玩家在左则水平翻转面向玩家)。
+			{
+				EnemyAnimTime += InDeltaTime;
+				if (EnemyFireFlashTimer > 0.f) { EnemyFireFlashTimer -= InDeltaTime; }
+				const bool bCharging = (EnemyAimTimer > 0.f) || bLaserFiring;
+				FString FrameKey;
+				switch (Snapshot.EnemyType)
+				{
+				case EGT_MonsterType::Bat:
+					if (EnemyFireFlashTimer > 0.f)  { FrameKey = TEXT("/Game/Graytail/Sprites/Monsters/bat_attack_1"); }
+					else if (bCharging)             { FrameKey = TEXT("/Game/Graytail/Sprites/Monsters/bat_attack_0"); }
+					else { FrameKey = FString::Printf(TEXT("/Game/Graytail/Sprites/Monsters/bat_idle_%d"), FMath::FloorToInt(EnemyAnimTime * 7.f) % 4); }
+					break;
+				case EGT_MonsterType::Drone:
+					if (bCharging)
+					{
+						const float Prog = (Arch.AimDuration > 0.f && EnemyAimTimer > 0.f) ? (1.f - EnemyAimTimer / Arch.AimDuration) : 1.f;
+						FrameKey = FString::Printf(TEXT("/Game/Graytail/Sprites/Monsters/drone_charge_%d"), FMath::Clamp(FMath::FloorToInt(Prog * 3.f), 0, 2));
+					}
+					else { FrameKey = FString::Printf(TEXT("/Game/Graytail/Sprites/Monsters/drone_idle_%d"), FMath::FloorToInt(EnemyAnimTime * 5.f) % 4); }
+					break;
+				default:
+					FrameKey = TEXT("/Game/Graytail/Sprites/enemy_slime");
+					break;
+				}
+				if (FrameKey != CurrentEnemyFrameKey)
+				{
+					if (UTexture2D* BodyTex = LoadTextureAsset(FrameKey)) { EnemyImage->SetBrushFromTexture(BodyTex); CurrentEnemyFrameKey = FrameKey; }
+				}
+
 				const FVector2D BasePx(EnemyNormPos.X * GTRoomSize - 40.f, EnemyNormPos.Y * GTRoomSize - 40.f);
 				FVector2D Offset = FVector2D::ZeroVector;
 				if (EnemyShakeTimer > 0.f)
@@ -1197,7 +1601,21 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 				{
 					EnemySlot->SetPosition(BasePx + Offset);
 				}
+				// 怪物脚下阴影(地面层, 不随抖动/翻转/punch, 卖悬空感)。
+				if (EnemyShadow)
+				{
+					EnemyShadow->SetVisibility(ESlateVisibility::HitTestInvisible);
+					if (UCanvasPanelSlot* EShadowSlot = Cast<UCanvasPanelSlot>(EnemyShadow->Slot))
+					{
+						EShadowSlot->SetPosition(FVector2D(EnemyNormPos.X * GTRoomSize - 28.f, EnemyNormPos.Y * GTRoomSize + 22.f));
+					}
+				}
+				const float FaceScaleX = (PlayerPos.X < EnemyNormPos.X) ? -1.f : 1.f;
+				const float HitPunch = 1.f + 0.18f * EnemyHitFlash;   // 受击瞬间放大
+				EnemyImage->SetRenderTransform(FWidgetTransform(FVector2D::ZeroVector, FVector2D(FaceScaleX * HitPunch, HitPunch), FVector2D::ZeroVector, 0.f));
 			}
+			LastEnemyNormPos = EnemyNormPos;   // 记录怪物当前位置, 供死亡碎裂在其末位置播放
+			LastEnemyType = Snapshot.EnemyType;
 
 			// 攻击射程提示: 未进入射程时提示靠近(怪物会追击, 射程很快闭合)。
 			if (CombatHintLabel)
@@ -1258,6 +1676,18 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 		}
 		else
 		{
+			// 战斗刚结束(上一帧还在战斗)且玩家未死 → 怪物被击杀, 在其末位置触发碎裂演出。
+			// 战斗结束=击杀(仍在开战格)才播碎裂+死亡音; 逃跑(换了格)不播。
+			if (bPrevInCombat && Snapshot.PlayerHp > 0 && !bPlayingDeathShatter
+				&& CurrentCellX == LastCombatCellX && CurrentCellY == LastCombatCellY)
+			{
+				bPlayingDeathShatter = true;
+				PlaySfx(FName(TEXT("sfx_death")));
+				DeathShatterTimer = 0.f;
+				DeathShatterFrame = -1;
+				DeathEffectPos = LastEnemyNormPos;
+				DeathShatterType = LastEnemyType;   // 按怪种选碎裂图(蝙蝠紫羽/无人机火花/史莱姆)
+			}
 			// 清理 + 重置(下一场战斗从头开始)。
 			bPrevInCombat = false;
 			CombatFleeTimer = 0.f;
@@ -1275,6 +1705,35 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 			bPlayerInAttackRange = false;
 			if (EnemyWarningLine) EnemyWarningLine->SetVisibility(ESlateVisibility::Collapsed);
 			if (EnemyProjectileImage) EnemyProjectileImage->SetVisibility(ESlateVisibility::Collapsed);
+			// 散射飞弹 / 拖尾 / 激光重置(防下场战斗残留)。
+			for (int32 i = 0; i < GTMaxSpreadProjectiles; ++i)
+			{
+				bSpreadProjActive[i] = false;
+				if (SpreadProjImages[i]) SpreadProjImages[i]->SetVisibility(ESlateVisibility::Collapsed);
+			}
+			for (int32 t = 0; t < GTMaxSpreadProjectiles * 2; ++t)
+			{
+				if (SpreadTrailImages[t]) SpreadTrailImages[t]->SetVisibility(ESlateVisibility::Collapsed);
+			}
+			bLaserFiring = false;
+			LaserActiveTimer = 0.f;
+			LaserTickTimer = 0.f;
+			LaserImpactTimer = 0.f;
+			if (LaserBeamImage) LaserBeamImage->SetVisibility(ESlateVisibility::Collapsed);
+			if (LaserMuzzleImage) LaserMuzzleImage->SetVisibility(ESlateVisibility::Collapsed);
+			if (LaserImpactImage) LaserImpactImage->SetVisibility(ESlateVisibility::Collapsed);
+			// 本体帧动画/朝向复位(下场战斗从头来; 防缓存 desync)。
+			EnemyAnimTime = 0.f;
+			EnemyFireFlashTimer = 0.f;
+			CurrentEnemyFrameKey.Reset();
+			EnemyHitFlashTimer = 0.f;
+			PrevEnemyHp = -1;
+			if (EnemyShadow) EnemyShadow->SetVisibility(ESlateVisibility::Collapsed);
+			if (EnemyImage)
+			{
+				EnemyImage->SetBrushTintColor(FSlateColor(FLinearColor::White));
+				EnemyImage->SetRenderTransform(FWidgetTransform(FVector2D::ZeroVector, FVector2D(1.f, 1.f), FVector2D::ZeroVector, 0.f));
+			}
 			if (EnemyAttackCircle) EnemyAttackCircle->SetVisibility(ESlateVisibility::Collapsed);
 			if (CombatHintLabel) CombatHintLabel->SetVisibility(ESlateVisibility::Collapsed);
 			if (EnemyHpBarBg) EnemyHpBarBg->SetVisibility(ESlateVisibility::Collapsed);
@@ -1284,8 +1743,48 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 			if (PlayerHpBarFill) PlayerHpBarFill->SetVisibility(ESlateVisibility::Collapsed);
 		}
 	}
+
+	// 怪物死亡碎裂演出推进(独立于战斗状态机; 在怪物末位置叠播 5 帧 80x80, 约 0.45s 后自隐)。
+	if (bPlayingDeathShatter && DeathEffectImage)
+	{
+		DeathShatterTimer += InDeltaTime;
+		const float DeathShatterPerFrame = 0.09f;
+		const int32 Frame = FMath::FloorToInt(DeathShatterTimer / DeathShatterPerFrame);
+		if (Frame >= 5)
+		{
+			bPlayingDeathShatter = false;
+			DeathEffectImage->SetVisibility(ESlateVisibility::Collapsed);
+		}
+		else
+		{
+			if (Frame != DeathShatterFrame)
+			{
+				DeathShatterFrame = Frame;
+				const TCHAR* ShatterPrefix =
+					(DeathShatterType == EGT_MonsterType::Bat) ? TEXT("bat_shatter") :
+					(DeathShatterType == EGT_MonsterType::Drone) ? TEXT("drone_shatter") : TEXT("slime_shatter");
+				if (UTexture2D* FrameTex = LoadTextureAsset(FString::Printf(TEXT("/Game/Graytail/Sprites/Effects/%s_%d"), ShatterPrefix, Frame)))
+				{
+					DeathEffectImage->SetBrushFromTexture(FrameTex);
+				}
+			}
+			DeathEffectImage->SetVisibility(ESlateVisibility::HitTestInvisible);
+			if (UCanvasPanelSlot* DeathSlot = Cast<UCanvasPanelSlot>(DeathEffectImage->Slot))
+			{
+				DeathSlot->SetPosition(FVector2D(DeathEffectPos.X * GTRoomSize - 40.f, DeathEffectPos.Y * GTRoomSize - 40.f));
+			}
+		}
+	}
 	// ==========================================
 	
+
+	// 玩家受击闪白(亮白 tint 衰减; 配合 PlayMineFlash 全屏红光, 双反馈)。
+	if (PlayerImage)
+	{
+		if (PlayerHitFlashTimer > 0.f) { PlayerHitFlashTimer = FMath::Max(0.f, PlayerHitFlashTimer - InDeltaTime); }
+		const float PlayerFlash = FMath::Clamp(PlayerHitFlashTimer / 0.14f, 0.f, 1.f);
+		PlayerImage->SetColorAndOpacity(FMath::Lerp(FLinearColor::White, FLinearColor(3.f, 3.f, 3.f, 1.f), PlayerFlash));
+	}
 
 	// 焦点在弹窗/按钮上时暂停移动(不动 HeldKeys —— 持键真值由全局 InputPreProcessor 维护,
 	// 关弹窗后仍按着的键会续走、松开则停, 不受 UIOnly/焦点切换影响, 也不会漏 KeyUp 卡键)。
@@ -1361,7 +1860,7 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 
 	// 越界 + 对准门 -> 尝试过门(对齐 Lua isAlignedWithDoor)。
 	// 刚被内核拒绝过(地图边界等)的冷却内不重试, 落到下方撞墙逻辑: 人物贴墙原地踏步, 不来回闪现。
-	const float EdgeMargin = GTPlayerSize * 0.5f / GTRoomSize;
+	const float EdgeMargin = 0.12f;   // 玩家活动边界(也是过门触发线): 缩进留在地板内, 别走到墙/背景外
 	CrossRetryCooldown = FMath::Max(0.f, CrossRetryCooldown - InDeltaTime);
 	if (CrossRetryCooldown <= 0.f)
 	{
@@ -1417,8 +1916,8 @@ void UGT_RoomViewWidget::TryCrossDoor(int32 DirX, int32 DirY)
 
 	CurrentCellX = Snapshot.PlayerX;
 	CurrentCellY = Snapshot.PlayerY;
-	// 从新房间对面的门走进来。
-	PlayerPos = FVector2D(0.5 - DirX * 0.42, 0.5 - DirY * 0.42);
+	// 从新房间对面的门走进来(落在活动边界 0.12 内, 避免入场瞬间被夹回)。
+	PlayerPos = FVector2D(0.5 - DirX * 0.36, 0.5 - DirY * 0.36);
 	MoveVelocity = FVector2D::ZeroVector;
 	RefreshRoomDecor();
 	UpdatePlayerImagePosition();
@@ -1429,6 +1928,7 @@ void UGT_RoomViewWidget::TryCrossDoor(int32 DirX, int32 DirY)
 		&& PrevPlayerHp >= 0 && Snapshot.PlayerHp < PrevPlayerHp)
 	{
 		PlayMineFlash();
+		PlaySfx(FName(TEXT("sfx_explosion")));
 	}
 	PrevPlayerHp = Snapshot.PlayerHp;
 

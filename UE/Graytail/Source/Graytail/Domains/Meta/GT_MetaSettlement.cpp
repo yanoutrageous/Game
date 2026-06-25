@@ -27,6 +27,14 @@ namespace GT_MetaSettlement
 			{
 				continue;
 			}
+			// 带入消耗品(loadout 灌入, 与回收物混在 CarriedItems): 撤离成功退回库存
+			// (风险投资 = 活着拿回未用的), 不当回收物结算。失败/放弃不走这里 → 自然全损失。
+			const FGT_ItemCatalogEntry* Def = GT_ItemCatalog::FindItemDef(Stack.ItemId);
+			if (Def && Def->Kind == EGT_ItemKind::Consumable)
+			{
+				Meta.AddConsumable(Stack.ItemId, Stack.Count);
+				continue;
+			}
 			FGT_RewardItem Item;
 			Item.ItemId = Stack.ItemId;
 			Item.Count = Stack.Count;
@@ -50,6 +58,12 @@ namespace GT_MetaSettlement
 		for (const FGT_ItemStack& Stack : Inv.CarriedItems)
 		{
 			if (Stack.ItemId.IsNone() || Stack.Count <= 0)
+			{
+				continue;
+			}
+			// 消耗品(loadout 带入)死亡全损失, 不参与抢救(只抢救回收物, 对齐 Lua carriedItems 语义)。
+			const FGT_ItemCatalogEntry* Def = GT_ItemCatalog::FindItemDef(Stack.ItemId);
+			if (Def && Def->Kind == EGT_ItemKind::Consumable)
 			{
 				continue;
 			}

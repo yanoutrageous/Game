@@ -14,6 +14,8 @@
 #include "Misc/ConfigCacheIni.h"
 #include "Styling/CoreStyle.h"
 #include "UI/GT_UIStyle.h"
+#include "Core/GT_SettingsSubsystem.h"
+#include "Engine/GameInstance.h"
 #include "UObject/Package.h"
 
 namespace
@@ -420,6 +422,14 @@ UTexture2D* UGT_MainMenuWidget::LoadUiTexture(const FString& AssetPath)
 
 void UGT_MainMenuWidget::Open()
 {
+	// 标题界面出现时启动 BGM(子系统幂等, 跨界面常驻)。
+	if (const UGameInstance* GI = GetGameInstance())
+	{
+		if (UGT_SettingsSubsystem* Settings = GI->GetSubsystem<UGT_SettingsSubsystem>())
+		{
+			Settings->StartMusicIfNeeded(GetWorld());
+		}
+	}
 	ShowPage(EPage::Main);
 	SetVisibility(ESlateVisibility::Visible);
 	SetFocus();
@@ -564,6 +574,13 @@ void UGT_MainMenuWidget::ConfirmSelection()
 	if (SelectedIndex < 0 || SelectedIndex >= CurrentOptionCount())
 	{
 		return;
+	}
+	if (UGameInstance* GI = GetGameInstance())
+	{
+		if (UGT_SettingsSubsystem* Settings = GI->GetSubsystem<UGT_SettingsSubsystem>())
+		{
+			Settings->PlaySfx(this, FName(TEXT("sfx_click")));
+		}
 	}
 
 	switch (CurrentPage)

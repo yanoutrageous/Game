@@ -9,6 +9,8 @@ UENUM(BlueprintType)
 enum class EGT_MonsterType : uint8
 {
 	Slime UMETA(DisplayName = "Slime"),   // 第 1 个原型: 缓慢追击 + 近战预警圈(对齐原版)
+	Bat UMETA(DisplayName = "Bat"),       // 蝙蝠: 快速 kiting + 散射多发偏角子弹
+	Drone UMETA(DisplayName = "Drone"),   // 无人机: 慢速 kiting + 蓄力持续激光
 };
 
 // 移动模式(表现层 RoomView 按此分派)。
@@ -17,6 +19,7 @@ enum class EGT_MonsterMovePattern : uint8
 {
 	Stationary UMETA(DisplayName = "Stationary"),       // 原地不动(纯原版)
 	ChasePlayer UMETA(DisplayName = "Chase Player"),    // 朝玩家缓慢逼近, 进攻击圈即停
+	KeepDistance UMETA(DisplayName = "Keep Distance"),  // 远程 kiting: 太近后撤、到理想距离停下打、太远(快怪)跟近
 };
 
 // 攻击模式(表现层 RoomView 按此分派; 伤害仍走 MonsterHit 命令)。
@@ -24,7 +27,9 @@ UENUM(BlueprintType)
 enum class EGT_MonsterAttackPattern : uint8
 {
 	MeleeCircle UMETA(DisplayName = "Melee Circle"),        // 地面预警圈 -> 填充判定圈(对齐原版近战)
-	RangedProjectile UMETA(DisplayName = "Ranged Projectile"), // 红线瞄准 -> 飞弹(PR#9 远程, 留给未来远程型)
+	RangedProjectile UMETA(DisplayName = "Ranged Projectile"), // 红线瞄准 -> 单发飞弹(PR#9 远程)
+	RangedSpread UMETA(DisplayName = "Ranged Spread"),         // 蝙蝠: 朝玩家方向 ±角度散射 N 发直线飞弹
+	RangedLaser UMETA(DisplayName = "Ranged Laser"),           // 无人机: 蓄力 -> 锁向粗光束持续 + 站内每隔扣血
 };
 
 // 怪物行为原型(纯数据, 非 UPROPERTY): 数值 + AI 画像 + 实时相位时长 + 贴图。
@@ -46,7 +51,27 @@ struct FGT_MonsterArchetype
 	float ActiveDuration = 0.28f;
 	float CooldownDuration = 0.55f;
 
+	// 远程 kiting / 攻击参数(近战型留默认 0)。
+	float IdealDistance = 0.f;        // KeepDistance 理想距离(0 = 不保持距离, 走 ChasePlayer/Stationary)
+	float AimDuration = 0.f;          // 远程瞄准/蓄力时长
+	float AttackInterval = 0.f;       // 远程攻击大循环间隔
+	int32 SpreadCount = 0;            // RangedSpread 弹数
+	float SpreadHalfAngleDeg = 0.f;   // RangedSpread 左右偏角(度)
+	float LaserDuration = 0.f;        // RangedLaser 光束持续时长
+	float LaserTickInterval = 0.f;    // RangedLaser 站内扣血间隔
+	float LaserTurnRateDeg = 0.f;     // RangedLaser 发射后光束每秒朝玩家旋转的最大角度(0=锁死不追)
+	float AimTurnRateDeg = 0.f;       // RangedLaser 蓄力期红线每秒朝玩家旋转的最大角度(0=蓄力开始即锁死方向, 红线固定预警, 移开线即脱靶)
+
+	// KeepDistance 走位权重(让不同远程怪手感不同)。
+	float KiteStrength = 1.0f;        // kiting 方向权重(低=更随机/只轻微远离, 易被追打)
+	float WanderWeight = 0.5f;        // 随机游走权重
+	bool bChaseWhenFar = false;       // 太远是否追回保持射程(false=只远离+乱窜, 不黏射程)
+
+	// 每怪种伤害系数(乘进 EnemyDamage; 1.0=基准 max(4,战力/3))。让不同怪种威胁分层。
+	float DamageMult = 1.0f;
+
 	const TCHAR* SpritePath = TEXT("/Game/Graytail/Sprites/enemy_slime");
+	FLinearColor TintColor = FLinearColor::White;   // 占位染色(区分怪种; 真贴图后置 White)
 };
 
 namespace GT_MonsterCatalog

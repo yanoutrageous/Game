@@ -3,10 +3,6 @@
 #include "CoreMinimal.h"
 #include "GT_InventoryTypes.generated.h"
 
-// 重量查询的定义在 GT_ItemCatalog.cpp。此处仅前置声明该函数, 不 include GT_ItemCatalog.h ——
-// 后者反向依赖本头的 FGT_ItemStack/FGT_ItemCatalogEntry, 直接 include 会构成循环包含。
-namespace GT_ItemCatalog { GRAYTAIL_API int32 GetItemWeight(FName ItemId); }
-
 // 掉落品质档位: 对齐 Lua Balance.search/chest dropTable 的 quality 字段。
 // None 表示该次 roll 落在 "无掉落" 区间(仅普通搜索表有)。
 UENUM(BlueprintType)
@@ -52,10 +48,6 @@ struct GRAYTAIL_API FGT_ItemCatalogEntry
 	// 基础价值(出售/结算用), 对齐 Lua 的 baseValue。
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Item")
 	int32 Value = 0;
-
-	// 单件重量(背包容量限制用)。
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Item")
-	int32 Weight = 1;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Graytail|Item")
 	FString EffectText;
@@ -160,10 +152,6 @@ struct GRAYTAIL_API FGT_RunInventoryState
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Inventory")
 	int32 Parts = 0;
 
-	// 背包容量上限(开局初始化, Standard 局默认 20; BasicDebug 不设限制)。
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Inventory")
-	int32 BackpackCapacity = 20;
-
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Inventory")
 	TArray<FGT_ItemStack> CarriedItems;
 
@@ -175,7 +163,6 @@ struct GRAYTAIL_API FGT_RunInventoryState
 		PendingGold = 0;
 		SafeGold = 0;
 		Parts = 0;
-		BackpackCapacity = 20;
 		CarriedItems.Reset();
 		SearchedRooms.Reset();
 	}
@@ -206,21 +193,14 @@ struct GRAYTAIL_API FGT_RunInventoryState
 		return true;
 	}
 
-	// 尝试添加物品, 超重时返回 false(不添加)。
-	// 返回 true 表示成功入包; false 表示容量不足(物品未动)。
+	// 添加物品入包(已无背包容量限制, 入参合法即必定成功)。
+	// 仍返回 bool 兼容旧调用点: ItemId 空/数量非法 = false, 否则入包后 true。
 	bool AddCarriedItem(FName ItemId, int32 Count, FName Source)
 	{
 		if (ItemId.IsNone() || Count < 1)
 		{
 			return false;
 		}
-
-		const int32 TotalWeight = GT_ItemCatalog::GetItemWeight(ItemId) * Count;
-		if (GetCurrentWeight() + TotalWeight > BackpackCapacity)
-		{
-			return false;
-		}
-
 		StackCarriedItem(ItemId, Count, Source);
 		return true;
 	}
@@ -249,23 +229,6 @@ struct GRAYTAIL_API FGT_RunInventoryState
 		}
 		Stack->Count += Count;
 		Stack->Source = Source;
-	}
-
-	// 当前背包总重量。
-	int32 GetCurrentWeight() const
-	{
-		int32 Total = 0;
-		for (const FGT_ItemStack& Stack : CarriedItems)
-		{
-			Total += GT_ItemCatalog::GetItemWeight(Stack.ItemId) * Stack.Count;
-		}
-		return Total;
-	}
-
-	// 剩余容量。
-	int32 GetRemainingCapacity() const
-	{
-		return FMath::Max(0, BackpackCapacity - GetCurrentWeight());
 	}
 
 	int32 GetCarriedItemCount() const

@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "Domains/Combat/GT_MonsterCatalog.h"   // EGT_MonsterType (帧动画/按怪种死亡选图)
 #include "GT_RoomViewWidget.generated.h"
 
 class UBorder;
@@ -79,6 +80,7 @@ private:
 	void BuildWidgetTree();
 	UGT_DebugSubsystem* GetDebugSubsystem() const;
 	const UGT_RunContext* GetRunContext() const;
+	void PlaySfx(FName Key);   // 经 GT_SettingsSubsystem 播一次性音效(走 SfxVolume)
 	UTexture2D* LoadTextureAsset(const FString& AssetPath);
 	UTexture2D* GetWalkFrame(int32 DirX, int32 DirY, int32 FrameIndex);
 	UTexture2D* GetIdleFrame(int32 DirX, int32 DirY);
@@ -111,6 +113,7 @@ private:
 	UPROPERTY(Transient) UImage* BurstPartsImage = nullptr;
 	UPROPERTY(Transient) UTextBlock* BurstPartsText = nullptr;
 	UPROPERTY(Transient) UImage* EnemyImage = nullptr;
+	UPROPERTY(Transient) UImage* DeathEffectImage = nullptr;   // 怪物死亡碎裂特效层(独立于 EnemyImage)
 	UPROPERTY(Transient) UImage* PlayerImage = nullptr;
 	// 实时战斗血条(怪物/玩家)+ 怪物名牌 + 近战预警圈 + 攻击射程提示。
 	UPROPERTY(Transient) UImage* EnemyHpBarBg = nullptr;
@@ -170,6 +173,37 @@ private:
 	FVector2D ProjectilePos = FVector2D::ZeroVector;
 	float ProjectileSpeed = 0.8f;
 
+	// 散射飞弹(蝙蝠 RangedSpread): 多发并发, 预建固定上限 5。
+	static constexpr int32 GTMaxSpreadProjectiles = 5;
+	UPROPERTY(Transient) UImage* SpreadProjImages[5] = {};
+	FVector2D SpreadProjPos[5] = {};
+	FVector2D SpreadProjDir[5] = {};
+	bool bSpreadProjActive[5] = {};
+
+	// 激光(无人机 RangedLaser): 蓄力 -> 锁向粗光束持续 + 站内每隔扣血。
+	UPROPERTY(Transient) UImage* LaserBeamImage = nullptr;
+	UPROPERTY(Transient) UImage* LaserMuzzleImage = nullptr;   // 无人机镜头起手闪光(发射端)
+	UPROPERTY(Transient) UImage* LaserImpactImage = nullptr;   // 激光命中玩家的灼烧爆点
+	bool bLaserFiring = false;
+	float LaserActiveTimer = 0.f;     // 光束持续剩余
+	float LaserTickTimer = 0.f;       // 站内扣血间隔倒计时
+	float LaserImpactTimer = 0.f;     // 命中爆点闪现剩余
+	FVector2D LaserDir = FVector2D::ZeroVector;
+
+	// 远程怪 kiting 随机游走(让移动别太规律): 每隔一段换随机方向叠加。
+	FVector2D WanderDir = FVector2D::ZeroVector;
+	float WanderTimer = 0.f;
+
+	// 纯代码 juice(无素材): 阴影 = RoundedBox 深色软椭圆(玩家常驻 + 战斗怪物脚下)。
+	UPROPERTY(Transient) UImage* PlayerShadow = nullptr;
+	UPROPERTY(Transient) UImage* EnemyShadow = nullptr;
+	// 受击闪白: 亮白 tint + scale punch, HP 下降帧触发后衰减。
+	float EnemyHitFlashTimer = 0.f;
+	int32 PrevEnemyHp = -1;
+	float PlayerHitFlashTimer = 0.f;
+	// 散弹弹道拖尾: 每发 2 个渐隐残影点跟在弹丸后。
+	UPROPERTY(Transient) UImage* SpreadTrailImages[GTMaxSpreadProjectiles * 2] = {};
+
 	// 玩家实时战斗计时(表现层门控, 对齐 Combat.lua): 挥砍冷却 + 受击无敌帧。
 	float PlayerAttackCooldownTimer = 0.f;
 	float PlayerIFrameTimer = 0.f;
@@ -184,6 +218,23 @@ private:
 	// 怪物实时战斗状态(表现层): 归一化位置(追击移动)、近战相位机、攻击射程缓存。
 	FVector2D EnemyNormPos = FVector2D(0.35f, 0.45f);
 	int32 EnemyMeleePhase = 0;          // 0 idle / 1 warning / 2 active / 3 cooldown
+
+	// 怪物本体帧动画 + 朝向(贴图源朝右, 玩家在左侧则水平翻转面向玩家)。
+	float EnemyAnimTime = 0.f;            // 待机/蓄力帧动画时钟
+	float EnemyFireFlashTimer = 0.f;      // 蝙蝠发射张嘴帧的短暂闪现窗口
+	FString CurrentEnemyFrameKey;         // 当前已设贴图路径缓存(跳过逐帧重复 SetBrush)
+	EGT_MonsterType LastEnemyType = EGT_MonsterType::Slime;       // 逐帧记录当前怪种(死亡碎裂选图用)
+	EGT_MonsterType DeathShatterType = EGT_MonsterType::Slime;    // 触发碎裂时定格的怪种
+	// 逐帧记录开战所在格: 战斗结束时若仍在此格=击杀(播碎裂); 换了格=逃跑(不播)。
+	int32 LastCombatCellX = -1;
+	int32 LastCombatCellY = -1;
+
+	// 怪物死亡碎裂演出(独立于战斗状态机): 怪物被击杀时在其末位置叠播 5 帧。
+	bool bPlayingDeathShatter = false;
+	float DeathShatterTimer = 0.f;
+	int32 DeathShatterFrame = -1;
+	FVector2D DeathEffectPos = FVector2D(0.35f, 0.45f);
+	FVector2D LastEnemyNormPos = FVector2D(0.35f, 0.45f);
 	float EnemyMeleePhaseTimer = 0.f;
 	bool bEnemyMeleeHitResolved = false;
 	bool bPlayerInAttackRange = false;

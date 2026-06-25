@@ -81,13 +81,14 @@ void UGT_PauseMenuWidget::BuildWidgetTree()
 	}
 
 	UBorder* CardEdge = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-	CardEdge->SetBrushColor(GTPauseCardEdge);
+	CardEdge->SetBrushColor(GTPauseCardEdge);   // fallback 纯色(贴图缺失时保留)
 	CardEdge->SetPadding(FMargin(2.f));
+	GT_UIStyle::SkinPanel9(CardEdge, GT_UIStyle::PanelDialogSkin());   // 组员金属边框换皮
 	CardSize->SetContent(CardEdge);
 
 	UBorder* Card = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-	Card->SetBrushColor(GTPauseCardBg);
-	Card->SetPadding(FMargin(24.f, 20.f, 24.f, 20.f));
+	Card->SetBrushColor(FLinearColor(0.f, 0.f, 0.f, 0.f));   // 透明: 让 CardEdge 的边框贴图透出
+	Card->SetPadding(FMargin(30.f, 32.f, 30.f, 50.f));       // 内缩避开金属框; 底部加大避开内阴影压字
 	CardEdge->SetContent(Card);
 
 	UVerticalBox* Column = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
@@ -129,7 +130,7 @@ void UGT_PauseMenuWidget::BuildWidgetTree()
 	ConfirmText->SetColorAndOpacity(FSlateColor(GTPauseDanger));
 	ConfirmText->SetJustification(ETextJustify::Center);
 	ConfirmText->SetAutoWrapText(true);
-	ConfirmText->SetText(FText::FromString(TEXT("确认放弃本局? 待结算金币将丢失, 不结算。")));
+	ConfirmText->SetText(FText::FromString(TEXT("确认放弃本局? 比阵亡更惨 —— 不结算(金币全丢), 带入装备同样损失。")));
 	if (UVerticalBoxSlot* ConfirmTextSlot = ConfirmBox->AddChildToVerticalBox(ConfirmText))
 	{
 		ConfirmTextSlot->SetPadding(FMargin(0.f, 0.f, 0.f, 8.f));
@@ -174,10 +175,12 @@ void UGT_PauseMenuWidget::BuildCheatBox(UVerticalBox* Column)
 	CheatBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	Column->AddChildToVerticalBox(CheatBox);
 
-	// 索引约定: 0=无敌切换; 1..7=进房型; 8=+金币; 9=给止血贴; 10=满血; 11=残血。
+	// 索引约定: 0=无敌切换; 1..7=进房型; 8=+金币; 9=给止血贴; 10=满血; 11=残血; 12=蝙蝠房; 13=无人机房。
 	CheatGodText = AddCheatButton(CheatBox, TEXT("无敌: 关"), 0, GTPauseWarn);
 	AddCheatButton(CheatBox, TEXT("进宝箱房"), 1, GTPauseBtnText);
-	AddCheatButton(CheatBox, TEXT("进怪物房"), 2, GTPauseBtnText);
+	AddCheatButton(CheatBox, TEXT("进史莱姆房"), 2, GTPauseBtnText);
+	AddCheatButton(CheatBox, TEXT("进蝙蝠房"), 12, GTPauseBtnText);
+	AddCheatButton(CheatBox, TEXT("进无人机房"), 13, GTPauseBtnText);
 	AddCheatButton(CheatBox, TEXT("进旅商房"), 3, GTPauseBtnText);
 	AddCheatButton(CheatBox, TEXT("进赌徒房"), 4, GTPauseBtnText);
 	AddCheatButton(CheatBox, TEXT("进祭坛房"), 5, GTPauseBtnText);
@@ -304,11 +307,12 @@ void UGT_PauseMenuWidget::HandleCheatIndex(int32 Index)
 	}
 	FGT_DebugRunSnapshot Snapshot;
 	bool bCloseAfter = false;
+	bool bCombatGotoFailed = false;   // 进史莱姆/蝙蝠/无人机房失败(都打过了)-> 弹提示
 	switch (Index)
 	{
 	case 0:  Debug->DebugSetGodMode(!ReadGodMode(), Snapshot); RefreshGodLabel(); break;
 	case 1:  Debug->DebugGotoRoomType(TEXT("chest"),  Snapshot); bCloseAfter = true; break;
-	case 2:  Debug->DebugGotoRoomType(TEXT("combat"), Snapshot); bCloseAfter = true; break;
+	case 2:  bCombatGotoFailed = !Debug->DebugGotoRoomType(TEXT("slime"), Snapshot); bCloseAfter = true; break;
 	case 3:  Debug->DebugGotoRoomType(TEXT("trader"), Snapshot); bCloseAfter = true; break;
 	case 4:  Debug->DebugGotoRoomType(TEXT("dice"),   Snapshot); bCloseAfter = true; break;
 	case 5:  Debug->DebugGotoRoomType(TEXT("altar"),  Snapshot); bCloseAfter = true; break;
@@ -318,9 +322,15 @@ void UGT_PauseMenuWidget::HandleCheatIndex(int32 Index)
 	case 9:  Debug->DebugGiveItem(FName(TEXT("emergency_bandage")), 1, Snapshot); break;
 	case 10: Debug->DebugSetHp(9999, Snapshot); break;
 	case 11: Debug->DebugSetHp(1, Snapshot); break;
+	case 12: bCombatGotoFailed = !Debug->DebugGotoRoomType(TEXT("bat"),   Snapshot); bCloseAfter = true; break;
+	case 13: bCombatGotoFailed = !Debug->DebugGotoRoomType(TEXT("drone"), Snapshot); bCloseAfter = true; break;
 	default: return;
 	}
 	OnCheatApplied.ExecuteIfBound();   // 请 HUD 整体刷新(金币/血量/背包/房间)
+	if (bCombatGotoFailed)
+	{
+		OnToast.ExecuteIfBound(TEXT("没有可传送的怪物房了(都打过了)"));   // 关菜单后在游戏里显示
+	}
 	if (bCloseAfter)
 	{
 		OnResume.ExecuteIfBound();      // 进房型后关菜单, 直接看到房间

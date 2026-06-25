@@ -234,6 +234,13 @@ public:
 	// 真值图上所有撤离信标格坐标(罗盘开局方向提示用; 表现层算相对玩家方位)。
 	TArray<FIntPoint> GetExitCells() const;
 
+	// 调试: 强制下一个进入的战斗房怪物类型(gt.Goto bat/drone 用; 一次性, 战斗解析后自清)。
+	void SetDebugForcedMonsterType(EGT_MonsterType Type, bool bEnable);
+	// 调试: 清掉某战斗房的"已消灭"标记, 让作弊传送能重新开战(修"传送到已清房=空房")。
+	void DebugClearDefeatedCombatRoom(int32 X, int32 Y);
+	// 调试: 该战斗房是否已打过(作弊传送只去未清的房, 全清了弹提示)。
+	bool IsCombatRoomDefeated(int32 X, int32 Y) const { return DefeatedCombatRooms.Contains(FIntPoint(X, Y)); }
+
 	// S6 回收磁石: 进宝箱房额外掉 1 件低价值回收物(每格一次)。内部判激活/宝箱房/去重; 返回是否真发了。
 	bool TryGrantChestMagnetLoot(int32 X, int32 Y);
 
@@ -349,6 +356,14 @@ private:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run", meta = (AllowPrivateAccess = "true"))
 	FName PlayerActorId = NAME_None;
+
+	// 出生格坐标(InitializeFromSpec 从 MapResult.SpawnCoord 记下)。出生格是纯空安全格(生成器把它排除出内容候选), 不可搜刮。
+	// BasicDebug=(0,0) 对齐 163 夹具; Standard 随机出生 → 不能再写死 (0,0) 判定(否则真出生格被当普通房白嫖、(0,0) 内容被误吞)。
+	FIntPoint SpawnCellCoord = FIntPoint::ZeroValue;
+
+	// 调试强制怪物类型(gt.Goto bat/drone): 进下一个战斗房用此覆盖 PickTypeForCell, 用完即清。
+	EGT_MonsterType DebugForcedMonsterType = EGT_MonsterType::Slime;
+	bool bDebugForceMonsterType = false;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat", meta = (AllowPrivateAccess = "true"))
 	FGT_CombatRuntimeState CombatRuntimeState;

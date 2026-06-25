@@ -12,6 +12,8 @@
 #include "Components/UniformGridPanel.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
+#include "Core/GT_RunContext.h"
+#include "Core/GT_RunSubsystem.h"
 #include "Debug/GT_DebugSubsystem.h"
 #include "Engine/GameInstance.h"
 #include "Engine/Texture2D.h"
@@ -137,6 +139,12 @@ UGT_DebugSubsystem* UGT_MapOverlayWidget::GetDebugSubsystem() const
 	return GetGameInstance() ? GetGameInstance()->GetSubsystem<UGT_DebugSubsystem>() : nullptr;
 }
 
+const UGT_RunContext* UGT_MapOverlayWidget::GetRunContext() const
+{
+	const UGT_RunSubsystem* RunSubsystem = GetGameInstance() ? GetGameInstance()->GetSubsystem<UGT_RunSubsystem>() : nullptr;
+	return RunSubsystem ? RunSubsystem->GetCurrentRunContext() : nullptr;
+}
+
 UTexture2D* UGT_MapOverlayWidget::LoadUiTexture(const FString& AssetPath)
 {
 	if (UTexture2D** Cached = UiTextureCache.Find(AssetPath))
@@ -202,6 +210,30 @@ void UGT_MapOverlayWidget::RefreshGrid()
 
 	FGT_DebugRunSnapshot Snapshot;
 	Debug->GetDebugRunSnapshot(Snapshot);
+
+	// 邻域感知天赋: 门控读取 + 算"相邻是否藏雷"(任一相邻未知格是雷 -> 相邻未知格全红, 否则全黄)。
+	const UGT_RunContext* OvRunContext = GetRunContext();
+	const bool bMapHl = OvRunContext && OvRunContext->IsLoadoutMapHighlightActive();
+	bool bHiddenMineNear = false;
+	if (bMapHl)
+	{
+		for (int32 NdY = -1; NdY <= 1 && !bHiddenMineNear; ++NdY)
+		{
+			for (int32 NdX = -1; NdX <= 1 && !bHiddenMineNear; ++NdX)
+			{
+				if (NdX == 0 && NdY == 0) { continue; }
+				const int32 Nx = Snapshot.PlayerX + NdX, Ny = Snapshot.PlayerY + NdY;
+				if (Nx < 0 || Ny < 0 || Nx >= Width || Ny >= Height) { continue; }
+				const FGT_MiniMapCellViewData& NCell = Cells[Ny * Width + Nx];
+				if (NCell.bExplored || NCell.bVisible) { continue; }   // 已知格不算"未探出"
+				FGT_TruthCell NTruth;
+				if (OvRunContext->GetTruthCellSnapshot(Nx, Ny, NTruth) && NTruth.bHasMine)
+				{
+					bHiddenMineNear = true;
+				}
+			}
+		}
+	}
 
 	GridSizeBox->SetWidthOverride(Width * GTOverlayCellSize);
 	GridSizeBox->SetHeightOverride(Height * GTOverlayCellSize);
@@ -320,14 +352,14 @@ void UGT_MapOverlayWidget::RefreshGrid()
 							BadgeSlot->SetVerticalAlignment(VAlign_Bottom);
 						}
 					}
-					else if (!bSpecialIcon && !bPlayerHere && Cell.DisplayedNumber >= 1 && Cell.DisplayedNumber <= 3)
+					else if (!bSpecialIcon && !bPlayerHere && Cell.DisplayedNumber >= 1 && Cell.DisplayedNumber <= 8)
 					{
 						AddCellIcon(LoadUiTexture(FString::Printf(
 							TEXT("/Game/Graytail/UI/Icons64/1%d_shuzi_%d"), Cell.DisplayedNumber, Cell.DisplayedNumber)), 0.7f);
 					}
 					else if (!bSpecialIcon && !bPlayerHere)
 					{
-						// 0 与 4+: 文本数字(0 也显示)。
+						// 0: 文本数字(无 0 图标, 用户要求 0 也显示)。
 						UTextBlock* NumberText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 						NumberText->SetFont(GT_UIStyle::Font(26));
 						NumberText->SetText(FText::FromString(FString::FromInt(Cell.DisplayedNumber)));
@@ -355,6 +387,31 @@ void UGT_MapOverlayWidget::RefreshGrid()
 					DotSlot->SetHorizontalAlignment(HAlign_Left);
 					DotSlot->SetVerticalAlignment(VAlign_Bottom);
 					DotSlot->SetPadding(FMargin(3.f));
+				}
+			}
+
+			// 邻域感知天赋: 相邻未知格整体染色(画最上层, 盖过 ? 砖块) —— 有相邻未探出雷=全红, 否则全黄。
+			// 不暴露具体哪格雷, 仅未探索 ? 格生效。
+			if (bMapHl && !bPlayerHere && !bKnown
+				&& FMath::Abs(X - Snapshot.PlayerX) <= 1 && FMath::Abs(Y - Snapshot.PlayerY) <= 1)
+			{
+				UBorder* NeighborHl = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+				FSlateBrush HlBrush;
+				HlBrush.DrawAs = ESlateBrushDrawType::RoundedBox;
+				HlBrush.TintColor = bHiddenMineNear
+					? FSlateColor(FLinearColor(1.f, 0.22f, 0.22f, 0.32f))   // 有雷: 红内填
+					: FSlateColor(FLinearColor(1.f, 0.86f, 0.32f, 0.16f));  // 安全: 淡黄内填
+				HlBrush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+				HlBrush.OutlineSettings.CornerRadii = FVector4(4.f, 4.f, 4.f, 4.f);
+				HlBrush.OutlineSettings.Color = bHiddenMineNear
+					? FSlateColor(FLinearColor(FColor(255, 70, 70)))
+					: FSlateColor(FLinearColor(FColor(255, 220, 80)));
+				HlBrush.OutlineSettings.Width = bHiddenMineNear ? 4.f : 3.f;
+				NeighborHl->SetBrush(HlBrush);
+				if (UOverlaySlot* HlSlot = CellOverlay->AddChildToOverlay(NeighborHl))
+				{
+					HlSlot->SetHorizontalAlignment(HAlign_Fill);
+					HlSlot->SetVerticalAlignment(VAlign_Fill);
 				}
 			}
 

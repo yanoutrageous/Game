@@ -48,8 +48,6 @@ void UGT_RunContext::InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec)
 	CombatRuntimeState = FGT_CombatRuntimeState();
 	RunSummary = FGT_RunSummary();
 	RunInventory.Reset();
-	// 背包容量按模式: Standard 20 上限; BasicDebug 不设限制(护 163 测试夹具, 搜索永不丢物)。
-	RunInventory.BackpackCapacity = (MapMode == EGT_MapMode::BasicDebug) ? TNumericLimits<int32>::Max() : 20;
 	LastSearchOutcome = FGT_SearchOutcome();
 	LastEventOutcome = FGT_EventOutcome();
 	LastConsumableOutcome = FGT_ConsumableOutcome();
@@ -80,6 +78,7 @@ void UGT_RunContext::InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec)
 	PlayerState.X = MapResult.SpawnCoord.X;
 	PlayerState.Y = MapResult.SpawnCoord.Y;
 	PlayerState.bAlive = true;
+	SpawnCellCoord = MapResult.SpawnCoord;   // 出生格定位(搜刮判定/小地图用), 跟随真实出生点, 非写死 (0,0)
 
 	ActorStates.Reset();
 	ActorStates.Add(PlayerState);
@@ -148,6 +147,7 @@ void UGT_RunContext::ResetRun()
 	bLoadoutKillPowerStack = false; KillPowerStackCap = 0; KillPowerStackAmount = 0; KillPowerStacksUsed = 0;
 	bLoadoutProtocolHeal = false; ProtocolHealCap = 0; ProtocolHealAmount = 0; ProtocolHealsUsed = 0;
 	bLoadoutChestBonusLoot = false; ChestBonusGrantedCells.Reset();
+	SpawnCellCoord = FIntPoint::ZeroValue;
 	MapMode = EGT_MapMode::Unknown;
 }
 
@@ -369,11 +369,21 @@ bool UGT_RunContext::StartDummyCombat(int32 X, int32 Y, FName RoomContentId, FNa
 		TruthMap.CountAdjacentMines8(X, Y, AdjacentMineCount);
 		CombatRuntimeState.bStandardEnemy = true;
 		GT_CombatRules::MakeEnemyForCell(Seed, X, Y, AdjacentMineCount, CombatRuntimeState.EnemyName, CombatRuntimeState.EnemyPower);
-		CombatRuntimeState.EnemyType = GT_MonsterCatalog::PickTypeForCell(Seed, X, Y, AdjacentMineCount);
+		if (bDebugForceMonsterType)
+		{
+			CombatRuntimeState.EnemyType = DebugForcedMonsterType;
+			bDebugForceMonsterType = false;   // 一次性: 用完即清, 不污染其它战斗房
+		}
+		else
+		{
+			CombatRuntimeState.EnemyType = GT_MonsterCatalog::PickTypeForCell(Seed, X, Y, AdjacentMineCount);
+		}
 		const FGT_MonsterArchetype& Archetype = GT_MonsterCatalog::GetArchetype(CombatRuntimeState.EnemyType);
 		CombatRuntimeState.EnemyMaxHp = Archetype.HpBase + FMath::Max(0, CombatRuntimeState.EnemyPower);
 		CombatRuntimeState.EnemyHp = CombatRuntimeState.EnemyMaxHp;
-		CombatRuntimeState.EnemyDamage = GT_CombatRules::MonsterDamageForPower(CombatRuntimeState.EnemyPower);
+		// 按怪种伤害系数分层(无人机最疼/史莱姆次之/蝙蝠基准)。
+		CombatRuntimeState.EnemyDamage = FMath::Max(1, FMath::RoundToInt(
+			GT_CombatRules::MonsterDamageForPower(CombatRuntimeState.EnemyPower) * Archetype.DamageMult));
 		// DummyEnemyHp 镜像真血量, 供仍读旧字段的快照/UI 平滑过渡。
 		CombatRuntimeState.DummyEnemyHp = CombatRuntimeState.EnemyHp;
 	}
@@ -642,6 +652,17 @@ TArray<FIntPoint> UGT_RunContext::GetExitCells() const
 	return Exits;
 }
 
+void UGT_RunContext::SetDebugForcedMonsterType(EGT_MonsterType Type, bool bEnable)
+{
+	DebugForcedMonsterType = Type;
+	bDebugForceMonsterType = bEnable;
+}
+
+void UGT_RunContext::DebugClearDefeatedCombatRoom(int32 X, int32 Y)
+{
+	DefeatedCombatRooms.Remove(FIntPoint(X, Y));
+}
+
 bool UGT_RunContext::TryGrantChestMagnetLoot(int32 X, int32 Y)
 {
 	if (!bLoadoutChestBonusLoot || !IsRunActive())
@@ -819,8 +840,8 @@ bool UGT_RunContext::EvaluateSearchAtPlayer(FName& OutReason, bool& bOutIsChest)
 		return false;
 	}
 
-	// 出生点固定 (0, 0)(InitializeFromSpec 放置), 不可搜刮。
-	if (PlayerX == 0 && PlayerY == 0)
+	// 出生格不可搜刮(纯空安全格, 生成器已排除其内容)。出生点 BasicDebug 固定 (0,0)、Standard 随机, 用真实出生格坐标判定。
+	if (PlayerX == SpawnCellCoord.X && PlayerY == SpawnCellCoord.Y)
 	{
 		OutReason = FName(TEXT("spawn"));
 		return false;
@@ -880,25 +901,14 @@ bool UGT_RunContext::SearchCurrentRoom(FGT_SearchOutcome& OutOutcome)
 	// 大背包搜索奖励 +SearchBonus%(无背包 = 0% 不变, 对齐 Lua RunInventory.searchBonus)。
 	RunInventory.AddPendingGold((Reward.Gold * (100 + LoadoutSearchBonusPercent)) / 100);
 	RunInventory.Parts += Reward.Parts;
-	// 背包超重时按堆整堆拒收(AddCarriedItem 全有或全无)。结算面板只列实际入包的物品,
-	// 不把被丢弃的也算进"已放入回收包", 避免"说谎"。
-	FGT_SearchReward GrantedReward = Reward;
-	GrantedReward.Items.Reset();
-	int32 ItemsSkipped = 0;
+	// 回收物全部入包(已无背包容量限制)。
 	for (const FGT_ItemStack& Stack : Reward.Items)
 	{
-		if (RunInventory.AddCarriedItem(Stack.ItemId, Stack.Count, Stack.Source))
-		{
-			GrantedReward.Items.Add(Stack);
-		}
-		else
-		{
-			++ItemsSkipped;
-		}
+		RunInventory.AddCarriedItem(Stack.ItemId, Stack.Count, Stack.Source);
 	}
 	OutOutcome.bSearched = true;
-	OutOutcome.Status = (ItemsSkipped > 0) ? FName(TEXT("searched_overweight")) : FName(TEXT("searched"));
-	OutOutcome.Reward = GrantedReward;
+	OutOutcome.Status = FName(TEXT("searched"));
+	OutOutcome.Reward = Reward;
 	LastSearchOutcome = OutOutcome;
 	return true;
 }
@@ -1266,10 +1276,7 @@ bool UGT_RunContext::ExecuteEventOptionAtPlayer(FName OptionId, FGT_EventOutcome
 		{
 			return;
 		}
-		if (!RunInventory.AddCarriedItem(ItemId, 1, GTEventItemSource))
-		{
-			return;
-		}
+		RunInventory.AddCarriedItem(ItemId, 1, GTEventItemSource);
 		RunInventory.Parts += 1;
 		FGT_ItemStack& Granted = OutOutcome.GrantedItems.AddDefaulted_GetRef();
 		Granted.ItemId = ItemId;

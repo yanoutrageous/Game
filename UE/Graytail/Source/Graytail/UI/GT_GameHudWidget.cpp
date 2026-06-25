@@ -20,7 +20,9 @@
 #include "Components/VerticalBoxSlot.h"
 #include "Core/GT_RunContext.h"
 #include "Core/GT_RunSubsystem.h"
+#include "Core/GT_SettingsSubsystem.h"
 #include "Debug/GT_DebugSubsystem.h"
+#include "Engine/GameInstance.h"
 #include "Domains/Events/GT_EventTypes.h"
 #include "Domains/Inventory/GT_ItemCatalog.h"
 #include "Domains/Meta/GT_MetaCatalog.h"
@@ -114,9 +116,9 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	// 皮肤 9-slice 后边框厚度固定, 内边距在边框+角饰(~40px)基础上留呼吸空间。
 	UBorder* LeftPanel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 	LeftPanel->SetBrushColor(FLinearColor(0.03f, 0.03f, 0.05f, 0.92f));
-	LeftPanel->SetPadding(FMargin(30.f, 34.f, 30.f, 28.f));
+	LeftPanel->SetPadding(FMargin(34.f, 52.f, 32.f, 30.f));   // 顶部 52: 内容整体下移, 标题不被上框切到
 	USizeBox* LeftWidth = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-	LeftWidth->SetWidthOverride(360.f);
+	LeftWidth->SetWidthOverride(430.f);   // 加宽(原 360 太挤)填左侧留白, 又不过分压缩地图
 	LeftWidth->SetContent(MakeSkinnedPanel(LeftPanel, TEXT("/Game/Graytail/UI/hud/ui_panel_left"), FVector2D(684.f, 580.f), 40.f));
 	if (UHorizontalBoxSlot* LeftSlot = MainRow->AddChildToHorizontalBox(LeftWidth))
 	{
@@ -157,7 +159,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		UOverlay* RoomStack = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
 		if (UOverlaySlot* RoomScaleSlot = RoomStack->AddChildToOverlay(RoomScale))
 		{
-			RoomScaleSlot->SetHorizontalAlignment(HAlign_Fill);
+			RoomScaleSlot->SetHorizontalAlignment(HAlign_Fill);   // 填满+按高缩放=大图(左对齐会缩成小方块)
 			RoomScaleSlot->SetVerticalAlignment(VAlign_Fill);
 		}
 		{
@@ -188,9 +190,9 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		if (UVerticalBoxSlot* RoomSlot = CenterCol->AddChildToVerticalBox(RoomStack))
 		{
 			RoomSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-			RoomSlot->SetHorizontalAlignment(HAlign_Fill);
+			RoomSlot->SetHorizontalAlignment(HAlign_Fill);   // 填满中央列, 房间按高放大
 			RoomSlot->SetVerticalAlignment(VAlign_Fill);
-			RoomSlot->SetPadding(FMargin(16.f, 12.f, 16.f, 4.f));
+			RoomSlot->SetPadding(FMargin(4.f, 12.f, 12.f, 4.f));
 		}
 	}
 
@@ -258,23 +260,61 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	UTextBlock* Legend = MakePanelText(UpperBox, 10, FLinearColor(0.55f, 0.60f, 0.70f, 1.f));
 	Legend->SetText(FText::FromString(TEXT("数字 = 周围8格雷险 · 蓝点 = 可点击回传")));
 
-	// 生命条(原版红条)。
-	UTextBlock* HpTitle = MakePanelText(UpperBox, 13, FLinearColor(0.9f, 0.45f, 0.40f, 1.f));
-	HpTitle->SetText(FText::FromString(TEXT("生命")));
+	// 状态 · 资源(对齐 2UI: 两列 —— 左 生命条/战斗力, 右 资源计数)。
+	UTextBlock* StatusTitle = MakePanelText(UpperBox, 14, FLinearColor(0.85f, 0.88f, 0.95f, 1.f));
+	StatusTitle->SetText(FText::FromString(TEXT("状态 · 资源")));
+
+	UHorizontalBox* StatusRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+	if (UVerticalBoxSlot* StatusRowSlot = UpperBox->AddChildToVerticalBox(StatusRow))
+	{
+		StatusRowSlot->SetPadding(FMargin(0.f, 6.f, 0.f, 0.f));
+	}
+
+	// 左列: 生命条 + 战斗力。
+	UVerticalBox* StatLeft = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+	if (UHorizontalBoxSlot* StatLeftSlot = StatusRow->AddChildToHorizontalBox(StatLeft))
+	{
+		FSlateChildSize Z(ESlateSizeRule::Fill); Z.Value = 1.15f; StatLeftSlot->SetSize(Z);
+		StatLeftSlot->SetPadding(FMargin(0.f, 0.f, 16.f, 0.f));
+	}
+	// 生命: 心形图标 + 血条 + 数值(2UI 风格)。
+	UHorizontalBox* HpRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+	if (UVerticalBoxSlot* HpRowSlot = StatLeft->AddChildToVerticalBox(HpRow)) { HpRowSlot->SetPadding(FMargin(0.f, 3.f, 0.f, 3.f)); }
+	if (UTexture2D* HpIcon = LoadUiTexture(TEXT("/Game/Graytail/UI/hud/stat_hp")))
+	{
+		USizeBox* HpIconSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+		HpIconSize->SetWidthOverride(20.f); HpIconSize->SetHeightOverride(20.f);
+		UImage* HpIconImg = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+		HpIconImg->SetBrushFromTexture(HpIcon); HpIconSize->SetContent(HpIconImg);
+		if (UHorizontalBoxSlot* S = HpRow->AddChildToHorizontalBox(HpIconSize)) { S->SetPadding(FMargin(0.f, 0.f, 7.f, 0.f)); S->SetVerticalAlignment(VAlign_Center); }
+	}
 	HpBar = WidgetTree->ConstructWidget<UProgressBar>(UProgressBar::StaticClass());
 	HpBar->SetFillColorAndOpacity(FLinearColor(0.70f, 0.02f, 0.02f, 1.f));   // 鲜红(降 G/B 去粉调)
-	if (UVerticalBoxSlot* HpSlot = UpperBox->AddChildToVerticalBox(HpBar))
+	if (UHorizontalBoxSlot* HpBarSlot = HpRow->AddChildToHorizontalBox(HpBar))
 	{
-		HpSlot->SetPadding(FMargin(0.f, 2.f, 0.f, 2.f));
+		HpBarSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+		HpBarSlot->SetVerticalAlignment(VAlign_Center);
+		HpBarSlot->SetPadding(FMargin(0.f, 0.f, 6.f, 0.f));
 	}
-	HpText = MakePanelText(UpperBox, 12, FLinearColor(0.9f, 0.9f, 0.9f, 1.f));
+	HpText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+	HpText->SetFont(GT_UIStyle::Font(12));
+	HpText->SetColorAndOpacity(FSlateColor(FLinearColor(0.9f, 0.9f, 0.9f, 1.f)));
+	if (UHorizontalBoxSlot* HpTextSlot = HpRow->AddChildToHorizontalBox(HpText)) { HpTextSlot->SetVerticalAlignment(VAlign_Center); }
+	// 战力: 剑图标 + 数值。
+	PowerText = MakeIconStatRow(StatLeft, TEXT("/Game/Graytail/UI/hud/stat_power"), 13, FLinearColor(0.92f, 0.93f, 0.95f, 1.f));
 
-	// 属性行分色(对齐原版面板配色)。
-	PowerText = MakePanelText(UpperBox, 13, FLinearColor(0.92f, 0.93f, 0.95f, 1.f));
-	PendingText = MakePanelText(UpperBox, 13, FLinearColor(FColor(255, 226, 120)));
-	SafeText = MakePanelText(UpperBox, 13, FLinearColor(FColor(120, 220, 170)));
-	PartsText = MakePanelText(UpperBox, 13, FLinearColor(FColor(130, 200, 255)));
-	SearchedText = MakePanelText(UpperBox, 11, FLinearColor(0.55f, 0.60f, 0.70f, 1.f));
+	// 右列: 资源计数(图标套用 2UI: 币/宝石/箱/雷达, 分色)。
+	UVerticalBox* StatRight = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+	if (UHorizontalBoxSlot* StatRightSlot = StatusRow->AddChildToHorizontalBox(StatRight))
+	{
+		FSlateChildSize Z(ESlateSizeRule::Fill); Z.Value = 1.0f; StatRightSlot->SetSize(Z);
+	}
+	PendingText = MakeIconStatRow(StatRight, TEXT("/Game/Graytail/UI/hud/stat_pending"), 13, FLinearColor(FColor(255, 226, 120)));
+	SafeText = MakeIconStatRow(StatRight, TEXT("/Game/Graytail/UI/hud/stat_locked"), 13, FLinearColor(FColor(120, 220, 170)));
+	PartsText = MakeIconStatRow(StatRight, TEXT("/Game/Graytail/UI/hud/stat_parts"), 13, FLinearColor(FColor(130, 200, 255)));
+	SearchedText = MakeIconStatRow(StatRight, TEXT("/Game/Graytail/UI/hud/stat_searched"), 12, FLinearColor(0.55f, 0.60f, 0.70f, 1.f));
+
+	// 局状态(整行)。
 	StateText = MakePanelText(UpperBox, 13, FLinearColor(0.95f, 0.85f, 0.5f, 1.f));
 
 	// 作业包摘要前空开一两行, 与上面的属性信息分隔(别和上面挤在一起)。
@@ -305,21 +345,51 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	ConsumableList = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	LowerBox->AddChildToVerticalBox(ConsumableList);
 
-	// 第 3 层: 右上协议面板(占位, 数值待协议系统迁入)。
-	UBorder* ProtocolPanel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-	ProtocolPanel->SetBrushColor(FLinearColor(0.05f, 0.03f, 0.03f, 0.9f));
-	ProtocolPanel->SetPadding(FMargin(12.f, 8.f));
+	// 第 3 层: 右上协议状态条(协议N 贴图 = 等级+描述 烤在图里) + 压力值。
+	UVerticalBox* ProtocolBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+	ProtocolBarImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+	ProtocolBarImage->SetDesiredSizeOverride(FVector2D(205.f, 70.f));   // 占位; 刷新时按贴图比例锁高70自适应宽
+	if (UVerticalBoxSlot* BarSlot = ProtocolBox->AddChildToVerticalBox(ProtocolBarImage))
+	{
+		BarSlot->SetHorizontalAlignment(HAlign_Right);
+	}
+	// 压力值: 数字底板(组员美术)拉宽作背景 + 暖金文字居中其上。
+	// 用 SizeBox 强制底板尺寸(够宽框住"压力 100/100"), 避免 Overlay 被文字宽度坍缩 -> 底板看着过小。
+	USizeBox* PressureBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+	PressureBox->SetWidthOverride(204.f);    // ≈ 与上方协议条同宽, 对齐成一列
+	PressureBox->SetHeightOverride(52.f);
+	UOverlay* PressureOverlay = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
+	UImage* PressurePlate = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+	if (UTexture2D* PlateTex = LoadUiTexture(TEXT("/Game/Graytail/UI/Misc/pressure_plate")))
+	{
+		PressurePlate->SetBrushFromTexture(PlateTex);
+	}
+	if (UOverlaySlot* PlateSlot = PressureOverlay->AddChildToOverlay(PressurePlate))
+	{
+		PlateSlot->SetHorizontalAlignment(HAlign_Fill);
+		PlateSlot->SetVerticalAlignment(VAlign_Fill);   // 底板填满 SizeBox -> 真拉宽(可拉伸, 损精度无妨)
+	}
 	ProtocolText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	ProtocolText->SetFont(GT_UIStyle::Font(16));
-	ProtocolText->SetColorAndOpacity(FSlateColor(FLinearColor(0.95f, 0.55f, 0.45f, 1.f)));
-	ProtocolText->SetText(FText::FromString(TEXT("协议 5")));
-	ProtocolPanel->SetContent(ProtocolText);
-	// 协议面板保持整图拉伸画法(竖版贴图压扁成小匾, 原版认可的效果; 9-slice 反而会摊开成大竖框)。
-	if (UOverlaySlot* ProtocolSlot = Screen->AddChildToOverlay(MakeSkinnedPanel(ProtocolPanel, TEXT("/Game/Graytail/UI/hud/ui_panel_protocol"))))
+	ProtocolText->SetFont(GT_UIStyle::Font(15));
+	ProtocolText->SetColorAndOpacity(FSlateColor(FLinearColor(1.0f, 0.86f, 0.5f, 1.f)));   // 暖金, 配深底板
+	ProtocolText->SetJustification(ETextJustify::Center);
+	ProtocolText->SetText(FText::FromString(TEXT("压力 0/100")));
+	if (UOverlaySlot* TxtSlot = PressureOverlay->AddChildToOverlay(ProtocolText))
+	{
+		TxtSlot->SetHorizontalAlignment(HAlign_Center);
+		TxtSlot->SetVerticalAlignment(VAlign_Center);
+	}
+	PressureBox->AddChild(PressureOverlay);
+	if (UVerticalBoxSlot* PressSlot = ProtocolBox->AddChildToVerticalBox(PressureBox))
+	{
+		PressSlot->SetHorizontalAlignment(HAlign_Right);
+		PressSlot->SetPadding(FMargin(0.f, 2.f, 4.f, 0.f));
+	}
+	if (UOverlaySlot* ProtocolSlot = Screen->AddChildToOverlay(ProtocolBox))
 	{
 		ProtocolSlot->SetHorizontalAlignment(HAlign_Right);
 		ProtocolSlot->SetVerticalAlignment(VAlign_Top);
-		ProtocolSlot->SetPadding(FMargin(0.f, 10.f, 10.f, 0.f));
+		ProtocolSlot->SetPadding(FMargin(0.f, 8.f, 0.f, 0.f));   // 贴右上角
 	}
 
 	// 第 4 层: 底部快捷键栏。
@@ -450,15 +520,17 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		}
 
 		RunEndFrame = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+		RunEndFrame->SetBrushColor(FLinearColor(FColor(120, 95, 70)));   // fallback 纯色
 		RunEndFrame->SetPadding(FMargin(2.f));
+		GT_UIStyle::SkinPanel9(RunEndFrame, GT_UIStyle::PanelDialogSkin());   // 金属框(刷新时按结局换金/中性)
 		if (UOverlaySlot* FrameSlot = EndRoot->AddChildToOverlay(RunEndFrame))
 		{
 			FrameSlot->SetHorizontalAlignment(HAlign_Center);
 			FrameSlot->SetVerticalAlignment(VAlign_Center);
 		}
 		UBorder* EndBg = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-		EndBg->SetBrushColor(FLinearColor(FColor(26, 16, 18, 244)));
-		EndBg->SetPadding(FMargin(34.f, 24.f));
+		EndBg->SetBrushColor(FLinearColor(0.f, 0.f, 0.f, 0.f));   // 透明: 透出金属框
+		EndBg->SetPadding(FMargin(34.f, 30.f, 34.f, 50.f));        // 底部加大避开框内阴影
 		RunEndFrame->SetContent(EndBg);
 
 		USizeBox* EndWidth = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
@@ -466,6 +538,16 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		EndBg->SetContent(EndWidth);
 		UVerticalBox* EndColumn = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 		EndWidth->SetContent(EndColumn);
+
+		// 局终横幅(作业完成/信号中断), 顶在标题位; 贴图缺失时回退纯文字标题。
+		RunEndBanner = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+		RunEndBanner->SetVisibility(ESlateVisibility::Collapsed);
+		RunEndBanner->SetDesiredSizeOverride(FVector2D(300.f, 130.f));
+		if (UVerticalBoxSlot* BannerSlot = EndColumn->AddChildToVerticalBox(RunEndBanner))
+		{
+			BannerSlot->SetHorizontalAlignment(HAlign_Center);
+			BannerSlot->SetPadding(FMargin(0.f, 0.f, 0.f, 4.f));
+		}
 
 		RunEndTitle = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 		RunEndTitle->SetFont(GT_UIStyle::Font(24));
@@ -570,6 +652,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		PauseMenu->OnQuitGame.BindUObject(this, &UGT_GameHudWidget::HandlePauseQuitGame);
 		PauseMenu->OnOpenCheatPanel.BindUObject(this, &UGT_GameHudWidget::HandleOpenCheatPanel);
 		PauseMenu->OnCheatApplied.BindUObject(this, &UGT_GameHudWidget::RefreshAll);
+		PauseMenu->OnToast.BindWeakLambda(this, [this](const FString& Msg) { ShowToast(Msg); });
 		PauseMenu->SetVisibility(ESlateVisibility::Collapsed);
 		if (UOverlaySlot* PauseSlot = Screen->AddChildToOverlay(PauseMenu))
 		{
@@ -588,6 +671,37 @@ UTextBlock* UGT_GameHudWidget::MakePanelText(UVerticalBox* Panel, int32 FontSize
 	if (UVerticalBoxSlot* TextSlot = Panel->AddChildToVerticalBox(Text))
 	{
 		TextSlot->SetPadding(FMargin(0.f, 2.f, 0.f, 0.f));
+	}
+	return Text;
+}
+
+UTextBlock* UGT_GameHudWidget::MakeIconStatRow(UVerticalBox* Col, const FString& IconPath, int32 FontSize, const FLinearColor& Color)
+{
+	UHorizontalBox* Row = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+	if (UVerticalBoxSlot* RowSlot = Col->AddChildToVerticalBox(Row))
+	{
+		RowSlot->SetPadding(FMargin(0.f, 3.f, 0.f, 3.f));
+	}
+	if (UTexture2D* Tex = LoadUiTexture(IconPath))
+	{
+		USizeBox* IconSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+		IconSize->SetWidthOverride(20.f);
+		IconSize->SetHeightOverride(20.f);
+		UImage* Img = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+		Img->SetBrushFromTexture(Tex);
+		IconSize->SetContent(Img);
+		if (UHorizontalBoxSlot* IconSlot = Row->AddChildToHorizontalBox(IconSize))
+		{
+			IconSlot->SetPadding(FMargin(0.f, 0.f, 7.f, 0.f));
+			IconSlot->SetVerticalAlignment(VAlign_Center);
+		}
+	}
+	UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+	Text->SetFont(GT_UIStyle::Font(FontSize));
+	Text->SetColorAndOpacity(FSlateColor(Color));
+	if (UHorizontalBoxSlot* TextSlot = Row->AddChildToHorizontalBox(Text))
+	{
+		TextSlot->SetVerticalAlignment(VAlign_Center);
 	}
 	return Text;
 }
@@ -646,23 +760,27 @@ void UGT_GameHudWidget::RefreshPanels()
 		LogText->SetText(FText::GetEmpty());
 	}
 
-	// 右上协议面板(对齐原版: 协议等级 + 描述 + 压力值)。
-	if (ProtocolText)
+	// 右上协议状态: 协议N 状态条贴图(等级+描述烤在图里) + 压力值文字。
+	if (ProtocolBarImage)
 	{
+		int32 Level = 5, Pressure = 0, MaxP = 10;
 		if (const UGT_RunContext* RunContext = GetRunContext())
 		{
 			const FGT_ProtocolState& Protocol = RunContext->GetProtocolState();
-			ProtocolText->SetText(FText::FromString(FString::Printf(
-				TEXT("协议 %d  %s\n协议压力 %d / %d"),
-				Protocol.Level,
-				*GT_ProtocolRules::GetLevelDescription(Protocol.Level),
-				Protocol.Pressure,
-				Protocol.MaxPressure)));
+			Level = FMath::Clamp(Protocol.Level, 1, 5);
+			Pressure = Protocol.Pressure;
+			MaxP = Protocol.MaxPressure;
 		}
-		else
+		if (UTexture2D* Bar = LoadUiTexture(FString::Printf(TEXT("/Game/Graytail/UI/Misc/protocol_%d"), Level)))
 		{
-			ProtocolText->SetText(FText::FromString(TEXT("协议 5")));
+			ProtocolBarImage->SetBrushFromTexture(Bar);
+			// 固定 210x70: 5 张协议条源图均 ~196-222 宽(高 97-99), 锁定统一显示。
+			// 不再用 Bar->GetSizeX()/GetSizeY() 量算 —— 冷加载(刚掉到协议1, 贴图首次 LoadObject)
+			// 其 PlatformData 异步构建未完成, GetSizeX/Y 返回默认棋盘格占位贴图 32x32,
+			// 算出 BarW=32*70/32=70 被压成方块。固定尺寸彻底规避贴图驻留时序依赖。
+			ProtocolBarImage->SetDesiredSizeOverride(FVector2D(210.f, 70.f));
 		}
+		if (ProtocolText) { ProtocolText->SetText(FText::FromString(FString::Printf(TEXT("压力 %d/%d"), Pressure, MaxP))); }
 	}
 
 	// 局终(死亡/撤离成功)弹结算面板, 每局只弹一次。
@@ -691,13 +809,40 @@ void UGT_GameHudWidget::RefreshRunEndPanel()
 	bRunEndShown = true;
 
 	const bool bSuccess = RunState == EGT_RunState::Succeeded;
+	if (bSuccess)
+	{
+		if (UGameInstance* GI = GetGameInstance())
+		{
+			if (UGT_SettingsSubsystem* Settings = GI->GetSubsystem<UGT_SettingsSubsystem>())
+			{
+				Settings->PlaySfx(this, FName(TEXT("sfx_extract")));   // 撤离成功琶音
+			}
+		}
+	}
+	// 横幅替纯文字标题: 成功=作业完成, 失败=信号中断; 贴图缺失则回退文字标题。
+	bool bBannerOk = false;
+	if (RunEndBanner)
+	{
+		if (UTexture2D* Banner = LoadUiTexture(bSuccess
+			? TEXT("/Game/Graytail/UI/Misc/banner_job_done")
+			: TEXT("/Game/Graytail/UI/Misc/banner_signal_lost")))
+		{
+			RunEndBanner->SetBrushFromTexture(Banner);
+			RunEndBanner->SetDesiredSizeOverride(FVector2D(300.f, 130.f));
+			RunEndBanner->SetVisibility(ESlateVisibility::HitTestInvisible);
+			bBannerOk = true;
+		}
+		else { RunEndBanner->SetVisibility(ESlateVisibility::Collapsed); }
+	}
+	RunEndTitle->SetVisibility(bBannerOk ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
 	RunEndTitle->SetText(FText::FromString(bSuccess ? TEXT("撤离成功") : TEXT("信号中断")));
 	RunEndTitle->SetColorAndOpacity(FSlateColor(bSuccess
 		? FLinearColor(FColor(120, 230, 150))
 		: FLinearColor(FColor(255, 90, 80))));
-	RunEndFrame->SetBrushColor(bSuccess
-		? FLinearColor(FColor(80, 170, 110, 220))
-		: FLinearColor(FColor(180, 60, 55, 220)));
+	// 结局换框(所见即所得, 同战利品): 撤离成功=金框 / 信号中断=中性灰框。
+	GT_UIStyle::SkinPanel9(RunEndFrame, bSuccess
+		? GT_UIStyle::PanelSkinGold()
+		: GT_UIStyle::PanelDialogSkin());
 
 	const FName Reason = RunContext->GetRunEndReason();
 	FString ReasonLine;
@@ -842,9 +987,30 @@ void UGT_GameHudWidget::RefreshMiniMapGrid()
 	FGT_DebugRunSnapshot Snapshot;
 	Debug->GetDebugRunSnapshot(Snapshot);
 
-	// 邻域感知天赋: 玩家相邻 8 格描黄框(进房高亮邻域威胁, 对齐 Lua mapHighlight)。
+	// 邻域感知天赋: 不暴露具体哪格雷 —— 只要相邻 8 格里有"未探出"雷(任一相邻未知格是雷),
+	// 就把所有相邻未知格整体标红; 否则相邻未知格全黄(安全)。先扫一遍算危险标志。
 	const UGT_RunContext* HudRunContext = GetRunContext();
 	const bool bMapHighlightActive = HudRunContext && HudRunContext->IsLoadoutMapHighlightActive();
+	bool bHiddenMineNear = false;
+	if (bMapHighlightActive)
+	{
+		for (int32 NdY = -1; NdY <= 1 && !bHiddenMineNear; ++NdY)
+		{
+			for (int32 NdX = -1; NdX <= 1 && !bHiddenMineNear; ++NdX)
+			{
+				if (NdX == 0 && NdY == 0) { continue; }
+				const int32 Nx = Snapshot.PlayerX + NdX, Ny = Snapshot.PlayerY + NdY;
+				if (Nx < 0 || Ny < 0 || Nx >= Width || Ny >= Height) { continue; }
+				const FGT_MiniMapCellViewData& NCell = Cells[Ny * Width + Nx];
+				if (NCell.bExplored || NCell.bVisible) { continue; }   // 已知格不算"未探出"
+				FGT_TruthCell NTruth;
+				if (HudRunContext->GetTruthCellSnapshot(Nx, Ny, NTruth) && NTruth.bHasMine)
+				{
+					bHiddenMineNear = true;
+				}
+			}
+		}
+	}
 
 	// 扫雷数字配色(对齐 MapOverlay.NUMBER_COLORS 风格)。
 	static const FLinearColor NumberColors[4] = {
@@ -891,26 +1057,6 @@ void UGT_GameHudWidget::RefreshMiniMapGrid()
 
 			UOverlay* CellOverlay = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
 			CellBorder->SetContent(CellOverlay);
-
-			// 邻域感知天赋: 玩家相邻 8 格(非玩家格)描黄框, 高亮邻域威胁。
-			if (bMapHighlightActive && !bPlayerHere
-				&& FMath::Abs(X - Snapshot.PlayerX) <= 1 && FMath::Abs(Y - Snapshot.PlayerY) <= 1)
-			{
-				UBorder* NeighborHl = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-				FSlateBrush HlBrush;
-				HlBrush.DrawAs = ESlateBrushDrawType::RoundedBox;
-				HlBrush.TintColor = FSlateColor(FLinearColor(0.f, 0.f, 0.f, 0.f));
-				HlBrush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
-				HlBrush.OutlineSettings.CornerRadii = FVector4(3.f, 3.f, 3.f, 3.f);
-				HlBrush.OutlineSettings.Color = FSlateColor(FLinearColor(FColor(255, 220, 80)));
-				HlBrush.OutlineSettings.Width = 2.f;
-				NeighborHl->SetBrush(HlBrush);
-				if (UOverlaySlot* HlSlot = CellOverlay->AddChildToOverlay(NeighborHl))
-				{
-					HlSlot->SetHorizontalAlignment(HAlign_Fill);
-					HlSlot->SetVerticalAlignment(VAlign_Fill);
-				}
-			}
 
 			auto AddCellIcon = [this, CellOverlay](UTexture2D* Texture, float Scale)
 			{
@@ -971,14 +1117,14 @@ void UGT_GameHudWidget::RefreshMiniMapGrid()
 							BadgeSlot->SetVerticalAlignment(VAlign_Bottom);
 						}
 					}
-					else if (!bSpecialIcon && Cell.DisplayedNumber >= 1 && Cell.DisplayedNumber <= 3)
+					else if (!bSpecialIcon && Cell.DisplayedNumber >= 1 && Cell.DisplayedNumber <= 8)
 					{
-						// 普通格 1-3: 专用数字贴图(11/12/13_shuzi_N)。
+						// 普通格 1-8: 专用数字贴图(1N_shuzi_N)。
 						AddCellIcon(LoadUiTexture(FString::Printf(TEXT("/Game/Graytail/UI/Icons64/1%d_shuzi_%d"), Cell.DisplayedNumber, Cell.DisplayedNumber)), 0.8f);
 					}
 					else if (!bSpecialIcon)
 					{
-						// 0 与 4+: 文本数字(0 也显示, 用户要求)。
+						// 0: 文本数字(无 0 图标, 用户要求 0 也显示)。
 						UTextBlock* NumberText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 						NumberText->SetFont(GT_UIStyle::Font(13));
 						NumberText->SetText(FText::FromString(FString::FromInt(Cell.DisplayedNumber)));
@@ -989,6 +1135,31 @@ void UGT_GameHudWidget::RefreshMiniMapGrid()
 							NumberSlot->SetVerticalAlignment(VAlign_Center);
 						}
 					}
+				}
+			}
+
+			// 邻域感知天赋: 相邻未知格整体染色(画最上层, 盖过 ? 砖块) —— 有相邻未探出雷=全红, 否则全黄。
+			// 不暴露具体哪格雷, 只警示"相邻藏着雷"。仅未探索的 ? 格生效。
+			if (bMapHighlightActive && !bPlayerHere && !bKnown
+				&& FMath::Abs(X - Snapshot.PlayerX) <= 1 && FMath::Abs(Y - Snapshot.PlayerY) <= 1)
+			{
+				UBorder* NeighborHl = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+				FSlateBrush HlBrush;
+				HlBrush.DrawAs = ESlateBrushDrawType::RoundedBox;
+				HlBrush.TintColor = bHiddenMineNear
+					? FSlateColor(FLinearColor(1.f, 0.22f, 0.22f, 0.34f))   // 有雷: 红内填
+					: FSlateColor(FLinearColor(1.f, 0.86f, 0.32f, 0.17f));  // 安全: 淡黄内填
+				HlBrush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+				HlBrush.OutlineSettings.CornerRadii = FVector4(3.f, 3.f, 3.f, 3.f);
+				HlBrush.OutlineSettings.Color = bHiddenMineNear
+					? FSlateColor(FLinearColor(FColor(255, 70, 70)))     // 红
+					: FSlateColor(FLinearColor(FColor(255, 220, 80)));   // 黄
+				HlBrush.OutlineSettings.Width = bHiddenMineNear ? 3.f : 2.5f;
+				NeighborHl->SetBrush(HlBrush);
+				if (UOverlaySlot* HlSlot = CellOverlay->AddChildToOverlay(NeighborHl))
+				{
+					HlSlot->SetHorizontalAlignment(HAlign_Fill);
+					HlSlot->SetVerticalAlignment(VAlign_Fill);
 				}
 			}
 
@@ -1057,27 +1228,67 @@ void UGT_GameHudWidget::RefreshItemsList()
 		++ShownRows;
 		const FGT_ItemCatalogEntry* Def = GT_ItemCatalog::FindItemDef(Stack.ItemId);
 
-		UHorizontalBox* ItemRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-		ItemsList->AddChildToVerticalBox(ItemRow);
+		const FName Rarity = Def ? Def->Rarity : NAME_None;
+		const FLinearColor RC = GT_UIStyle::RarityColor(Rarity);
 
+		// 卡片: 稀有度描边 + 深底(对齐 2UI 物品行)。
+		UBorder* Card = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+		Card->SetBrushColor(FLinearColor(RC.R, RC.G, RC.B, 0.7f));
+		Card->SetPadding(FMargin(1.5f));
+		if (UVerticalBoxSlot* CardSlot = ItemsList->AddChildToVerticalBox(Card))
+		{
+			CardSlot->SetPadding(FMargin(0.f, 0.f, 0.f, 5.f));
+		}
+		UBorder* CardBg = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+		CardBg->SetBrushColor(FLinearColor(FColor(22, 28, 40, 235)));
+		CardBg->SetPadding(FMargin(8.f, 5.f));
+		Card->SetContent(CardBg);
+		UHorizontalBox* ItemRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+		CardBg->SetContent(ItemRow);
+
+		// 图标(稀有度淡底)。
+		USizeBox* IconSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+		IconSize->SetWidthOverride(28.f);
+		IconSize->SetHeightOverride(28.f);
+		UBorder* IconBg = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+		IconBg->SetBrushColor(FLinearColor(RC.R, RC.G, RC.B, 0.18f));
+		IconBg->SetPadding(FMargin(2.f));
 		if (UTexture2D* Icon = GetItemIcon(Stack.ItemId))
 		{
-			USizeBox* IconSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-			IconSize->SetWidthOverride(20.f);
-			IconSize->SetHeightOverride(20.f);
 			UImage* IconImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
 			IconImage->SetBrushFromTexture(Icon);
-			IconSize->SetContent(IconImage);
-			ItemRow->AddChild(IconSize);
+			IconBg->SetContent(IconImage);
+		}
+		IconSize->SetContent(IconBg);
+		if (UHorizontalBoxSlot* IconSlot = ItemRow->AddChildToHorizontalBox(IconSize))
+		{
+			IconSlot->SetPadding(FMargin(0.f, 0.f, 8.f, 0.f));
+			IconSlot->SetVerticalAlignment(VAlign_Center);
 		}
 
+		// 名称 x数量(Fill 占中段, 稀有度色)。
 		UTextBlock* ItemText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 		ItemText->SetFont(GT_UIStyle::Font(12));
-		ItemText->SetColorAndOpacity(FSlateColor(FLinearColor(0.85f, 0.85f, 0.9f, 1.f)));
-		ItemText->SetText(FText::FromString(FString::Printf(TEXT(" %s x%d"),
-			Def ? *Def->DisplayName : *Stack.ItemId.ToString(),
-			Stack.Count)));
-		ItemRow->AddChild(ItemText);
+		ItemText->SetColorAndOpacity(FSlateColor(RC));
+		ItemText->SetText(FText::FromString(FString::Printf(TEXT("%s x%d"),
+			Def ? *Def->DisplayName : *Stack.ItemId.ToString(), Stack.Count)));
+		ItemText->SetClipping(EWidgetClipping::ClipToBounds);   // 超长名硬裁, 不盖到右侧稀有度 tag
+		if (UHorizontalBoxSlot* NameSlot = ItemRow->AddChildToHorizontalBox(ItemText))
+		{
+			NameSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+			NameSlot->SetVerticalAlignment(VAlign_Center);
+		}
+
+		// 稀有度档名 tag(右侧, 同色)。
+		UTextBlock* RarityTag = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		RarityTag->SetFont(GT_UIStyle::Font(10));
+		RarityTag->SetColorAndOpacity(FSlateColor(RC));
+		RarityTag->SetText(FText::FromString(GT_UIStyle::RarityLabel(Rarity)));
+		if (UHorizontalBoxSlot* TagSlot = ItemRow->AddChildToHorizontalBox(RarityTag))
+		{
+			TagSlot->SetPadding(FMargin(6.f, 0.f, 0.f, 0.f));
+			TagSlot->SetVerticalAlignment(VAlign_Center);
+		}
 	}
 }
 
@@ -1594,8 +1805,15 @@ void UGT_GameHudWidget::HandlePauseResume()
 
 void UGT_GameHudWidget::HandlePauseReturnToTitle()
 {
-	// 放弃本局: 不发 RunFailed/RunSucceeded 事件 → 不触发结算(待结算金币丢失)。
-	// 直接回主菜单, 下次开局 StartNewRun 会重置本局状态。
+	// 放弃本局 = 视同撤离失败: 走 AbandonRun 结算(带入装备损失 + 失败金币),
+	// 防"快死了放弃保住装备"的 exploit。结算后回主菜单, 下次 StartNewRun 重置本局。
+	if (UGameInstance* GI = GetGameInstance())
+	{
+		if (UGT_RunSubsystem* RunSys = GI->GetSubsystem<UGT_RunSubsystem>())
+		{
+			RunSys->AbandonRun();
+		}
+	}
 	if (PauseMenu)
 	{
 		PauseMenu->Close();

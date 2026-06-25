@@ -67,7 +67,7 @@ namespace GT_MonsterCatalog
 				A.DamageMult = 1.5f;           // 最疼: 激光躲失误代价高(三怪最高伤害)
 				A.PlayerAttackRange = 0.21f;
 				A.IdealDistance = 0.50f;       // kiting 理想距离(远)
-				A.AimDuration = 0.8f;          // 蓄力
+				A.AimDuration = 0.7f;          // 蓄力(红线亮->发射 0.7s; 反应窗口收紧)
 				A.AttackInterval = 2.5f;
 				A.LaserDuration = 1.2f;        // 光束持续
 				A.LaserTickInterval = 0.3f;    // 站内扣血间隔

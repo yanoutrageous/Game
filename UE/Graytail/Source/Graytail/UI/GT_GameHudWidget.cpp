@@ -277,27 +277,42 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		FSlateChildSize Z(ESlateSizeRule::Fill); Z.Value = 1.15f; StatLeftSlot->SetSize(Z);
 		StatLeftSlot->SetPadding(FMargin(0.f, 0.f, 16.f, 0.f));
 	}
-	UTextBlock* HpTitle = MakePanelText(StatLeft, 13, FLinearColor(0.9f, 0.45f, 0.40f, 1.f));
-	HpTitle->SetText(FText::FromString(TEXT("生命")));
+	// 生命: 心形图标 + 血条 + 数值(2UI 风格)。
+	UHorizontalBox* HpRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+	if (UVerticalBoxSlot* HpRowSlot = StatLeft->AddChildToVerticalBox(HpRow)) { HpRowSlot->SetPadding(FMargin(0.f, 3.f, 0.f, 3.f)); }
+	if (UTexture2D* HpIcon = LoadUiTexture(TEXT("/Game/Graytail/UI/hud/stat_hp")))
+	{
+		USizeBox* HpIconSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+		HpIconSize->SetWidthOverride(20.f); HpIconSize->SetHeightOverride(20.f);
+		UImage* HpIconImg = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+		HpIconImg->SetBrushFromTexture(HpIcon); HpIconSize->SetContent(HpIconImg);
+		if (UHorizontalBoxSlot* S = HpRow->AddChildToHorizontalBox(HpIconSize)) { S->SetPadding(FMargin(0.f, 0.f, 7.f, 0.f)); S->SetVerticalAlignment(VAlign_Center); }
+	}
 	HpBar = WidgetTree->ConstructWidget<UProgressBar>(UProgressBar::StaticClass());
 	HpBar->SetFillColorAndOpacity(FLinearColor(0.70f, 0.02f, 0.02f, 1.f));   // 鲜红(降 G/B 去粉调)
-	if (UVerticalBoxSlot* HpSlot = StatLeft->AddChildToVerticalBox(HpBar))
+	if (UHorizontalBoxSlot* HpBarSlot = HpRow->AddChildToHorizontalBox(HpBar))
 	{
-		HpSlot->SetPadding(FMargin(0.f, 2.f, 0.f, 2.f));
+		HpBarSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+		HpBarSlot->SetVerticalAlignment(VAlign_Center);
+		HpBarSlot->SetPadding(FMargin(0.f, 0.f, 6.f, 0.f));
 	}
-	HpText = MakePanelText(StatLeft, 12, FLinearColor(0.9f, 0.9f, 0.9f, 1.f));
-	PowerText = MakePanelText(StatLeft, 13, FLinearColor(0.92f, 0.93f, 0.95f, 1.f));
+	HpText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+	HpText->SetFont(GT_UIStyle::Font(12));
+	HpText->SetColorAndOpacity(FSlateColor(FLinearColor(0.9f, 0.9f, 0.9f, 1.f)));
+	if (UHorizontalBoxSlot* HpTextSlot = HpRow->AddChildToHorizontalBox(HpText)) { HpTextSlot->SetVerticalAlignment(VAlign_Center); }
+	// 战力: 剑图标 + 数值。
+	PowerText = MakeIconStatRow(StatLeft, TEXT("/Game/Graytail/UI/hud/stat_power"), 13, FLinearColor(0.92f, 0.93f, 0.95f, 1.f));
 
-	// 右列: 资源计数(待结算/已锁定/回收物/已搜索, 分色)。
+	// 右列: 资源计数(图标套用 2UI: 币/宝石/箱/雷达, 分色)。
 	UVerticalBox* StatRight = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	if (UHorizontalBoxSlot* StatRightSlot = StatusRow->AddChildToHorizontalBox(StatRight))
 	{
 		FSlateChildSize Z(ESlateSizeRule::Fill); Z.Value = 1.0f; StatRightSlot->SetSize(Z);
 	}
-	PendingText = MakePanelText(StatRight, 13, FLinearColor(FColor(255, 226, 120)));
-	SafeText = MakePanelText(StatRight, 13, FLinearColor(FColor(120, 220, 170)));
-	PartsText = MakePanelText(StatRight, 13, FLinearColor(FColor(130, 200, 255)));
-	SearchedText = MakePanelText(StatRight, 12, FLinearColor(0.55f, 0.60f, 0.70f, 1.f));
+	PendingText = MakeIconStatRow(StatRight, TEXT("/Game/Graytail/UI/hud/stat_pending"), 13, FLinearColor(FColor(255, 226, 120)));
+	SafeText = MakeIconStatRow(StatRight, TEXT("/Game/Graytail/UI/hud/stat_locked"), 13, FLinearColor(FColor(120, 220, 170)));
+	PartsText = MakeIconStatRow(StatRight, TEXT("/Game/Graytail/UI/hud/stat_parts"), 13, FLinearColor(FColor(130, 200, 255)));
+	SearchedText = MakeIconStatRow(StatRight, TEXT("/Game/Graytail/UI/hud/stat_searched"), 12, FLinearColor(0.55f, 0.60f, 0.70f, 1.f));
 
 	// 局状态(整行)。
 	StateText = MakePanelText(UpperBox, 13, FLinearColor(0.95f, 0.85f, 0.5f, 1.f));
@@ -656,6 +671,37 @@ UTextBlock* UGT_GameHudWidget::MakePanelText(UVerticalBox* Panel, int32 FontSize
 	if (UVerticalBoxSlot* TextSlot = Panel->AddChildToVerticalBox(Text))
 	{
 		TextSlot->SetPadding(FMargin(0.f, 2.f, 0.f, 0.f));
+	}
+	return Text;
+}
+
+UTextBlock* UGT_GameHudWidget::MakeIconStatRow(UVerticalBox* Col, const FString& IconPath, int32 FontSize, const FLinearColor& Color)
+{
+	UHorizontalBox* Row = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+	if (UVerticalBoxSlot* RowSlot = Col->AddChildToVerticalBox(Row))
+	{
+		RowSlot->SetPadding(FMargin(0.f, 3.f, 0.f, 3.f));
+	}
+	if (UTexture2D* Tex = LoadUiTexture(IconPath))
+	{
+		USizeBox* IconSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+		IconSize->SetWidthOverride(20.f);
+		IconSize->SetHeightOverride(20.f);
+		UImage* Img = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+		Img->SetBrushFromTexture(Tex);
+		IconSize->SetContent(Img);
+		if (UHorizontalBoxSlot* IconSlot = Row->AddChildToHorizontalBox(IconSize))
+		{
+			IconSlot->SetPadding(FMargin(0.f, 0.f, 7.f, 0.f));
+			IconSlot->SetVerticalAlignment(VAlign_Center);
+		}
+	}
+	UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+	Text->SetFont(GT_UIStyle::Font(FontSize));
+	Text->SetColorAndOpacity(FSlateColor(Color));
+	if (UHorizontalBoxSlot* TextSlot = Row->AddChildToHorizontalBox(Text))
+	{
+		TextSlot->SetVerticalAlignment(VAlign_Center);
 	}
 	return Text;
 }

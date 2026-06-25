@@ -65,6 +65,8 @@ private:
 		const FVector2D& TextureSize = FVector2D::ZeroVector, float FramePx = 0.f);
 	UButton* MakeButton(UHorizontalBox* Row, const FString& Label);
 	UTextBlock* MakePanelText(UVerticalBox* Panel, int32 FontSize, const FLinearColor& Color);
+	// 状态栏行: [小图标][文字], 套用 2UI 风格。返回文字块供 RefreshStatusPanel 赋值。
+	UTextBlock* MakeIconStatRow(UVerticalBox* Col, const FString& IconPath, int32 FontSize, const FLinearColor& Color);
 
 	UFUNCTION() void OnSearch();
 	UFUNCTION() void OnExtract();

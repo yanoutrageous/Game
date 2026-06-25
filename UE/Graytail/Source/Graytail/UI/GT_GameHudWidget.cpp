@@ -116,9 +116,9 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	// 皮肤 9-slice 后边框厚度固定, 内边距在边框+角饰(~40px)基础上留呼吸空间。
 	UBorder* LeftPanel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 	LeftPanel->SetBrushColor(FLinearColor(0.03f, 0.03f, 0.05f, 0.92f));
-	LeftPanel->SetPadding(FMargin(34.f, 34.f, 32.f, 28.f));
+	LeftPanel->SetPadding(FMargin(34.f, 52.f, 32.f, 30.f));   // 顶部 52: 内容整体下移, 标题不被上框切到
 	USizeBox* LeftWidth = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-	LeftWidth->SetWidthOverride(460.f);   // 加宽(原 360 太挤): 内容不拥挤 + 收窄右侧地图留白
+	LeftWidth->SetWidthOverride(430.f);   // 加宽(原 360 太挤)填左侧留白, 又不过分压缩地图
 	LeftWidth->SetContent(MakeSkinnedPanel(LeftPanel, TEXT("/Game/Graytail/UI/hud/ui_panel_left"), FVector2D(684.f, 580.f), 40.f));
 	if (UHorizontalBoxSlot* LeftSlot = MainRow->AddChildToHorizontalBox(LeftWidth))
 	{
@@ -159,7 +159,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		UOverlay* RoomStack = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
 		if (UOverlaySlot* RoomScaleSlot = RoomStack->AddChildToOverlay(RoomScale))
 		{
-			RoomScaleSlot->SetHorizontalAlignment(HAlign_Left);   // 方形房间左贴, 紧挨左面板(消除两者间空隙)
+			RoomScaleSlot->SetHorizontalAlignment(HAlign_Fill);   // 填满+按高缩放=大图(左对齐会缩成小方块)
 			RoomScaleSlot->SetVerticalAlignment(VAlign_Fill);
 		}
 		{
@@ -190,9 +190,9 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		if (UVerticalBoxSlot* RoomSlot = CenterCol->AddChildToVerticalBox(RoomStack))
 		{
 			RoomSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-			RoomSlot->SetHorizontalAlignment(HAlign_Left);   // 左贴左面板
+			RoomSlot->SetHorizontalAlignment(HAlign_Fill);   // 填满中央列, 房间按高放大
 			RoomSlot->SetVerticalAlignment(VAlign_Fill);
-			RoomSlot->SetPadding(FMargin(0.f, 12.f, 16.f, 4.f));   // 左内边距归0, 房间紧贴面板
+			RoomSlot->SetPadding(FMargin(4.f, 12.f, 12.f, 4.f));
 		}
 	}
 
@@ -249,7 +249,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	MapScale->SetStretch(EStretch::ScaleToFit);
 	MapScale->SetContent(MiniMapGrid);
 	USizeBox* MapArea = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-	MapArea->SetHeightOverride(340.f);
+	MapArea->SetHeightOverride(300.f);
 	MapArea->SetContent(MapScale);
 	if (UVerticalBoxSlot* GridSlot = UpperBox->AddChildToVerticalBox(MapArea))
 	{
@@ -941,9 +941,30 @@ void UGT_GameHudWidget::RefreshMiniMapGrid()
 	FGT_DebugRunSnapshot Snapshot;
 	Debug->GetDebugRunSnapshot(Snapshot);
 
-	// 邻域感知天赋: 玩家相邻 8 格按真值威胁分色(有雷=红/无雷=黄), 取代原"一律黄框无情报"。
+	// 邻域感知天赋: 不暴露具体哪格雷 —— 只要相邻 8 格里有"未探出"雷(任一相邻未知格是雷),
+	// 就把所有相邻未知格整体标红; 否则相邻未知格全黄(安全)。先扫一遍算危险标志。
 	const UGT_RunContext* HudRunContext = GetRunContext();
 	const bool bMapHighlightActive = HudRunContext && HudRunContext->IsLoadoutMapHighlightActive();
+	bool bHiddenMineNear = false;
+	if (bMapHighlightActive)
+	{
+		for (int32 NdY = -1; NdY <= 1 && !bHiddenMineNear; ++NdY)
+		{
+			for (int32 NdX = -1; NdX <= 1 && !bHiddenMineNear; ++NdX)
+			{
+				if (NdX == 0 && NdY == 0) { continue; }
+				const int32 Nx = Snapshot.PlayerX + NdX, Ny = Snapshot.PlayerY + NdY;
+				if (Nx < 0 || Ny < 0 || Nx >= Width || Ny >= Height) { continue; }
+				const FGT_MiniMapCellViewData& NCell = Cells[Ny * Width + Nx];
+				if (NCell.bExplored || NCell.bVisible) { continue; }   // 已知格不算"未探出"
+				FGT_TruthCell NTruth;
+				if (HudRunContext->GetTruthCellSnapshot(Nx, Ny, NTruth) && NTruth.bHasMine)
+				{
+					bHiddenMineNear = true;
+				}
+			}
+		}
+	}
 
 	// 扫雷数字配色(对齐 MapOverlay.NUMBER_COLORS 风格)。
 	static const FLinearColor NumberColors[4] = {
@@ -1071,29 +1092,23 @@ void UGT_GameHudWidget::RefreshMiniMapGrid()
 				}
 			}
 
-			// 邻域感知天赋: 玩家相邻 8 格按真值威胁分色, 画在最上层(盖过 ? 砖块/房型图标) ——
-			// 有雷=红框+红内填, 无雷=黄框+淡黄内填。**未探索的 ? 格同样生效**(天赋核心: 看穿相邻未知格能否踏入)。
-			if (bMapHighlightActive && !bPlayerHere
+			// 邻域感知天赋: 相邻未知格整体染色(画最上层, 盖过 ? 砖块) —— 有相邻未探出雷=全红, 否则全黄。
+			// 不暴露具体哪格雷, 只警示"相邻藏着雷"。仅未探索的 ? 格生效。
+			if (bMapHighlightActive && !bPlayerHere && !bKnown
 				&& FMath::Abs(X - Snapshot.PlayerX) <= 1 && FMath::Abs(Y - Snapshot.PlayerY) <= 1)
 			{
-				bool bNeighborDanger = false;
-				FGT_TruthCell NeighborTruth;
-				if (HudRunContext && HudRunContext->GetTruthCellSnapshot(X, Y, NeighborTruth))
-				{
-					bNeighborDanger = NeighborTruth.bHasMine;
-				}
 				UBorder* NeighborHl = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 				FSlateBrush HlBrush;
 				HlBrush.DrawAs = ESlateBrushDrawType::RoundedBox;
-				HlBrush.TintColor = bNeighborDanger
-					? FSlateColor(FLinearColor(1.f, 0.22f, 0.22f, 0.34f))   // 危险: 红内填(盖过 ? 砖)
+				HlBrush.TintColor = bHiddenMineNear
+					? FSlateColor(FLinearColor(1.f, 0.22f, 0.22f, 0.34f))   // 有雷: 红内填
 					: FSlateColor(FLinearColor(1.f, 0.86f, 0.32f, 0.17f));  // 安全: 淡黄内填
 				HlBrush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
 				HlBrush.OutlineSettings.CornerRadii = FVector4(3.f, 3.f, 3.f, 3.f);
-				HlBrush.OutlineSettings.Color = bNeighborDanger
-					? FSlateColor(FLinearColor(FColor(255, 70, 70)))     // 危险红
-					: FSlateColor(FLinearColor(FColor(255, 220, 80)));   // 安全黄
-				HlBrush.OutlineSettings.Width = bNeighborDanger ? 3.f : 2.5f;
+				HlBrush.OutlineSettings.Color = bHiddenMineNear
+					? FSlateColor(FLinearColor(FColor(255, 70, 70)))     // 红
+					: FSlateColor(FLinearColor(FColor(255, 220, 80)));   // 黄
+				HlBrush.OutlineSettings.Width = bHiddenMineNear ? 3.f : 2.5f;
 				NeighborHl->SetBrush(HlBrush);
 				if (UOverlaySlot* HlSlot = CellOverlay->AddChildToOverlay(NeighborHl))
 				{

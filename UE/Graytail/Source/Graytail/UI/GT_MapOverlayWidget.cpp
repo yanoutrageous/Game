@@ -211,9 +211,29 @@ void UGT_MapOverlayWidget::RefreshGrid()
 	FGT_DebugRunSnapshot Snapshot;
 	Debug->GetDebugRunSnapshot(Snapshot);
 
-	// 邻域感知天赋: 门控读取(只有解锁 talent_map 才给玩家相邻 8 格分色)。
+	// 邻域感知天赋: 门控读取 + 算"相邻是否藏雷"(任一相邻未知格是雷 -> 相邻未知格全红, 否则全黄)。
 	const UGT_RunContext* OvRunContext = GetRunContext();
 	const bool bMapHl = OvRunContext && OvRunContext->IsLoadoutMapHighlightActive();
+	bool bHiddenMineNear = false;
+	if (bMapHl)
+	{
+		for (int32 NdY = -1; NdY <= 1 && !bHiddenMineNear; ++NdY)
+		{
+			for (int32 NdX = -1; NdX <= 1 && !bHiddenMineNear; ++NdX)
+			{
+				if (NdX == 0 && NdY == 0) { continue; }
+				const int32 Nx = Snapshot.PlayerX + NdX, Ny = Snapshot.PlayerY + NdY;
+				if (Nx < 0 || Ny < 0 || Nx >= Width || Ny >= Height) { continue; }
+				const FGT_MiniMapCellViewData& NCell = Cells[Ny * Width + Nx];
+				if (NCell.bExplored || NCell.bVisible) { continue; }   // 已知格不算"未探出"
+				FGT_TruthCell NTruth;
+				if (OvRunContext->GetTruthCellSnapshot(Nx, Ny, NTruth) && NTruth.bHasMine)
+				{
+					bHiddenMineNear = true;
+				}
+			}
+		}
+	}
 
 	GridSizeBox->SetWidthOverride(Width * GTOverlayCellSize);
 	GridSizeBox->SetHeightOverride(Height * GTOverlayCellSize);
@@ -370,29 +390,23 @@ void UGT_MapOverlayWidget::RefreshGrid()
 				}
 			}
 
-			// 邻域感知天赋: 玩家相邻 8 格按真值威胁分色, 画在最上层(盖过 ? 砖块/房型图标) ——
-			// 有雷=红框+红内填, 无雷=黄框+淡黄内填。**未探索 ? 格同样生效**(天赋核心: 看穿相邻未知格)。
-			if (bMapHl && !bPlayerHere
+			// 邻域感知天赋: 相邻未知格整体染色(画最上层, 盖过 ? 砖块) —— 有相邻未探出雷=全红, 否则全黄。
+			// 不暴露具体哪格雷, 仅未探索 ? 格生效。
+			if (bMapHl && !bPlayerHere && !bKnown
 				&& FMath::Abs(X - Snapshot.PlayerX) <= 1 && FMath::Abs(Y - Snapshot.PlayerY) <= 1)
 			{
-				bool bNeighborDanger = false;
-				FGT_TruthCell NeighborTruth;
-				if (OvRunContext && OvRunContext->GetTruthCellSnapshot(X, Y, NeighborTruth))
-				{
-					bNeighborDanger = NeighborTruth.bHasMine;
-				}
 				UBorder* NeighborHl = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 				FSlateBrush HlBrush;
 				HlBrush.DrawAs = ESlateBrushDrawType::RoundedBox;
-				HlBrush.TintColor = bNeighborDanger
-					? FSlateColor(FLinearColor(1.f, 0.22f, 0.22f, 0.32f))   // 危险: 红内填
+				HlBrush.TintColor = bHiddenMineNear
+					? FSlateColor(FLinearColor(1.f, 0.22f, 0.22f, 0.32f))   // 有雷: 红内填
 					: FSlateColor(FLinearColor(1.f, 0.86f, 0.32f, 0.16f));  // 安全: 淡黄内填
 				HlBrush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
 				HlBrush.OutlineSettings.CornerRadii = FVector4(4.f, 4.f, 4.f, 4.f);
-				HlBrush.OutlineSettings.Color = bNeighborDanger
+				HlBrush.OutlineSettings.Color = bHiddenMineNear
 					? FSlateColor(FLinearColor(FColor(255, 70, 70)))
 					: FSlateColor(FLinearColor(FColor(255, 220, 80)));
-				HlBrush.OutlineSettings.Width = bNeighborDanger ? 4.f : 3.f;
+				HlBrush.OutlineSettings.Width = bHiddenMineNear ? 4.f : 3.f;
 				NeighborHl->SetBrush(HlBrush);
 				if (UOverlaySlot* HlSlot = CellOverlay->AddChildToOverlay(NeighborHl))
 				{

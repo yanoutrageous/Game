@@ -116,9 +116,9 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	// 皮肤 9-slice 后边框厚度固定, 内边距在边框+角饰(~40px)基础上留呼吸空间。
 	UBorder* LeftPanel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 	LeftPanel->SetBrushColor(FLinearColor(0.03f, 0.03f, 0.05f, 0.92f));
-	LeftPanel->SetPadding(FMargin(30.f, 34.f, 30.f, 28.f));
+	LeftPanel->SetPadding(FMargin(34.f, 34.f, 32.f, 28.f));
 	USizeBox* LeftWidth = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-	LeftWidth->SetWidthOverride(360.f);
+	LeftWidth->SetWidthOverride(460.f);   // 加宽(原 360 太挤): 内容不拥挤 + 收窄右侧地图留白
 	LeftWidth->SetContent(MakeSkinnedPanel(LeftPanel, TEXT("/Game/Graytail/UI/hud/ui_panel_left"), FVector2D(684.f, 580.f), 40.f));
 	if (UHorizontalBoxSlot* LeftSlot = MainRow->AddChildToHorizontalBox(LeftWidth))
 	{
@@ -159,7 +159,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		UOverlay* RoomStack = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
 		if (UOverlaySlot* RoomScaleSlot = RoomStack->AddChildToOverlay(RoomScale))
 		{
-			RoomScaleSlot->SetHorizontalAlignment(HAlign_Fill);
+			RoomScaleSlot->SetHorizontalAlignment(HAlign_Left);   // 方形房间左贴, 紧挨左面板(消除两者间空隙)
 			RoomScaleSlot->SetVerticalAlignment(VAlign_Fill);
 		}
 		{
@@ -190,9 +190,9 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		if (UVerticalBoxSlot* RoomSlot = CenterCol->AddChildToVerticalBox(RoomStack))
 		{
 			RoomSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-			RoomSlot->SetHorizontalAlignment(HAlign_Fill);
+			RoomSlot->SetHorizontalAlignment(HAlign_Left);   // 左贴左面板
 			RoomSlot->SetVerticalAlignment(VAlign_Fill);
-			RoomSlot->SetPadding(FMargin(16.f, 12.f, 16.f, 4.f));
+			RoomSlot->SetPadding(FMargin(0.f, 12.f, 16.f, 4.f));   // 左内边距归0, 房间紧贴面板
 		}
 	}
 
@@ -249,7 +249,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	MapScale->SetStretch(EStretch::ScaleToFit);
 	MapScale->SetContent(MiniMapGrid);
 	USizeBox* MapArea = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-	MapArea->SetHeightOverride(300.f);
+	MapArea->SetHeightOverride(340.f);
 	MapArea->SetContent(MapScale);
 	if (UVerticalBoxSlot* GridSlot = UpperBox->AddChildToVerticalBox(MapArea))
 	{
@@ -260,23 +260,46 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	UTextBlock* Legend = MakePanelText(UpperBox, 10, FLinearColor(0.55f, 0.60f, 0.70f, 1.f));
 	Legend->SetText(FText::FromString(TEXT("数字 = 周围8格雷险 · 蓝点 = 可点击回传")));
 
-	// 生命条(原版红条)。
-	UTextBlock* HpTitle = MakePanelText(UpperBox, 13, FLinearColor(0.9f, 0.45f, 0.40f, 1.f));
+	// 状态 · 资源(对齐 2UI: 两列 —— 左 生命条/战斗力, 右 资源计数)。
+	UTextBlock* StatusTitle = MakePanelText(UpperBox, 14, FLinearColor(0.85f, 0.88f, 0.95f, 1.f));
+	StatusTitle->SetText(FText::FromString(TEXT("状态 · 资源")));
+
+	UHorizontalBox* StatusRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+	if (UVerticalBoxSlot* StatusRowSlot = UpperBox->AddChildToVerticalBox(StatusRow))
+	{
+		StatusRowSlot->SetPadding(FMargin(0.f, 6.f, 0.f, 0.f));
+	}
+
+	// 左列: 生命条 + 战斗力。
+	UVerticalBox* StatLeft = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+	if (UHorizontalBoxSlot* StatLeftSlot = StatusRow->AddChildToHorizontalBox(StatLeft))
+	{
+		FSlateChildSize Z(ESlateSizeRule::Fill); Z.Value = 1.15f; StatLeftSlot->SetSize(Z);
+		StatLeftSlot->SetPadding(FMargin(0.f, 0.f, 16.f, 0.f));
+	}
+	UTextBlock* HpTitle = MakePanelText(StatLeft, 13, FLinearColor(0.9f, 0.45f, 0.40f, 1.f));
 	HpTitle->SetText(FText::FromString(TEXT("生命")));
 	HpBar = WidgetTree->ConstructWidget<UProgressBar>(UProgressBar::StaticClass());
 	HpBar->SetFillColorAndOpacity(FLinearColor(0.70f, 0.02f, 0.02f, 1.f));   // 鲜红(降 G/B 去粉调)
-	if (UVerticalBoxSlot* HpSlot = UpperBox->AddChildToVerticalBox(HpBar))
+	if (UVerticalBoxSlot* HpSlot = StatLeft->AddChildToVerticalBox(HpBar))
 	{
 		HpSlot->SetPadding(FMargin(0.f, 2.f, 0.f, 2.f));
 	}
-	HpText = MakePanelText(UpperBox, 12, FLinearColor(0.9f, 0.9f, 0.9f, 1.f));
+	HpText = MakePanelText(StatLeft, 12, FLinearColor(0.9f, 0.9f, 0.9f, 1.f));
+	PowerText = MakePanelText(StatLeft, 13, FLinearColor(0.92f, 0.93f, 0.95f, 1.f));
 
-	// 属性行分色(对齐原版面板配色)。
-	PowerText = MakePanelText(UpperBox, 13, FLinearColor(0.92f, 0.93f, 0.95f, 1.f));
-	PendingText = MakePanelText(UpperBox, 13, FLinearColor(FColor(255, 226, 120)));
-	SafeText = MakePanelText(UpperBox, 13, FLinearColor(FColor(120, 220, 170)));
-	PartsText = MakePanelText(UpperBox, 13, FLinearColor(FColor(130, 200, 255)));
-	SearchedText = MakePanelText(UpperBox, 11, FLinearColor(0.55f, 0.60f, 0.70f, 1.f));
+	// 右列: 资源计数(待结算/已锁定/回收物/已搜索, 分色)。
+	UVerticalBox* StatRight = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+	if (UHorizontalBoxSlot* StatRightSlot = StatusRow->AddChildToHorizontalBox(StatRight))
+	{
+		FSlateChildSize Z(ESlateSizeRule::Fill); Z.Value = 1.0f; StatRightSlot->SetSize(Z);
+	}
+	PendingText = MakePanelText(StatRight, 13, FLinearColor(FColor(255, 226, 120)));
+	SafeText = MakePanelText(StatRight, 13, FLinearColor(FColor(120, 220, 170)));
+	PartsText = MakePanelText(StatRight, 13, FLinearColor(FColor(130, 200, 255)));
+	SearchedText = MakePanelText(StatRight, 12, FLinearColor(0.55f, 0.60f, 0.70f, 1.f));
+
+	// 局状态(整行)。
 	StateText = MakePanelText(UpperBox, 13, FLinearColor(0.95f, 0.85f, 0.5f, 1.f));
 
 	// 作业包摘要前空开一两行, 与上面的属性信息分隔(别和上面挤在一起)。
@@ -705,9 +728,11 @@ void UGT_GameHudWidget::RefreshPanels()
 		if (UTexture2D* Bar = LoadUiTexture(FString::Printf(TEXT("/Game/Graytail/UI/Misc/protocol_%d"), Level)))
 		{
 			ProtocolBarImage->SetBrushFromTexture(Bar);
-			const float BarH = 70.f;
-			const float BarW = (Bar->GetSizeY() > 0) ? (Bar->GetSizeX() * BarH / Bar->GetSizeY()) : 205.f;
-			ProtocolBarImage->SetDesiredSizeOverride(FVector2D(BarW, BarH));   // 锁高70宽按比例 -> 右对齐真贴右
+			// 固定 210x70: 5 张协议条源图均 ~196-222 宽(高 97-99), 锁定统一显示。
+			// 不再用 Bar->GetSizeX()/GetSizeY() 量算 —— 冷加载(刚掉到协议1, 贴图首次 LoadObject)
+			// 其 PlatformData 异步构建未完成, GetSizeX/Y 返回默认棋盘格占位贴图 32x32,
+			// 算出 BarW=32*70/32=70 被压成方块。固定尺寸彻底规避贴图驻留时序依赖。
+			ProtocolBarImage->SetDesiredSizeOverride(FVector2D(210.f, 70.f));
 		}
 		if (ProtocolText) { ProtocolText->SetText(FText::FromString(FString::Printf(TEXT("压力 %d/%d"), Pressure, MaxP))); }
 	}
@@ -1143,27 +1168,67 @@ void UGT_GameHudWidget::RefreshItemsList()
 		++ShownRows;
 		const FGT_ItemCatalogEntry* Def = GT_ItemCatalog::FindItemDef(Stack.ItemId);
 
-		UHorizontalBox* ItemRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-		ItemsList->AddChildToVerticalBox(ItemRow);
+		const FName Rarity = Def ? Def->Rarity : NAME_None;
+		const FLinearColor RC = GT_UIStyle::RarityColor(Rarity);
 
+		// 卡片: 稀有度描边 + 深底(对齐 2UI 物品行)。
+		UBorder* Card = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+		Card->SetBrushColor(FLinearColor(RC.R, RC.G, RC.B, 0.7f));
+		Card->SetPadding(FMargin(1.5f));
+		if (UVerticalBoxSlot* CardSlot = ItemsList->AddChildToVerticalBox(Card))
+		{
+			CardSlot->SetPadding(FMargin(0.f, 0.f, 0.f, 5.f));
+		}
+		UBorder* CardBg = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+		CardBg->SetBrushColor(FLinearColor(FColor(22, 28, 40, 235)));
+		CardBg->SetPadding(FMargin(8.f, 5.f));
+		Card->SetContent(CardBg);
+		UHorizontalBox* ItemRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+		CardBg->SetContent(ItemRow);
+
+		// 图标(稀有度淡底)。
+		USizeBox* IconSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+		IconSize->SetWidthOverride(28.f);
+		IconSize->SetHeightOverride(28.f);
+		UBorder* IconBg = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+		IconBg->SetBrushColor(FLinearColor(RC.R, RC.G, RC.B, 0.18f));
+		IconBg->SetPadding(FMargin(2.f));
 		if (UTexture2D* Icon = GetItemIcon(Stack.ItemId))
 		{
-			USizeBox* IconSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-			IconSize->SetWidthOverride(20.f);
-			IconSize->SetHeightOverride(20.f);
 			UImage* IconImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
 			IconImage->SetBrushFromTexture(Icon);
-			IconSize->SetContent(IconImage);
-			ItemRow->AddChild(IconSize);
+			IconBg->SetContent(IconImage);
+		}
+		IconSize->SetContent(IconBg);
+		if (UHorizontalBoxSlot* IconSlot = ItemRow->AddChildToHorizontalBox(IconSize))
+		{
+			IconSlot->SetPadding(FMargin(0.f, 0.f, 8.f, 0.f));
+			IconSlot->SetVerticalAlignment(VAlign_Center);
 		}
 
+		// 名称 x数量(Fill 占中段, 稀有度色)。
 		UTextBlock* ItemText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 		ItemText->SetFont(GT_UIStyle::Font(12));
-		ItemText->SetColorAndOpacity(FSlateColor(FLinearColor(0.85f, 0.85f, 0.9f, 1.f)));
-		ItemText->SetText(FText::FromString(FString::Printf(TEXT(" %s x%d"),
-			Def ? *Def->DisplayName : *Stack.ItemId.ToString(),
-			Stack.Count)));
-		ItemRow->AddChild(ItemText);
+		ItemText->SetColorAndOpacity(FSlateColor(RC));
+		ItemText->SetText(FText::FromString(FString::Printf(TEXT("%s x%d"),
+			Def ? *Def->DisplayName : *Stack.ItemId.ToString(), Stack.Count)));
+		ItemText->SetClipping(EWidgetClipping::ClipToBounds);   // 超长名硬裁, 不盖到右侧稀有度 tag
+		if (UHorizontalBoxSlot* NameSlot = ItemRow->AddChildToHorizontalBox(ItemText))
+		{
+			NameSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+			NameSlot->SetVerticalAlignment(VAlign_Center);
+		}
+
+		// 稀有度档名 tag(右侧, 同色)。
+		UTextBlock* RarityTag = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		RarityTag->SetFont(GT_UIStyle::Font(10));
+		RarityTag->SetColorAndOpacity(FSlateColor(RC));
+		RarityTag->SetText(FText::FromString(GT_UIStyle::RarityLabel(Rarity)));
+		if (UHorizontalBoxSlot* TagSlot = ItemRow->AddChildToHorizontalBox(RarityTag))
+		{
+			TagSlot->SetPadding(FMargin(6.f, 0.f, 0.f, 0.f));
+			TagSlot->SetVerticalAlignment(VAlign_Center);
+		}
 	}
 }
 

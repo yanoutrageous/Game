@@ -22,15 +22,7 @@
 namespace
 {
 	// 对齐 Lua ITEM_RARITY_COLORS。
-	// 5 档稀有度色(白/蓝/紫/金/红), 与金属框色一致, 也用于 per-item 卡边。
-	FLinearColor GTRarityColor(FName Rarity)
-	{
-		if (Rarity == FName(TEXT("mythic")))    { return FLinearColor(FColor(250, 95, 85)); }   // 红
-		if (Rarity == FName(TEXT("legendary"))) { return FLinearColor(FColor(255, 195, 70)); }  // 金
-		if (Rarity == FName(TEXT("epic")))      { return FLinearColor(FColor(190, 120, 255)); } // 紫
-		if (Rarity == FName(TEXT("rare")))      { return FLinearColor(FColor(95, 165, 255)); }  // 蓝
-		return FLinearColor(FColor(208, 216, 224)); // common 白
-	}
+	// 稀有度色/档名移至 GT_UIStyle::RarityColor / RarityLabel(战利品+作业包共用单一真源)。
 
 	// 稀有度档序(common<rare<epic<legendary<mythic), 取本次战利品最高档 -> 面板框色。
 	int32 GTRarityRank(FName Rarity)
@@ -61,14 +53,6 @@ namespace
 		return Kind == EGT_ItemKind::Consumable ? TEXT("作业消耗品") : TEXT("异常回收物");
 	}
 
-	const TCHAR* GTRarityLabel(FName Rarity)
-	{
-		if (Rarity == FName(TEXT("mythic")))    { return TEXT("异常"); }
-		if (Rarity == FName(TEXT("legendary"))) { return TEXT("传说"); }
-		if (Rarity == FName(TEXT("epic")))      { return TEXT("史诗"); }
-		if (Rarity == FName(TEXT("rare")))      { return TEXT("稀有"); }
-		return TEXT("一般"); // common
-	}
 }
 
 TSharedRef<SWidget> UGT_LootResultWidget::RebuildWidget()
@@ -254,7 +238,7 @@ void UGT_LootResultWidget::AddItemCard(const FGT_ItemStack& Stack)
 	{
 		return;
 	}
-	const FLinearColor RarityColor = GTRarityColor(Def->Rarity);
+	const FLinearColor RarityColor = GT_UIStyle::RarityColor(Def->Rarity);
 
 	// 卡片: 稀有度描边 + 深底(对齐 drawLootItemCard)。
 	UBorder* CardFrame = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
@@ -312,7 +296,7 @@ void UGT_LootResultWidget::AddItemCard(const FGT_ItemStack& Stack)
 	KindText->SetFont(GT_UIStyle::Font(11));
 	KindText->SetColorAndOpacity(FSlateColor(RarityColor));
 	KindText->SetText(FText::FromString(FString::Printf(
-		TEXT("%s · %s"), GTKindLabel(Def->Kind), GTRarityLabel(Def->Rarity))));
+		TEXT("%s · %s"), GTKindLabel(Def->Kind), GT_UIStyle::RarityLabel(Def->Rarity))));
 	if (UVerticalBoxSlot* KindSlot = TextColumn->AddChildToVerticalBox(KindText))
 	{
 		KindSlot->SetPadding(FMargin(0.f, 4.f, 0.f, 0.f));

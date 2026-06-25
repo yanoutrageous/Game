@@ -81,6 +81,26 @@ namespace GT_UIStyle
 	inline const TCHAR* PanelSkinMythic() { return TEXT("/Game/Graytail/UI/common/ui_panel_metal_mythic"); }   // 红 mythic
 	inline const TCHAR* PanelSkinCopper() { return TEXT("/Game/Graytail/UI/common/ui_panel_metal_copper"); }   // 事件
 
+	// 稀有度 -> per-item 文字/卡边色(白/蓝/紫/金/红)。战利品 + 作业包摘要共用, 单一真源。
+	inline FLinearColor RarityColor(FName Rarity)
+	{
+		if (Rarity == FName(TEXT("mythic")))    { return FLinearColor(FColor(250, 95, 85)); }   // 红
+		if (Rarity == FName(TEXT("legendary"))) { return FLinearColor(FColor(255, 195, 70)); }  // 金
+		if (Rarity == FName(TEXT("epic")))      { return FLinearColor(FColor(190, 120, 255)); } // 紫
+		if (Rarity == FName(TEXT("rare")))      { return FLinearColor(FColor(95, 165, 255)); }  // 蓝
+		return FLinearColor(FColor(208, 216, 224)); // common 白
+	}
+
+	// 稀有度 -> 中文档名(一般/稀有/史诗/传说/异常)。
+	inline const TCHAR* RarityLabel(FName Rarity)
+	{
+		if (Rarity == FName(TEXT("mythic")))    { return TEXT("异常"); }
+		if (Rarity == FName(TEXT("legendary"))) { return TEXT("传说"); }
+		if (Rarity == FName(TEXT("epic")))      { return TEXT("史诗"); }
+		if (Rarity == FName(TEXT("rare")))      { return TEXT("稀有"); }
+		return TEXT("一般"); // common
+	}
+
 	// 把组员的边框贴图作为面板背景刷(9-slice): 四角原始像素不拉伸、只拉中段, 面板与贴图长宽比差异大也不变形。
 	// 调用方传外层 UBorder(自身仍保留纯色 SetBrushColor 作 fallback); 贴图缺失时静默返回, 不崩。
 	// MarginFrac = 边框占贴图的比例(0.2 ≈ 金属角占两成); Opacity 给整图叠一层透明度。

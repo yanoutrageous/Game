@@ -12,6 +12,8 @@
 #include "Components/UniformGridPanel.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
+#include "Core/GT_RunContext.h"
+#include "Core/GT_RunSubsystem.h"
 #include "Debug/GT_DebugSubsystem.h"
 #include "Engine/GameInstance.h"
 #include "Engine/Texture2D.h"
@@ -137,6 +139,12 @@ UGT_DebugSubsystem* UGT_MapOverlayWidget::GetDebugSubsystem() const
 	return GetGameInstance() ? GetGameInstance()->GetSubsystem<UGT_DebugSubsystem>() : nullptr;
 }
 
+const UGT_RunContext* UGT_MapOverlayWidget::GetRunContext() const
+{
+	const UGT_RunSubsystem* RunSubsystem = GetGameInstance() ? GetGameInstance()->GetSubsystem<UGT_RunSubsystem>() : nullptr;
+	return RunSubsystem ? RunSubsystem->GetCurrentRunContext() : nullptr;
+}
+
 UTexture2D* UGT_MapOverlayWidget::LoadUiTexture(const FString& AssetPath)
 {
 	if (UTexture2D** Cached = UiTextureCache.Find(AssetPath))
@@ -203,6 +211,10 @@ void UGT_MapOverlayWidget::RefreshGrid()
 	FGT_DebugRunSnapshot Snapshot;
 	Debug->GetDebugRunSnapshot(Snapshot);
 
+	// 邻域感知天赋: 门控读取(只有解锁 talent_map 才给玩家相邻 8 格分色)。
+	const UGT_RunContext* OvRunContext = GetRunContext();
+	const bool bMapHl = OvRunContext && OvRunContext->IsLoadoutMapHighlightActive();
+
 	GridSizeBox->SetWidthOverride(Width * GTOverlayCellSize);
 	GridSizeBox->SetHeightOverride(Height * GTOverlayCellSize);
 
@@ -251,6 +263,36 @@ void UGT_MapOverlayWidget::RefreshGrid()
 
 			UOverlay* CellOverlay = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
 			CellBg->SetContent(CellOverlay);
+
+			// 邻域感知天赋: 玩家相邻 8 格按真值威胁分色 —— 有雷=红 / 无雷=黄(54px 大格用更粗边 + 淡内填)。
+			if (bMapHl && !bPlayerHere
+				&& FMath::Abs(X - Snapshot.PlayerX) <= 1 && FMath::Abs(Y - Snapshot.PlayerY) <= 1)
+			{
+				bool bNeighborDanger = false;
+				FGT_TruthCell NeighborTruth;
+				if (OvRunContext && OvRunContext->GetTruthCellSnapshot(X, Y, NeighborTruth))
+				{
+					bNeighborDanger = NeighborTruth.bHasMine;
+				}
+				UBorder* NeighborHl = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+				FSlateBrush HlBrush;
+				HlBrush.DrawAs = ESlateBrushDrawType::RoundedBox;
+				HlBrush.TintColor = bNeighborDanger
+					? FSlateColor(FLinearColor(1.f, 0.25f, 0.25f, 0.28f))
+					: FSlateColor(FLinearColor(1.f, 0.85f, 0.30f, 0.12f));
+				HlBrush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+				HlBrush.OutlineSettings.CornerRadii = FVector4(4.f, 4.f, 4.f, 4.f);
+				HlBrush.OutlineSettings.Color = bNeighborDanger
+					? FSlateColor(FLinearColor(FColor(255, 70, 70)))
+					: FSlateColor(FLinearColor(FColor(255, 220, 80)));
+				HlBrush.OutlineSettings.Width = bNeighborDanger ? 4.f : 3.f;
+				NeighborHl->SetBrush(HlBrush);
+				if (UOverlaySlot* HlSlot = CellOverlay->AddChildToOverlay(NeighborHl))
+				{
+					HlSlot->SetHorizontalAlignment(HAlign_Fill);
+					HlSlot->SetVerticalAlignment(VAlign_Fill);
+				}
+			}
 
 			auto AddCellIcon = [this, CellOverlay](UTexture2D* Texture, float Scale, float Opacity = 1.f)
 			{

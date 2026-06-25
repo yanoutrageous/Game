@@ -10,6 +10,7 @@ class UTextBlock;
 class UTexture2D;
 class UUniformGridPanel;
 class UGT_DebugSubsystem;
+class UGT_RunContext;
 
 // 全屏区域扫描图(对齐 Lua MapOverlay.lua): 暗色遮罩 + 居中放大格子图。
 // 左键未知格 = 插旗/取消(纯 UI 标注, 不进内核); 左键已探索安全格 = 回传并自动关图;
@@ -42,6 +43,7 @@ public:
 private:
 	void BuildWidgetTree();
 	UGT_DebugSubsystem* GetDebugSubsystem() const;
+	const UGT_RunContext* GetRunContext() const;   // 邻域感知天赋: 读真值给大地图相邻格分色
 	UTexture2D* LoadUiTexture(const FString& AssetPath);
 
 	UPROPERTY(Transient) USizeBox* GridSizeBox = nullptr;

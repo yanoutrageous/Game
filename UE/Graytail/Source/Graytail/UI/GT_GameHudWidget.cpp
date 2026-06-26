@@ -140,6 +140,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		RoomView->OnRoomChanged.BindUObject(this, &UGT_GameHudWidget::HandleRoomChanged);
 		RoomView->OnCombatStateChanged.BindUObject(this, &UGT_GameHudWidget::RefreshPanels);
 		RoomView->OnSearchRequested.BindUObject(this, &UGT_GameHudWidget::OnSearch);
+		RoomView->OnAttackRequested.BindUObject(this, &UGT_GameHudWidget::OnAttack);
 		RoomView->OnMapRequested.BindUObject(this, &UGT_GameHudWidget::OpenMapOverlay);
 		RoomView->OnExtractRequested.BindUObject(this, &UGT_GameHudWidget::OnExtract);
 		RoomView->OnEventRequested.BindUObject(this, &UGT_GameHudWidget::OpenEventPanel);
@@ -455,10 +456,12 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	};
 	AddKeyHint(nullptr, TEXT("WASD"), TEXT("移动"));
 	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_m"), TEXT("M"), TEXT("扫描图"));
-	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_f"), TEXT("F"), TEXT("搜索/攻击"));
+	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_f"), TEXT("F"), TEXT("搜索"));
 	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_e"), TEXT("E"), TEXT("撤离"));
 	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_t"), TEXT("T"), TEXT("事件"));
 	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_q"), TEXT("Q"), TEXT("用道具"));
+	// 第 7 块: 左键攻击。KeyLabel 传空串 —— 缺图时回落显示 KeyLabel 文字, 传空避免没图冒字(等 ui_key_lmb 导入)。
+	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_lmb"), TEXT(""), TEXT("攻击"));
 	// 底栏背景用无分隔的连续金属条(ui_bar_blank_dark): 原版 ui_bottom_bar 是死画的 4 格,
 	// 与 6 个键位项数量不匹配会错位, 换成连续条让键帽均分对齐。
 	if (UVerticalBoxSlot* HotbarSlot = CenterCol->AddChildToVerticalBox(MakeSkinnedPanel(Hotbar, TEXT("/Game/Graytail/UI/common/ui_bar_blank_dark"))))
@@ -1513,26 +1516,7 @@ void UGT_GameHudWidget::OnSearch()
 		return;
 	}
 
-	// F = 搜索/攻击(对齐原版底栏): 战斗激活时 F 是攻击。
-	// 逻辑修改：不仅要战斗激活，还必须当前脚下站着的是怪物房，F 键才作为“攻击”
-	FGT_DebugRunSnapshot Probe;
-	if (Debug->GetDebugRunSnapshot(Probe) && Probe.bCombatActive && Probe.CurrentRoomBaseType == EGT_RoomBaseType::Combat)
-	{
-		// 实时战斗: F = 挥砍。发起只看冷却(冷却未到整次忽略, 不发命令); 是否命中由表现层朝向锥裁决。
-		// 命中才提交内核 Attack 命令扣血; 挥空照常走冷却 + 播挥砍/whiff 音(表现层已处理), 不扣血。
-		bool bHit = false;
-		if (RoomView && RoomView->TryConsumePlayerAttack(bHit))
-		{
-			if (bHit)
-			{
-				FGT_DebugRunSnapshot AttackSnapshot;
-				Debug->DebugAttack(AttackSnapshot);
-			}
-			RefreshAll();
-		}
-		return;
-	}
-
+	// F = 纯搜索/开箱(攻击已移到左键)。战斗房按 F 搜索会被内核拒, 无害。
 	FGT_DebugRunSnapshot Snapshot;
 	const bool bAccepted = Debug->DebugSearch(Snapshot);
 	RefreshAll();
@@ -1544,6 +1528,43 @@ void UGT_GameHudWidget::OnSearch()
 		{
 			LootResult->Open(RunContext->GetLastSearchOutcome());
 		}
+	}
+}
+
+void UGT_GameHudWidget::OnAttack()
+{
+	UGT_DebugSubsystem* Debug = GetDebugSubsystem();
+	if (!Debug || !RoomView)
+	{
+		return;
+	}
+
+	// 阻塞层门控: 与 NativeOnFocusReceived 同一组顶层界面打开时左键不挥(鼠标不被键盘焦点自动挡, 这里显式拦),
+	// 外加搜索结果 / 事件面板。任一打开 -> 直接 return。
+	if ((PauseMenu && PauseMenu->IsOpen())
+		|| (TutorialPopup && TutorialPopup->IsBlockingActive())
+		|| (DeployTerminal && DeployTerminal->IsOpen())
+		|| (SettingsPanel && SettingsPanel->IsOpen())
+		|| (MainMenu && MainMenu->IsOpen())
+		|| (LootResult && LootResult->GetVisibility() == ESlateVisibility::Visible)
+		|| (EventPanel && EventPanel->IsOpen()))
+	{
+		return;
+	}
+
+	// 左键挥砍: 任何房都发起(播动画/弧光/冷却); 发起只看冷却, 冷却未到整次忽略, 不发命令。
+	bool bHit = false;
+	if (!RoomView->TryConsumePlayerAttack(bHit))
+	{
+		return;
+	}
+	// 仅"命中 且 确在怪物房战斗中"才提交内核 Attack 扣血(非战斗房/空挥不改内核状态)。
+	FGT_DebugRunSnapshot Probe;
+	if (bHit && Debug->GetDebugRunSnapshot(Probe) && Probe.bCombatActive && Probe.CurrentRoomBaseType == EGT_RoomBaseType::Combat)
+	{
+		FGT_DebugRunSnapshot AttackSnapshot;
+		Debug->DebugAttack(AttackSnapshot);
+		RefreshAll();
 	}
 }
 

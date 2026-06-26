@@ -1022,6 +1022,11 @@ FReply UGT_RoomViewWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, 
 {
 	// 点房间 = 夺回键盘焦点(被按钮抢走后)。
 	SetFocus();
+	// 左键 = 挥砍(与夺焦同一次点击并存)。是否真扣血/阻塞层门控由 HUD::OnAttack 裁决。
+	if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+	{
+		OnAttackRequested.ExecuteIfBound();
+	}
 	return FReply::Handled();
 }
 

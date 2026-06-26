@@ -68,6 +68,9 @@ public:
 	// F 键搜索/开箱(对齐原版快捷键), 由 HUD 绑定到 OnSearch。
 	FSimpleDelegate OnSearchRequested;
 
+	// 左键挥砍(任何房都发起动画/弧光/冷却), 由 HUD 绑定到 OnAttack。
+	FSimpleDelegate OnAttackRequested;
+
 	// M 键打开全屏区域扫描图, 由 HUD 绑定到 OpenMapOverlay。
 	FSimpleDelegate OnMapRequested;
 

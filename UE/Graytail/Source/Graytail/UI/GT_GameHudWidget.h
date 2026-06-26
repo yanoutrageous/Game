@@ -69,6 +69,7 @@ private:
 	UTextBlock* MakeIconStatRow(UVerticalBox* Col, const FString& IconPath, int32 FontSize, const FLinearColor& Color);
 
 	UFUNCTION() void OnSearch();
+	UFUNCTION() void OnAttack();
 	UFUNCTION() void OnExtract();
 	UFUNCTION() void OnNewRun();
 	UFUNCTION() void OnReturnToMenu();

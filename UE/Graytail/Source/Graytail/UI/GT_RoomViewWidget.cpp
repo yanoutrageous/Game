@@ -59,6 +59,11 @@ namespace
 	constexpr float GTMineFlashDuration = 0.6f;    // 踩雷红闪时长
 	constexpr float GTPlayerAttackCooldown = 0.85f;     // 玩家挥砍冷却(原 0.45 对齐 Combat.lua; 2026-06-22 调长加大战斗难度, 防瞬间连刀秒杀)
 	constexpr float GTPlayerInvincibleDuration = 0.9f;  // 受击无敌帧(Combat.lua playerInvincibleDuration)
+	// 玩家挥砍演出参数(纯表现): 弧光 GTSwingFrameCount 帧 @ GTSwingPerFrame -> 总窗口约 0.24s;
+	// 挥剑本体 3 帧均分同一窗口(GTSwingBodyPerFrame), 与 sfx_attack/命中(按下即结算)/冷却 0.85s 同拍。
+	constexpr int32 GTSwingFrameCount = 4;              // 弧光帧数占位(3-5 帧), 等素材定
+	constexpr float GTSwingPerFrame = 0.06f;            // 弧光每帧时长 -> 总时长约 0.24s
+	constexpr float GTSwingBodyPerFrame = (GTSwingFrameCount * GTSwingPerFrame) / 3.f;   // 挥剑本体 3 帧铺满挥砍窗口
 	constexpr float GTEdgeHintDuration = 1.4f;          // 撞地图边缘提示显示+淡出时长
 	// 道具方形空气墙(AABB)归一化半边长 = (道具半宽 + 玩家碰撞半宽)/房宽。撞墙即停(不绕不抽搐);
 	// 宝藏房宝箱墙较大(对应箱体)、一般事件房 NPC 墙较小。PIE 可微调。怪物会动+影响走位风筝, 不做碰撞。
@@ -96,6 +101,27 @@ namespace
 			TEXT("/Game/Graytail/Sprites/Characters/huanxiong/frames/09_back_walk_2"),
 			TEXT("/Game/Graytail/Sprites/Characters/huanxiong/frames/10_left_walk_2"),
 			TEXT("/Game/Graytail/Sprites/Characters/huanxiong/frames/11_right_walk_2"),
+		},
+	};
+	// 挥剑本体帧(K=3, 4 向; 结构照搬 walk, 经 GTDirIndex 选向。素材 12-23, 未导入时 GetSwingFrame 返回 null 回退 idle/walk)。
+	const TCHAR* GTRaccoonSwingFrames[3][4] = {
+		{
+			TEXT("/Game/Graytail/Sprites/Characters/huanxiong/frames/12_front_swing_1"),
+			TEXT("/Game/Graytail/Sprites/Characters/huanxiong/frames/13_back_swing_1"),
+			TEXT("/Game/Graytail/Sprites/Characters/huanxiong/frames/14_left_swing_1"),
+			TEXT("/Game/Graytail/Sprites/Characters/huanxiong/frames/15_right_swing_1"),
+		},
+		{
+			TEXT("/Game/Graytail/Sprites/Characters/huanxiong/frames/16_front_swing_2"),
+			TEXT("/Game/Graytail/Sprites/Characters/huanxiong/frames/17_back_swing_2"),
+			TEXT("/Game/Graytail/Sprites/Characters/huanxiong/frames/18_left_swing_2"),
+			TEXT("/Game/Graytail/Sprites/Characters/huanxiong/frames/19_right_swing_2"),
+		},
+		{
+			TEXT("/Game/Graytail/Sprites/Characters/huanxiong/frames/20_front_swing_3"),
+			TEXT("/Game/Graytail/Sprites/Characters/huanxiong/frames/21_back_swing_3"),
+			TEXT("/Game/Graytail/Sprites/Characters/huanxiong/frames/22_left_swing_3"),
+			TEXT("/Game/Graytail/Sprites/Characters/huanxiong/frames/23_right_swing_3"),
 		},
 	};
 }
@@ -622,6 +648,28 @@ UTexture2D* UGT_RoomViewWidget::GetWalkFrame(int32 DirX, int32 DirY, int32 Frame
 UTexture2D* UGT_RoomViewWidget::GetIdleFrame(int32 DirX, int32 DirY)
 {
 	return LoadTextureAsset(GTRaccoonIdleFrames[GTDirIndex(DirX, DirY)]);
+}
+
+UTexture2D* UGT_RoomViewWidget::GetSwingFrame(int32 DirX, int32 DirY, int32 FrameIndex)
+{
+	return LoadTextureAsset(GTRaccoonSwingFrames[FMath::Clamp(FrameIndex, 0, 2)][GTDirIndex(DirX, DirY)]);
+}
+
+bool UGT_RoomViewWidget::TryApplySwingBodyFrame()
+{
+	// 挥砍中本体切挥剑帧(4 向, 3 帧均分挥砍窗口, 按 facing 经 GTDirIndex 选向)。
+	// 素材未导入(GetSwingFrame 返回 null)则返回 false, 让调用方回退 idle/walk(不锁脚、不空白、不崩)。
+	if (!bPlayingSwing || !PlayerImage)
+	{
+		return false;
+	}
+	const int32 BodyFrame = FMath::Clamp(FMath::FloorToInt(SwingTimer / GTSwingBodyPerFrame), 0, 2);
+	if (UTexture2D* SwingBody = GetSwingFrame(LastDirX, LastDirY, BodyFrame))
+	{
+		PlayerImage->SetBrushFromTexture(SwingBody);
+		return true;
+	}
+	return false;
 }
 
 void UGT_RoomViewWidget::SyncToCurrentCell(bool bCenterPlayer)
@@ -1867,8 +1915,6 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 	if (bPlayingSwing && PlayerSwingImage)
 	{
 		SwingTimer += InDeltaTime;
-		constexpr int32 GTSwingFrameCount = 4;     // 帧数占位(3-5 帧), 等素材定
-		constexpr float GTSwingPerFrame = 0.06f;   // 每帧时长 -> 总时长约 0.24s
 		const int32 Frame = FMath::FloorToInt(SwingTimer / GTSwingPerFrame);
 		if (Frame >= GTSwingFrameCount)
 		{
@@ -1930,6 +1976,12 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 	if (!bHasInput && MoveVelocity.IsNearlyZero(1.e-4f))
 	{
 		MoveVelocity = FVector2D::ZeroVector;
+		// 挥砍本体帧最高优先级(站立挥砍也切挥剑帧)。WalkAnimTime 置正, 使挥砍结束后下一帧回 idle 帧(不卡在挥剑帧)。
+		if (TryApplySwingBodyFrame())
+		{
+			WalkAnimTime = GTWalkFrameTime;
+			return;
+		}
 		if (WalkAnimTime > 0.f)
 		{
 			if (UTexture2D* IdleFrame = GetIdleFrame(LastDirX, LastDirY))
@@ -1943,7 +1995,9 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 
 	if (bHasInput)
 	{
-		LastDirX = InputY != 0.f ? 0 : FMath::Sign(InputX);
+		// 放开斜向: facing 同时取两轴符号 -> 挥砍锥/弧光(用连续 Facing 向量)立刻支持 8 向瞄准。
+		// 本体帧仍 4 向: 斜向 facing 经 GTDirIndex 自动并到正方向(GetIdle/GetWalk/GetSwing 都走它), 0 新美术。
+		LastDirX = FMath::Sign(InputX);
 		LastDirY = FMath::Sign(InputY);
 	}
 
@@ -1999,6 +2053,11 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 
 	// 两帧走路动画轮播。
 	WalkAnimTime += InDeltaTime;
+	// 挥砍中本体切挥剑帧, 跳过本帧 walk 轮播(位移已在上方更新, 不锁脚; 素材缺失则回退走 walk)。
+	if (TryApplySwingBodyFrame())
+	{
+		return;
+	}
 	const int32 FrameIndex = static_cast<int32>(WalkAnimTime / GTWalkFrameTime) % 2;
 	if (UTexture2D* WalkFrame = GetWalkFrame(LastDirX, LastDirY, FrameIndex))
 	{

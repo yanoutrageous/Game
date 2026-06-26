@@ -92,6 +92,10 @@ private:
 	UTexture2D* LoadTextureAsset(const FString& AssetPath);
 	UTexture2D* GetWalkFrame(int32 DirX, int32 DirY, int32 FrameIndex);
 	UTexture2D* GetIdleFrame(int32 DirX, int32 DirY);
+	UTexture2D* GetSwingFrame(int32 DirX, int32 DirY, int32 FrameIndex);
+	// 挥砍中把玩家本体切到挥剑帧(最高优先级显示, 4 向, 3 帧铺满挥砍窗口)。
+	// 返回是否已切挥剑帧: 素材未导入(GetSwingFrame 返回 null)则返回 false, 调用方回退 idle/walk(不锁脚不空白)。
+	bool TryApplySwingBodyFrame();
 	void TryCrossDoor(int32 DirX, int32 DirY);
 	void UpdatePlayerImagePosition();
 	void RefreshRoomDecor();

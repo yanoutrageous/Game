@@ -15,6 +15,7 @@ namespace
 	const FName GTCommandType_ResolveCombat(TEXT("ResolveCombat"));
 	const FName GTCommandType_Attack(TEXT("Attack"));
 	const FName GTCommandType_MonsterHit(TEXT("MonsterHit"));
+	const FName GTCommandType_FleeCombat(TEXT("FleeCombat"));
 	const FName GTCommandType_UseConsumable(TEXT("UseConsumable"));
 	const FName GTEventType_ActorMoved(TEXT("ActorMoved"));
 	const FName GTEventType_EventOptionChosen(TEXT("EventOptionChosen"));
@@ -29,6 +30,7 @@ namespace
 	const FName GTRunFailureReason_Protocol(TEXT("Protocol"));
 	const FName GTEventType_MineDamaged(TEXT("MineDamaged"));
 	const FName GTEventType_CombatPlayerHit(TEXT("CombatPlayerHit"));
+	const FName GTEventType_CombatFled(TEXT("CombatFled"));
 	const FName GTEventType_ProtocolPressureChanged(TEXT("ProtocolPressureChanged"));
 	const FName GTEventType_ProtocolLevelChanged(TEXT("ProtocolLevelChanged"));
 	const FName GTEventType_ProtocolChanged(TEXT("ProtocolChanged"));
@@ -100,6 +102,11 @@ bool UGT_CommandProcessor::ProcessCommand(const FGT_Command& Command)
 	if (Command.CommandType == GTCommandType_MonsterHit)
 	{
 		return ProcessMonsterHitCommand(Command);
+	}
+
+	if (Command.CommandType == GTCommandType_FleeCombat)
+	{
+		return ProcessFleeCombatCommand(Command);
 	}
 
 	if (Command.CommandType == GTCommandType_UseConsumable)
@@ -485,7 +492,28 @@ bool UGT_CommandProcessor::ProcessAttackCommand(const FGT_Command& Command)
 	const bool bWasResolvedBefore = PreAttackState.bCombatResolved;
 
 	FGT_RoomResolveResult AttackResult;
-	if (!RoomResolver->AttackCombatAt(PlayerX, PlayerY, AttackResult))
+
+	// Standard 实时战斗: 从 PayloadId 解析玩家挥砍朝向锥内的命中 EnemyId 集合(如 "1;3"),
+	// 无头/旧路径 PayloadId 为空时, 内核回退只扣代表怪一只。
+	TArray<int32> HitEnemyIds;
+	if (!Command.PayloadId.IsNone())
+	{
+		const FString PayloadStr = Command.PayloadId.ToString();
+		TArray<FString> Tokens;
+		PayloadStr.ParseIntoArray(Tokens, TEXT(";"), true);
+		for (const FString& Token : Tokens)
+		{
+			if (Token.IsEmpty()) continue;
+			const bool bNumeric = Token.IsNumeric();
+			const int32 Id = bNumeric ? FCString::Atoi(*Token) : INDEX_NONE;
+			if (Id != INDEX_NONE)
+			{
+				HitEnemyIds.AddUnique(Id);
+			}
+		}
+	}
+
+	if (!RoomResolver->AttackCombatAt(PlayerX, PlayerY, AttackResult, HitEnemyIds))
 	{
 		PublishCommandEvent(GTEventType_CommandFailed, Command.SourceActorId, EventTargetActorId, PlayerX, PlayerY, false);
 		return false;
@@ -541,6 +569,46 @@ bool UGT_CommandProcessor::ProcessMonsterHitCommand(const FGT_Command& Command)
 		}
 	}
 
+	return true;
+}
+
+bool UGT_CommandProcessor::ProcessFleeCombatCommand(const FGT_Command& Command)
+{
+	int32 PlayerX = 0;
+	int32 PlayerY = 0;
+	const FName EventTargetActorId = Command.TargetActorId.IsNone() && IsValid(RunContext)
+		? RunContext->GetPlayerActorId()
+		: Command.TargetActorId;
+	if (!IsValid(RunContext) || !RunContext->TryGetPlayerPosition(PlayerX, PlayerY))
+	{
+		PublishCommandEvent(GTEventType_CommandFailed, Command.SourceActorId, EventTargetActorId, PlayerX, PlayerY, false);
+		return false;
+	}
+
+	// 怪物房逃跑: 内核扣惩罚(掉钱 + 确定性掉白货)并结束战斗。守卫失败(非 Standard 战斗中)视为无效命令。
+	int32 GoldDropped = 0;
+	TArray<FGT_ItemStack> DroppedItems;
+	if (!RunContext->FleeFromCombat(GoldDropped, DroppedItems))
+	{
+		PublishCommandEvent(GTEventType_CommandFailed, Command.SourceActorId, EventTargetActorId, PlayerX, PlayerY, false);
+		return false;
+	}
+
+	// 成功事件: NumericValue 带掉金数值; 物品掉落明细由查询层从背包状态差额读取。
+	FGT_GameEvent FledEvent;
+	FledEvent.EventType = GTEventType_CombatFled;
+	FledEvent.SourceSystem = GTSourceSystem_CommandProcessor;
+	FledEvent.SourceActorId = Command.SourceActorId.IsNone() ? EventTargetActorId : Command.SourceActorId;
+	FledEvent.TargetActorId = EventTargetActorId;
+	FledEvent.X = PlayerX;
+	FledEvent.Y = PlayerY;
+	FledEvent.RoomCoord = FIntPoint(PlayerX, PlayerY);
+	FledEvent.NumericValue = GoldDropped;
+	FledEvent.bSuccess = true;
+	if (IsValid(EventBus))
+	{
+		EventBus->PublishEvent(FledEvent);
+	}
 	return true;
 }
 

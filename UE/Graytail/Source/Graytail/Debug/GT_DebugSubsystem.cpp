@@ -23,6 +23,7 @@ namespace
 	const FName GTDebugCommandType_ResolveCombat(TEXT("ResolveCombat"));
 	const FName GTDebugCommandType_Attack(TEXT("Attack"));
 	const FName GTDebugCommandType_MonsterHit(TEXT("MonsterHit"));
+	const FName GTDebugCommandType_FleeCombat(TEXT("FleeCombat"));
 	const FName GTDebugCommandType_UseConsumable(TEXT("UseConsumable"));
 	const FName GTDebugActorId_Player(TEXT("Player"));
 	const FName GTEventOption_DefaultContinue(TEXT("Event_DebugOption_Continue"));
@@ -649,7 +650,7 @@ bool UGT_DebugSubsystem::DebugResolveCombat(FName ResultId, FGT_DebugRunSnapshot
 	return bAccepted;
 }
 
-bool UGT_DebugSubsystem::DebugAttack(FGT_DebugRunSnapshot& OutSnapshot)
+bool UGT_DebugSubsystem::DebugAttack(FGT_DebugRunSnapshot& OutSnapshot, FName PayloadId)
 {
 	int32 PlayerX = 0;
 	int32 PlayerY = 0;
@@ -661,7 +662,7 @@ bool UGT_DebugSubsystem::DebugAttack(FGT_DebugRunSnapshot& OutSnapshot)
 		QueryFacade->TryGetPlayerPosition(PlayerX, PlayerY);
 	}
 
-	const bool bAccepted = SubmitDebugCommand(GTDebugCommandType_Attack, PlayerX, PlayerY, OutSnapshot);
+	const bool bAccepted = SubmitDebugCommand(GTDebugCommandType_Attack, PlayerX, PlayerY, OutSnapshot, PayloadId);
 	if (!bAccepted && !OutSnapshot.Summary.Equals(TEXT("No active run")))
 	{
 		OutSnapshot.Summary = FString::Printf(TEXT("Attack rejected: expected active dummy combat in current Combat room. %s"), *OutSnapshot.Summary);
@@ -685,6 +686,45 @@ bool UGT_DebugSubsystem::DebugMonsterHit(FGT_DebugRunSnapshot& OutSnapshot)
 	}
 
 	return SubmitDebugCommand(GTDebugCommandType_MonsterHit, PlayerX, PlayerY, OutSnapshot);
+}
+
+bool UGT_DebugSubsystem::DebugFlee(FGT_DebugRunSnapshot& OutSnapshot)
+{
+	OutSnapshot = FGT_DebugRunSnapshot();
+	UGT_RunSubsystem* RunSubsystem = GetRunSubsystem();
+	UGT_RunContext* RunContext = GetActiveRunContext(RunSubsystem, OutSnapshot);
+	if (!RunContext)
+	{
+		return false;
+	}
+
+	// 逃跑前后对账(掉金 / 掉物件数), 供无头断言。背包随命令被内核改写, 故先按值记下前值。
+	const FGT_RunInventoryState& InvBefore = RunContext->GetRunInventory();
+	const int32 GoldBefore = InvBefore.PendingGold;
+	const int32 ItemsBefore = InvBefore.GetCarriedItemCount();
+
+	int32 PlayerX = 0;
+	int32 PlayerY = 0;
+	if (const UGT_QueryFacade* QueryFacade = RunSubsystem->GetQueryFacade())
+	{
+		QueryFacade->TryGetPlayerPosition(PlayerX, PlayerY);
+	}
+
+	const bool bAccepted = SubmitDebugCommand(GTDebugCommandType_FleeCombat, PlayerX, PlayerY, OutSnapshot);
+
+	const FGT_RunInventoryState& InvAfter = RunContext->GetRunInventory();
+	const int32 GoldDropped = FMath::Max(0, GoldBefore - InvAfter.PendingGold);
+	const int32 ItemsDropped = FMath::Max(0, ItemsBefore - InvAfter.GetCarriedItemCount());
+
+	OutSnapshot.Summary = FString::Printf(
+		TEXT("Flee %s: GoldDropped=%d PartsDropped=%d PendingGold=%d->%d CarriedItems=%d->%d CombatActive=%s. %s"),
+		bAccepted ? TEXT("accepted") : TEXT("rejected"),
+		GoldDropped, ItemsDropped,
+		GoldBefore, InvAfter.PendingGold,
+		ItemsBefore, InvAfter.GetCarriedItemCount(),
+		OutSnapshot.bCombatActive ? TEXT("true") : TEXT("false"),
+		*OutSnapshot.Summary);
+	return bAccepted;
 }
 
 bool UGT_DebugSubsystem::GetDebugRunSnapshot(FGT_DebugRunSnapshot& OutSnapshot) const
@@ -773,6 +813,19 @@ bool UGT_DebugSubsystem::GetDebugRunSnapshot(FGT_DebugRunSnapshot& OutSnapshot) 
 		OutSnapshot.EnemyPower = CombatState.EnemyPower;
 		OutSnapshot.EnemyType = CombatState.EnemyType;
 		OutSnapshot.LastCombatResultId = CombatState.LastCombatResultId;
+
+		// Standard 多怪: 拷贝存活小怪列表(表现层按 EnemyId 对账渲染槽; 无头按 EnemyCount 断言分裂)。
+		OutSnapshot.Enemies.Reset(CombatState.Enemies.Num());
+		for (const FGT_CombatEnemy& E : CombatState.Enemies)
+		{
+			FGT_CombatEnemyView& View = OutSnapshot.Enemies.AddDefaulted_GetRef();
+			View.EnemyId = E.EnemyId;
+			View.Type = E.Type;
+			View.Hp = E.Hp;
+			View.MaxHp = E.MaxHp;
+			View.Power = E.Power;
+			View.Name = E.Name;
+		}
 	}
 
 	if (RunContext)
@@ -801,7 +854,7 @@ bool UGT_DebugSubsystem::GetDebugRunSnapshot(FGT_DebugRunSnapshot& OutSnapshot) 
 
 	OutSnapshot.EventCount = EventBus ? EventBus->GetEventCount() : 0;
 	OutSnapshot.Summary = FString::Printf(
-		TEXT("RunState=%d, Player=(%d,%d), Size=%dx%d, EventCount=%d, RoomBaseType=%d, RoomContentId=%s, RoomRuleId=%s, RoomContentName=%s, RoomRuleName=%s, AvailableEventOptions=%s, AvailableCombatResults=%s, CombatActive=%s, DummyEnemyHp=%d, EnemyHp=%d/%d, EnemyName=%s, PlayerHp=%d/%d, CombatResolved=%s, LastCombatResult=%s, SummaryAvailable=%s, SummaryOutcome=%s, SummaryFinalPlayer=(%d,%d), SummaryTotalEventCount=%d, RoomTriggered=%s, RoomResolved=%s"),
+		TEXT("RunState=%d, Player=(%d,%d), Size=%dx%d, EventCount=%d, RoomBaseType=%d, RoomContentId=%s, RoomRuleId=%s, RoomContentName=%s, RoomRuleName=%s, AvailableEventOptions=%s, AvailableCombatResults=%s, CombatActive=%s, DummyEnemyHp=%d, EnemyHp=%d/%d, EnemyName=%s, PlayerHp=%d/%d, CombatResolved=%s, LastCombatResult=%s, SummaryAvailable=%s, SummaryOutcome=%s, SummaryFinalPlayer=(%d,%d), SummaryTotalEventCount=%d, RoomTriggered=%s, RoomResolved=%s, EnemyCount=%d"),
 		static_cast<int32>(OutSnapshot.RunState),
 		OutSnapshot.PlayerX,
 		OutSnapshot.PlayerY,
@@ -830,7 +883,8 @@ bool UGT_DebugSubsystem::GetDebugRunSnapshot(FGT_DebugRunSnapshot& OutSnapshot) 
 		OutSnapshot.RunSummaryFinalPlayerY,
 		OutSnapshot.RunSummaryTotalEventCount,
 		OutSnapshot.bCurrentRoomTriggered ? TEXT("true") : TEXT("false"),
-		OutSnapshot.bCurrentRoomResolved ? TEXT("true") : TEXT("false"));
+		OutSnapshot.bCurrentRoomResolved ? TEXT("true") : TEXT("false"),
+		OutSnapshot.Enemies.Num());
 	return true;
 }
 
@@ -959,6 +1013,7 @@ void UGT_DebugSubsystem::GetDebugCommandHelpLines(TArray<FString>& OutLines) con
 	OutLines.Add(TEXT("    Example: gt.ResolveCombat Combat_DebugResult_Success"));
 	OutLines.Add(TEXT("    Example: gt.ResolveCombat Combat_DebugResult_Retreat"));
 	OutLines.Add(TEXT("  gt.Attack - Attack active dummy combat once through the command path."));
+	OutLines.Add(TEXT("  gt.Flee - Standard combat room: flee (drops 10% pending gold + common/white recyclables), ends combat."));
 	OutLines.Add(TEXT("  gt.RunDemo - Run a fixed Event, Combat, Attack, Extract, and Summary demo path."));
 	OutLines.Add(TEXT("-- CHEAT (fast testing) --"));
 	OutLines.Add(TEXT("  gt.God [0|1] - Toggle invincibility (mine/monster/protocol/trap damage -> 0). No arg = on."));

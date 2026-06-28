@@ -29,6 +29,10 @@ namespace GT_LootRules
 		constexpr int32 MaxItems = 2;
 	}
 
+	// 怪物房逃跑掉物的确定性哈希 salt(对齐"改内核状态走确定性随机"铁律, 不用 FRand)。
+	// 用 (Seed, PlayerX, PlayerY, FleeDropSalt + i) 选第 i 件丢落, 同房同包逃跑结果稳定。
+	constexpr int32 FleeDropSalt = 5407;
+
 	// 确定性区间取值(对齐 Balance.RollRange): 由 seed/x/y/salt 哈希出 [Min, Max] 内的整数。
 	// Lua 用 double 算大数乘法会丢精度, 这里用 int64, 常规种子下结果与 Lua 一致。
 	GRAYTAIL_API int32 RollRange(int32 Seed, int32 X, int32 Y, int32 Salt, int32 MinValue, int32 MaxValue);

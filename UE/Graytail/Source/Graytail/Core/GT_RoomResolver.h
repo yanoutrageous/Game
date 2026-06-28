@@ -73,7 +73,7 @@ public:
 	bool ResolveRoomAt(int32 X, int32 Y, FGT_RoomResolveResult& OutResult);
 	bool ChooseEventOptionAt(int32 X, int32 Y, FName OptionId, FGT_RoomResolveResult& OutResult);
 	bool ResolveCombatAt(int32 X, int32 Y, FName ResultId, FGT_RoomResolveResult& OutResult);
-	bool AttackCombatAt(int32 X, int32 Y, FGT_RoomResolveResult& OutResult);
+	bool AttackCombatAt(int32 X, int32 Y, FGT_RoomResolveResult& OutResult, const TArray<int32>& HitEnemyIds = TArray<int32>());
 
 private:
 	bool BuildResultFromTruthCell(int32 X, int32 Y, FGT_RoomResolveResult& OutResult) const;

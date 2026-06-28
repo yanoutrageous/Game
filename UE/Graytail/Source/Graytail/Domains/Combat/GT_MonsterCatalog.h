@@ -11,6 +11,7 @@ enum class EGT_MonsterType : uint8
 	Slime UMETA(DisplayName = "Slime"),   // 第 1 个原型: 缓慢追击 + 近战预警圈(对齐原版)
 	Bat UMETA(DisplayName = "Bat"),       // 蝙蝠: 快速 kiting + 散射多发偏角子弹
 	Drone UMETA(DisplayName = "Drone"),   // 无人机: 慢速 kiting + 蓄力持续激光
+	Slimeling UMETA(DisplayName = "Slimeling"), // 子史莱姆: 母体死亡分裂产生(2 只), 高速乱窜 + 间歇近战; 不进 PickTypeForCell
 };
 
 // 移动模式(表现层 RoomView 按此分派)。
@@ -20,6 +21,7 @@ enum class EGT_MonsterMovePattern : uint8
 	Stationary UMETA(DisplayName = "Stationary"),       // 原地不动(纯原版)
 	ChasePlayer UMETA(DisplayName = "Chase Player"),    // 朝玩家缓慢逼近, 进攻击圈即停
 	KeepDistance UMETA(DisplayName = "Keep Distance"),  // 远程 kiting: 太近后撤、到理想距离停下打、太远(快怪)跟近
+	RandomRoam UMETA(DisplayName = "Random Roam"),      // 子史莱姆: 高速半随机乱窜 + 轻微朝玩家偏置, 撞墙(clamp)反弹, 不直线逼近
 };
 
 // 攻击模式(表现层 RoomView 按此分派; 伤害仍走 MonsterHit 命令)。
@@ -69,6 +71,9 @@ struct FGT_MonsterArchetype
 
 	// 每怪种伤害系数(乘进 EnemyDamage; 1.0=基准 max(4,战力/3))。让不同怪种威胁分层。
 	float DamageMult = 1.0f;
+
+	// 受击冲刺脱困(纯表现层 juice, 仅无人机置 true): 掉血瞬间高速冲向(远离玩家+朝房间中心)混合方向, 不贴墙挨砍。
+	bool bDashAwayOnHit = false;
 
 	const TCHAR* SpritePath = TEXT("/Game/Graytail/Sprites/enemy_slime");
 	FLinearColor TintColor = FLinearColor::White;   // 占位染色(区分怪种; 真贴图后置 White)

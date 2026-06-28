@@ -11,6 +11,10 @@ namespace
 {
 	const FName GTCombatResult_Success(TEXT("Combat_DebugResult_Success"));
 	const FName GTRunSummaryOutcome_Extracted(TEXT("Extracted"));
+	// 逃跑掉物合格档: 仅最低稀有度(白)。值对齐 create_item_defs.py 的 rarity 字段。
+	const FName GTRarity_Common(TEXT("common"));
+	// 逃跑掉落明细来源标记。
+	const FName GTItemSource_Flee(TEXT("flee"));
 }
 
 void UGT_RunContext::InitializeRun(int32 InSeed, int32 InWidth, int32 InHeight)
@@ -55,6 +59,7 @@ void UGT_RunContext::InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec)
 	PlayerCombatState = FGT_PlayerCombatState();
 	ProtocolState.Reset();
 	DefeatedCombatRooms.Reset();
+	CombatEnemyIdCounter = 0;
 	PressureExploredCells.Reset();
 	LoadoutMineDmgReduce = 0;
 	bLoadoutMineImmunityAvailable = false;
@@ -136,6 +141,7 @@ void UGT_RunContext::ResetRun()
 	PlayerCombatState = FGT_PlayerCombatState();
 	ProtocolState.Reset();
 	DefeatedCombatRooms.Reset();
+	CombatEnemyIdCounter = 0;
 	PressureExploredCells.Reset();
 	LoadoutMineDmgReduce = 0;
 	bLoadoutMineImmunityAvailable = false;
@@ -386,11 +392,24 @@ bool UGT_RunContext::StartDummyCombat(int32 X, int32 Y, FName RoomContentId, FNa
 			GT_CombatRules::MonsterDamageForPower(CombatRuntimeState.EnemyPower) * Archetype.DamageMult));
 		// DummyEnemyHp 镜像真血量, 供仍读旧字段的快照/UI 平滑过渡。
 		CombatRuntimeState.DummyEnemyHp = CombatRuntimeState.EnemyHp;
+
+		// 多怪列表: 推入 1 个母体怪。仅史莱姆母体死亡分裂(bSplitsOnDeath); 蝙蝠/无人机单怪不分裂。
+		CombatRuntimeState.Enemies.Reset();
+		FGT_CombatEnemy Mother;
+		Mother.EnemyId = ++CombatEnemyIdCounter;
+		Mother.Type = CombatRuntimeState.EnemyType;
+		Mother.Hp = CombatRuntimeState.EnemyHp;
+		Mother.MaxHp = CombatRuntimeState.EnemyMaxHp;
+		Mother.Power = CombatRuntimeState.EnemyPower;
+		Mother.Damage = CombatRuntimeState.EnemyDamage;
+		Mother.Name = CombatRuntimeState.EnemyName;
+		Mother.bSplitsOnDeath = (CombatRuntimeState.EnemyType == EGT_MonsterType::Slime);
+		CombatRuntimeState.Enemies.Add(Mother);
 	}
 	return true;
 }
 
-bool UGT_RunContext::AttackDummyCombat(FGT_CombatRuntimeState& OutState)
+bool UGT_RunContext::AttackDummyCombat(const TArray<int32>& HitEnemyIds, FGT_CombatRuntimeState& OutState)
 {
 	OutState = CombatRuntimeState;
 	if (!IsRunActive() || !CombatRuntimeState.bCombatActive || CombatRuntimeState.DummyEnemyHp <= 0)
@@ -403,18 +422,65 @@ bool UGT_RunContext::AttackDummyCombat(FGT_CombatRuntimeState& OutState)
 	// 玩家反伤不在此处 —— 真伤害来自怪物实时攻击(MonsterHitPlayer)。
 	if (CombatRuntimeState.bStandardEnemy)
 	{
+		// 命中目标集合(来自表现层按玩家朝向锥形判定)。空集合 = 旧路径/无头回退, 只扣代表怪一只。
 		const int32 Damage = FMath::Max(1, PlayerCombatState.Power);
-		CombatRuntimeState.EnemyHp = FMath::Max(0, CombatRuntimeState.EnemyHp - Damage);
-		CombatRuntimeState.DummyEnemyHp = CombatRuntimeState.EnemyHp;   // 镜像供旧读者
-
-		if (CombatRuntimeState.EnemyHp > 0)
+		TArray<FGT_CombatEnemy> NextEnemies;
+		NextEnemies.Reserve(CombatRuntimeState.Enemies.Num() * 2);
+		for (int32 Idx = 0; Idx < CombatRuntimeState.Enemies.Num(); ++Idx)
 		{
-			// 仅一次命中, 怪还活着: 战斗保持激活, 不结算。
+			FGT_CombatEnemy& E = CombatRuntimeState.Enemies[Idx];
+			const bool bHitThis = HitEnemyIds.Num() == 0
+				? (Idx == 0)                            // 旧路径/无头: 只打代表怪
+				: HitEnemyIds.Contains(E.EnemyId);      // 新路径: 只打朝向锥内覆盖的怪
+			if (bHitThis)
+			{
+				E.Hp = FMath::Max(0, E.Hp - Damage);
+			}
+			if (E.Hp > 0)
+			{
+				NextEnemies.Add(E);   // 存活
+			}
+			else if (E.bSplitsOnDeath)
+			{
+				// 母体死亡: 原地裂成 2 子史莱姆(确定性派生数值, 无随机)。Power=floor(母体×0.45),
+				// HP/Damage 用 Slimeling 原型派生(HpBase=9 / DamageMult=0.6)。
+				const int32 ChildPower = FMath::FloorToInt(E.Power * 0.45f);
+				const FGT_MonsterArchetype& ChildArch = GT_MonsterCatalog::GetArchetype(EGT_MonsterType::Slimeling);
+				for (int32 i = 0; i < 2; ++i)
+				{
+					FGT_CombatEnemy Child;
+					Child.EnemyId = ++CombatEnemyIdCounter;
+					Child.Type = EGT_MonsterType::Slimeling;
+					Child.Power = ChildPower;
+					Child.MaxHp = ChildArch.HpBase + FMath::Max(0, ChildPower);
+					Child.Hp = Child.MaxHp;
+					Child.Damage = FMath::Max(1, FMath::RoundToInt(GT_CombatRules::MonsterDamageForPower(ChildPower) * ChildArch.DamageMult));
+					Child.Name = TEXT("小史莱姆");
+					Child.bSplitsOnDeath = false;   // 子体不再分裂(代数上限 1 → 全程最多 2 只)
+					NextEnemies.Add(Child);
+				}
+			}
+			// else: 普通死亡(子体/蝙蝠/无人机), 不加 = 移除。
+		}
+		CombatRuntimeState.Enemies = MoveTemp(NextEnemies);
+
+		if (CombatRuntimeState.Enemies.Num() > 0)
+		{
+			// 仍有存活怪: 标量镜像同步到代表怪(第一个)。EnemyPower 不覆盖 —— 保持开战母体战力做奖励基准。
+			const FGT_CombatEnemy& Rep = CombatRuntimeState.Enemies[0];
+			CombatRuntimeState.EnemyType = Rep.Type;
+			CombatRuntimeState.EnemyHp = Rep.Hp;
+			CombatRuntimeState.EnemyMaxHp = Rep.MaxHp;
+			CombatRuntimeState.EnemyDamage = Rep.Damage;
+			CombatRuntimeState.EnemyName = Rep.Name;
+			CombatRuntimeState.DummyEnemyHp = Rep.Hp;   // 镜像供旧读者
 			OutState = CombatRuntimeState;
 			return true;
 		}
 
-		// 击杀: 结算战斗 + 奖励。
+		// 列表空才结束战斗 + 奖励一次(经济保持原版: 按开战母体 EnemyPower 给金/战力, 不按子体翻倍)。
+		CombatRuntimeState.EnemyHp = 0;
+		CombatRuntimeState.DummyEnemyHp = 0;
 		CombatRuntimeState.bCombatActive = false;
 		CombatRuntimeState.bCombatResolved = true;
 		CombatRuntimeState.LastCombatResultId = GTCombatResult_Success;
@@ -476,7 +542,7 @@ bool UGT_RunContext::MonsterHitPlayer(int32& OutDamage, bool& bOutDead)
 		|| MapMode != EGT_MapMode::Standard
 		|| !CombatRuntimeState.bStandardEnemy
 		|| !CombatRuntimeState.bCombatActive
-		|| CombatRuntimeState.EnemyHp <= 0)
+		|| CombatRuntimeState.Enemies.Num() == 0)
 	{
 		return false;
 	}
@@ -484,6 +550,85 @@ bool UGT_RunContext::MonsterHitPlayer(int32& OutDamage, bool& bOutDead)
 	const int32 Damage = FMath::Max(0, CombatRuntimeState.EnemyDamage);
 	OutDamage = ApplyPlayerDamage(Damage);
 	bOutDead = !PlayerCombatState.IsAlive();
+	return true;
+}
+
+bool UGT_RunContext::FleeFromCombat(int32& OutGoldDropped, TArray<FGT_ItemStack>& OutDroppedItems)
+{
+	OutGoldDropped = 0;
+	OutDroppedItems.Reset();
+
+	// 守卫: 仅 Standard 模式、战斗激活时可逃跑(BasicDebug 163 夹具走 DummyEnemyHp, 不受影响)。
+	if (MapMode != EGT_MapMode::Standard || !CombatRuntimeState.bCombatActive)
+	{
+		return false;
+	}
+
+	// 掉钱: 扣 PendingGold 的 10%(向下取整; SafeGold 不动)。无随机。
+	const int32 GoldDrop = FMath::FloorToInt(RunInventory.PendingGold * 0.1f);
+	if (GoldDrop > 0)
+	{
+		RunInventory.SpendPendingGold(GoldDrop);
+	}
+	OutGoldDropped = GoldDrop;
+
+	// 掉物(确定性哈希, 不用 FRand): 只掉最低稀有度(common 白)且非消耗品的回收物。
+	// 合格池按 Count 展开成"件"实例; 同档均匀随机, 无权重曲线。池空 → 不掉物只掉钱。
+	int32 PlayerX = 0;
+	int32 PlayerY = 0;
+	TryGetPlayerPosition(PlayerX, PlayerY);
+
+	TArray<FName> EligiblePool;
+	for (const FGT_ItemStack& Stack : RunInventory.CarriedItems)
+	{
+		const FGT_ItemCatalogEntry* Def = GT_ItemCatalog::FindItemDef(Stack.ItemId);
+		if (!Def || Def->Rarity != GTRarity_Common)
+		{
+			continue;   // 只掉白货(更稀有的蓝紫金红逃跑永不丢)
+		}
+		if (Def->Kind == EGT_ItemKind::Consumable)
+		{
+			continue;   // 排消耗品(止血贴 rarity 也是 common, 只能按 Kind 排)
+		}
+		for (int32 i = 0; i < Stack.Count; ++i)
+		{
+			EligiblePool.Add(Stack.ItemId);
+		}
+	}
+
+	if (EligiblePool.Num() > 0)
+	{
+		const int32 DropCount = FMath::Max(1, FMath::CeilToInt(EligiblePool.Num() * 0.25f));
+		for (int32 i = 0; i < DropCount && EligiblePool.Num() > 0; ++i)
+		{
+			const int32 Index = GT_LootRules::RollRange(Seed, PlayerX, PlayerY,
+				GT_LootRules::FleeDropSalt + i, 0, EligiblePool.Num() - 1);
+			const FName DroppedId = EligiblePool[Index];
+
+			RunInventory.RemoveCarriedItem(DroppedId, 1);
+			RunInventory.Parts = FMath::Max(0, RunInventory.Parts - 1);   // 同步零件总数(对齐搜索入账/出账)
+			EligiblePool.RemoveAt(Index);
+
+			// 记入掉落明细(同 id 合并成堆)。
+			if (FGT_ItemStack* Found = OutDroppedItems.FindByPredicate(
+				[DroppedId](const FGT_ItemStack& S) { return S.ItemId == DroppedId; }))
+			{
+				++Found->Count;
+			}
+			else
+			{
+				FGT_ItemStack& NewStack = OutDroppedItems.AddDefaulted_GetRef();
+				NewStack.ItemId = DroppedId;
+				NewStack.Count = 1;
+				NewStack.Source = GTItemSource_Flee;
+			}
+		}
+	}
+
+	// 结束战斗(逃跑≠击杀): 仅清战斗激活标记。不置 bCombatResolved、不进 DefeatedCombatRooms → 可重刷。
+	// 单怪字段(EnemyHp 等)保留无害: 重进该房 StartDummyCombat 会整体重置重生。
+	CombatRuntimeState.bCombatActive = false;
+	CombatRuntimeState.Enemies.Reset();
 	return true;
 }
 

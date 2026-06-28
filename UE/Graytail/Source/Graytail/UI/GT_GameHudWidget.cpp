@@ -140,6 +140,8 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		RoomView->OnRoomChanged.BindUObject(this, &UGT_GameHudWidget::HandleRoomChanged);
 		RoomView->OnCombatStateChanged.BindUObject(this, &UGT_GameHudWidget::RefreshPanels);
 		RoomView->OnSearchRequested.BindUObject(this, &UGT_GameHudWidget::OnSearch);
+		RoomView->OnFleeRequested.BindUObject(this, &UGT_GameHudWidget::OnFlee);
+		RoomView->OnAttackRequested.BindUObject(this, &UGT_GameHudWidget::OnAttack);
 		RoomView->OnMapRequested.BindUObject(this, &UGT_GameHudWidget::OpenMapOverlay);
 		RoomView->OnExtractRequested.BindUObject(this, &UGT_GameHudWidget::OnExtract);
 		RoomView->OnEventRequested.BindUObject(this, &UGT_GameHudWidget::OpenEventPanel);
@@ -455,10 +457,12 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	};
 	AddKeyHint(nullptr, TEXT("WASD"), TEXT("移动"));
 	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_m"), TEXT("M"), TEXT("扫描图"));
-	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_f"), TEXT("F"), TEXT("搜索/攻击"));
+	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_f"), TEXT("F"), TEXT("搜索"));
 	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_e"), TEXT("E"), TEXT("撤离"));
 	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_t"), TEXT("T"), TEXT("事件"));
 	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_q"), TEXT("Q"), TEXT("用道具"));
+	// 第 7 块: 左键攻击。KeyLabel 传空串 —— 缺图时回落显示 KeyLabel 文字, 传空避免没图冒字(等 ui_key_lmb 导入)。
+	AddKeyHint(TEXT("/Game/Graytail/UI/keys/ui_key_lmb"), TEXT(""), TEXT("攻击"));
 	// 底栏背景用无分隔的连续金属条(ui_bar_blank_dark): 原版 ui_bottom_bar 是死画的 4 格,
 	// 与 6 个键位项数量不匹配会错位, 换成连续条让键帽均分对齐。
 	if (UVerticalBoxSlot* HotbarSlot = CenterCol->AddChildToVerticalBox(MakeSkinnedPanel(Hotbar, TEXT("/Game/Graytail/UI/common/ui_bar_blank_dark"))))
@@ -1513,22 +1517,7 @@ void UGT_GameHudWidget::OnSearch()
 		return;
 	}
 
-	// F = 搜索/攻击(对齐原版底栏): 战斗激活时 F 是攻击。
-	// 逻辑修改：不仅要战斗激活，还必须当前脚下站着的是怪物房，F 键才作为“攻击”
-	FGT_DebugRunSnapshot Probe;
-	if (Debug->GetDebugRunSnapshot(Probe) && Probe.bCombatActive && Probe.CurrentRoomBaseType == EGT_RoomBaseType::Combat)
-	{
-		// 实时战斗: F = 挥砍, 受挥砍冷却门控(多刀削怪血, 不再一击必杀)。冷却未到则忽略本次。
-		if (RoomView && !RoomView->TryConsumePlayerAttack())
-		{
-			return;
-		}
-		FGT_DebugRunSnapshot AttackSnapshot;
-		Debug->DebugAttack(AttackSnapshot);
-		RefreshAll();
-		return;
-	}
-
+	// F = 纯搜索/开箱(攻击已移到左键)。战斗房按 F 搜索会被内核拒, 无害。
 	FGT_DebugRunSnapshot Snapshot;
 	const bool bAccepted = Debug->DebugSearch(Snapshot);
 	RefreshAll();
@@ -1541,6 +1530,70 @@ void UGT_GameHudWidget::OnSearch()
 			LootResult->Open(RunContext->GetLastSearchOutcome());
 		}
 	}
+}
+
+void UGT_GameHudWidget::OnAttack()
+{
+	UGT_DebugSubsystem* Debug = GetDebugSubsystem();
+	if (!Debug || !RoomView)
+	{
+		return;
+	}
+
+	// 阻塞层门控: 与 NativeOnFocusReceived 同一组顶层界面打开时左键不挥(鼠标不被键盘焦点自动挡, 这里显式拦),
+	// 外加搜索结果 / 事件面板。任一打开 -> 直接 return。
+	if ((PauseMenu && PauseMenu->IsOpen())
+		|| (TutorialPopup && TutorialPopup->IsBlockingActive())
+		|| (DeployTerminal && DeployTerminal->IsOpen())
+		|| (SettingsPanel && SettingsPanel->IsOpen())
+		|| (MainMenu && MainMenu->IsOpen())
+		|| (LootResult && LootResult->GetVisibility() == ESlateVisibility::Visible)
+		|| (EventPanel && EventPanel->IsOpen()))
+	{
+		return;
+	}
+
+	// 左键挥砍: 任何房都发起(播动画/弧光/冷却); 发起只看冷却, 冷却未到整次忽略, 不发命令。
+	bool bHit = false;
+	TArray<int32> HitEnemyIds;
+	if (!RoomView->TryConsumePlayerAttack(bHit, HitEnemyIds))
+	{
+		return;
+	}
+	// 仅"命中 且 确在怪物房战斗中"才提交内核 Attack 扣血(非战斗房/空挥不改内核状态)。
+	FGT_DebugRunSnapshot Probe;
+	if (bHit && Debug->GetDebugRunSnapshot(Probe) && Probe.bCombatActive && Probe.CurrentRoomBaseType == EGT_RoomBaseType::Combat)
+	{
+		FGT_DebugRunSnapshot AttackSnapshot;
+		// 把命中的 EnemyId 集合拼成 PayloadId(如 "1;3") 传进命令, 内核只扣锥内怪 HP。
+		FName PayloadId = NAME_None;
+		if (HitEnemyIds.Num() > 0)
+		{
+			FString PayloadStr;
+			for (int32 i = 0; i < HitEnemyIds.Num(); ++i)
+			{
+				if (i > 0) PayloadStr.AppendChar(';');
+				PayloadStr.AppendInt(HitEnemyIds[i]);
+			}
+			PayloadId = FName(*PayloadStr);
+		}
+		Debug->DebugAttack(AttackSnapshot, PayloadId);
+		RefreshAll();
+	}
+}
+
+void UGT_GameHudWidget::OnFlee()
+{
+	// 怪物房逃跑确认(RoomView 已判定站门口 + 第二次 F): 走 FleeCombat 命令扣惩罚(掉钱+掉白货)并结束战斗。
+	// 是否合法(Standard 战斗中)由内核守卫裁决; 过门由 RoomView 在确认成功后自行处理。
+	UGT_DebugSubsystem* Debug = GetDebugSubsystem();
+	if (!Debug)
+	{
+		return;
+	}
+	FGT_DebugRunSnapshot Snapshot;
+	Debug->DebugFlee(Snapshot);
+	RefreshAll();
 }
 
 void UGT_GameHudWidget::OpenEventPanel()
@@ -1760,6 +1813,12 @@ void UGT_GameHudWidget::OnReturnToMenu()
 	if (MainMenu)
 	{
 		MainMenu->Open();
+	}
+	// 回标题: 清空房间视图残留(怪物/血条/弹道等)。否则本局放弃后 RunContext 残留的 bCombatActive
+	// 会让 RoomView 继续模拟怪物, 透过半透明设置背景在标题里"飘来飘去"。
+	if (RoomView)
+	{
+		RoomView->ResetForTitle();
 	}
 }
 

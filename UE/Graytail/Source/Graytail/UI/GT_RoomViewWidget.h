@@ -54,10 +54,11 @@ public:
 
 	// 玩家挥砍发起 + 朝向锥形命中判定(解耦"是否发起"与"是否命中"):
 	//   返回值 = 本次是否发起(冷却到了; 冷却未到整次忽略, 防 F 自动重复连发)。
-	//   bOutHit = 朝向锥(前方 120° 弧, 半角 60°, 射程 CurrentPlayerAttackRange)是否覆盖到怪。
+	//   bOutHit = 朝向锥(前方 120° 弧, 半角 60°, 射程 CurrentPlayerAttackRange)是否覆盖到至少一只怪。
+	//   OutHitEnemyIds = 本次命中朝向锥内覆盖的怪 EnemyId 集合(供 HUD 提交 Attack 命令时传入 PayloadId)。
 	// 发起即起冷却 + 播挥砍音 + 触发朝向弧光 VFX(纯表现); 是否命中由 facing 锥独立裁决。
 	// HUD 命中才提交内核 Attack 命令扣血(挥空照常走冷却, 不扣血)。
-	bool TryConsumePlayerAttack(bool& bOutHit);
+	bool TryConsumePlayerAttack(bool& bOutHit, TArray<int32>& OutHitEnemyIds);
 
 	// WASD 过门移动成功后通知 HUD 刷新信息面板(不含房间视图自身)。
 	FSimpleDelegate OnRoomChanged;
@@ -67,6 +68,9 @@ public:
 
 	// F 键搜索/开箱(对齐原版快捷键), 由 HUD 绑定到 OnSearch。
 	FSimpleDelegate OnSearchRequested;
+
+	// 怪物房逃跑确认(门口 F → 确认条 → 再 F): 确认时由 HUD 绑定到 DebugFlee 走命令管线扣惩罚。
+	FSimpleDelegate OnFleeRequested;
 
 	// 左键挥砍(任何房都发起动画/弧光/冷却), 由 HUD 绑定到 OnAttack。
 	FSimpleDelegate OnAttackRequested;
@@ -91,6 +95,11 @@ private:
 	void BuildWidgetTree();
 	UGT_DebugSubsystem* GetDebugSubsystem() const;
 	const UGT_RunContext* GetRunContext() const;
+	// 怪物房逃跑警示(纯表现层, 仅 Standard 战斗房): 玩家是否站在某条有效门边(同 TryCrossDoor 阈值), 给出门向。
+	bool FindFleeDoorDir(int32& OutDirX, int32& OutDirY) const;
+	// F 在战斗房门口的逃跑流程(单次 F 即走命令管线扣惩罚 + 过门)。返回是否已拦截 F(true 则不再走搜索)。
+	bool TryHandleFleeKey();
+	void ClearFleePrompt();                       // 收起逃跑警示条
 	void PlaySfx(FName Key);   // 经 GT_SettingsSubsystem 播一次性音效(走 SfxVolume)
 	UTexture2D* LoadTextureAsset(const FString& AssetPath);
 	UTexture2D* GetWalkFrame(int32 DirX, int32 DirY, int32 FrameIndex);
@@ -137,9 +146,21 @@ private:
 	UPROPERTY(Transient) UImage* PlayerHpBarBg = nullptr;
 	UPROPERTY(Transient) UImage* PlayerHpBarFill = nullptr;
 	UPROPERTY(Transient) UImage* EnemyAttackCircle = nullptr;
+	// A 步骤(史莱姆分裂): 第 2 只子史莱姆专用渲染槽 —— 独立 widget+state, 与代表槽零共享(不串台)。
+	// 不变式: 内核 cleave-all 给所有存活怪等量扣血 → 两子体 HP 恒等 → 必同刀死 → Enemies 顺序稳定 → Enemies[1] 安全。
+	// ⚠ 若将来改"真锥形 cleave(只打锥内)", 子体会异步死、index 漂移, 必须重审 slot-1 改回按 EnemyId 全数组对账。
+	UPROPERTY(Transient) UImage* EnemyImage1 = nullptr;
+	UPROPERTY(Transient) UImage* DeathEffectImage1 = nullptr;
+	UPROPERTY(Transient) UImage* EnemyShadow1 = nullptr;
+	UPROPERTY(Transient) UImage* EnemyHpBarBg1 = nullptr;
+	UPROPERTY(Transient) UImage* EnemyHpBarFill1 = nullptr;
+	UPROPERTY(Transient) UTextBlock* EnemyNameLabel1 = nullptr;
+	UPROPERTY(Transient) UImage* EnemyAttackCircle1 = nullptr;
 	UPROPERTY(Transient) UTextBlock* CombatHintLabel = nullptr;
 	// 撞地图边缘提示(房顶, 推向无相邻格的边被拒时短暂显示)。
 	UPROPERTY(Transient) UTextBlock* EdgeHintLabel = nullptr;
+	// 怪物房逃跑确认条(门口 F 弹出; HitTestInvisible 绝不夺焦点, 否则战斗模拟被 HasKeyboardFocus 门控冻结)。
+	UPROPERTY(Transient) UTextBlock* FleeConfirmLabel = nullptr;
 
 	// 贴图资产缓存(防 GC): key = /Game 包路径。
 	UPROPERTY(Transient) TMap<FString, UTexture2D*> TextureCache;
@@ -234,6 +255,33 @@ private:
 	FVector2D EnemyNormPos = FVector2D(0.35f, 0.45f);
 	int32 EnemyMeleePhase = 0;          // 0 idle / 1 warning / 2 active / 3 cooldown
 
+	// 代表槽当前所渲染怪的 EnemyId(母体→子体0 切换检测: 变了 → 播母体碎裂 + 重置代表槽给子体0)。-1=未开战。
+	int32 RepEnemyId = -1;
+
+	// A 步骤 slot-1: 第 2 只子史莱姆专用 state(独立于代表槽, 不串台; 绑 Enemies[1] 的 EnemyId)。
+	int32 Slot1EnemyId = -1;
+	FVector2D Slot1NormPos = FVector2D(0.6f, 0.55f);
+	FVector2D Slot1LastNormPos = FVector2D(0.6f, 0.55f);
+	int32 Slot1MeleePhase = 0;
+	float Slot1MeleePhaseTimer = 0.f;
+	bool bSlot1MeleeHitResolved = false;
+	float Slot1HitFlashTimer = 0.f;
+	int32 Slot1PrevHp = -1;
+	FVector2D Slot1WanderDir = FVector2D::ZeroVector;
+	float Slot1WanderTimer = 0.f;
+	float Slot1ShakeTimer = 0.f;
+	// slot-1 死亡碎裂(独立于代表槽碎裂层)。
+	bool bSlot1Shatter = false;
+	float Slot1ShatterTimer = 0.f;
+	int32 Slot1ShatterFrame = -1;
+	int32 Slot1ShatterStartFrame = 0;   // slot-1 都是小史莱姆, 死亡碎裂从 1 开始
+	FVector2D Slot1ShatterPos = FVector2D(0.6f, 0.55f);
+
+	// 无人机受击冲刺脱困(纯表现层 juice, 仅 bDashAwayOnHit 怪): 掉血瞬间起 0.5s 目标点冲刺(覆盖常规 kiting),
+	// 高速冲到远离玩家的可玩区落点(被逼角时 ~3/4 房间对角线), 到点/超时即停, 恢复 kiting 让玩家追。
+	float DroneDashTimer = 0.f;
+	FVector2D DroneDashTarget = FVector2D::ZeroVector;
+
 	// 怪物本体帧动画 + 朝向(贴图源朝右, 玩家在左侧则水平翻转面向玩家)。
 	float EnemyAnimTime = 0.f;            // 待机/蓄力帧动画时钟
 	float EnemyFireFlashTimer = 0.f;      // 蝙蝠发射张嘴帧的短暂闪现窗口
@@ -257,6 +305,7 @@ private:
 	bool bPlayingDeathShatter = false;
 	float DeathShatterTimer = 0.f;
 	int32 DeathShatterFrame = -1;
+	int32 DeathShatterStartFrame = 0;   // 母体史莱姆从 0 开始, 小史莱姆从 1 开始(跳过硬壳完整帧)
 	FVector2D DeathEffectPos = FVector2D(0.35f, 0.45f);
 	FVector2D LastEnemyNormPos = FVector2D(0.35f, 0.45f);
 	float EnemyMeleePhaseTimer = 0.f;

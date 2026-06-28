@@ -4,6 +4,31 @@
 #include "Core/GT_RunContext.h"
 #include "GT_DebugTypes.generated.h"
 
+// Standard 多怪快照视图(一只小怪的只读投影; 位置/相位不进快照, 表现层自持并按 EnemyId 对账)。
+USTRUCT(BlueprintType)
+struct GRAYTAIL_API FGT_CombatEnemyView
+{
+	GENERATED_BODY()
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	int32 EnemyId = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	EGT_MonsterType Type = EGT_MonsterType::Slime;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	int32 Hp = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	int32 MaxHp = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	int32 Power = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	FString Name;
+};
+
 USTRUCT(BlueprintType)
 struct GRAYTAIL_API FGT_DebugRunSnapshot
 {
@@ -81,6 +106,10 @@ struct GRAYTAIL_API FGT_DebugRunSnapshot
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
 	EGT_MonsterType EnemyType = EGT_MonsterType::Slime;
+
+	// Standard 多怪列表(实战 <=2; 史莱姆母体死亡裂成 2 子体)。BasicDebug/单怪时为空或 1 项。
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
+	TArray<FGT_CombatEnemyView> Enemies;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Debug")
 	FName LastCombatResultId = NAME_None;

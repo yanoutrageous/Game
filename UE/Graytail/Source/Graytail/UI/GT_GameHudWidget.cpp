@@ -140,6 +140,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		RoomView->OnRoomChanged.BindUObject(this, &UGT_GameHudWidget::HandleRoomChanged);
 		RoomView->OnCombatStateChanged.BindUObject(this, &UGT_GameHudWidget::RefreshPanels);
 		RoomView->OnSearchRequested.BindUObject(this, &UGT_GameHudWidget::OnSearch);
+		RoomView->OnFleeRequested.BindUObject(this, &UGT_GameHudWidget::OnFlee);
 		RoomView->OnAttackRequested.BindUObject(this, &UGT_GameHudWidget::OnAttack);
 		RoomView->OnMapRequested.BindUObject(this, &UGT_GameHudWidget::OpenMapOverlay);
 		RoomView->OnExtractRequested.BindUObject(this, &UGT_GameHudWidget::OnExtract);
@@ -1554,7 +1555,8 @@ void UGT_GameHudWidget::OnAttack()
 
 	// 左键挥砍: 任何房都发起(播动画/弧光/冷却); 发起只看冷却, 冷却未到整次忽略, 不发命令。
 	bool bHit = false;
-	if (!RoomView->TryConsumePlayerAttack(bHit))
+	TArray<int32> HitEnemyIds;
+	if (!RoomView->TryConsumePlayerAttack(bHit, HitEnemyIds))
 	{
 		return;
 	}
@@ -1563,9 +1565,35 @@ void UGT_GameHudWidget::OnAttack()
 	if (bHit && Debug->GetDebugRunSnapshot(Probe) && Probe.bCombatActive && Probe.CurrentRoomBaseType == EGT_RoomBaseType::Combat)
 	{
 		FGT_DebugRunSnapshot AttackSnapshot;
-		Debug->DebugAttack(AttackSnapshot);
+		// 把命中的 EnemyId 集合拼成 PayloadId(如 "1;3") 传进命令, 内核只扣锥内怪 HP。
+		FName PayloadId = NAME_None;
+		if (HitEnemyIds.Num() > 0)
+		{
+			FString PayloadStr;
+			for (int32 i = 0; i < HitEnemyIds.Num(); ++i)
+			{
+				if (i > 0) PayloadStr.AppendChar(';');
+				PayloadStr.AppendInt(HitEnemyIds[i]);
+			}
+			PayloadId = FName(*PayloadStr);
+		}
+		Debug->DebugAttack(AttackSnapshot, PayloadId);
 		RefreshAll();
 	}
+}
+
+void UGT_GameHudWidget::OnFlee()
+{
+	// 怪物房逃跑确认(RoomView 已判定站门口 + 第二次 F): 走 FleeCombat 命令扣惩罚(掉钱+掉白货)并结束战斗。
+	// 是否合法(Standard 战斗中)由内核守卫裁决; 过门由 RoomView 在确认成功后自行处理。
+	UGT_DebugSubsystem* Debug = GetDebugSubsystem();
+	if (!Debug)
+	{
+		return;
+	}
+	FGT_DebugRunSnapshot Snapshot;
+	Debug->DebugFlee(Snapshot);
+	RefreshAll();
 }
 
 void UGT_GameHudWidget::OpenEventPanel()

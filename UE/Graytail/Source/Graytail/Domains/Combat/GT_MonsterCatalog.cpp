@@ -54,6 +54,34 @@ namespace GT_MonsterCatalog
 			return Bat;
 		}
 
+		// 子史莱姆(母体死亡分裂产生, 不进 PickTypeForCell): 比母体更脆更快更弱、高速乱窜 + 间歇近战。
+		// 数值由用户拍板: HpBase=9 / MoveSpeed=0.30 / DamageMult=0.6(Power 在分裂时按母体×0.45 派生)。
+		const FGT_MonsterArchetype& SlimelingArchetype()
+		{
+			static const FGT_MonsterArchetype Slimeling = []()
+			{
+				FGT_MonsterArchetype A;
+				A.Type = EGT_MonsterType::Slimeling;
+				A.MovePattern = EGT_MonsterMovePattern::RandomRoam;   // 高速乱窜 + 轻微朝玩家偏置
+				A.AttackPattern = EGT_MonsterAttackPattern::MeleeCircle;
+				A.HpBase = 9;                  // 更脆(母体 24)
+				A.MoveSpeed = 0.30f;           // 更快(母体 0.18)
+				A.DamageMult = 0.6f;           // 更弱(母体 1.3)
+				A.AttackRadius = 0.20f;
+				A.PlayerAttackRange = 0.21f;
+				A.IdleDuration = 1.10f;
+				A.WarningDuration = 0.75f;
+				A.ActiveDuration = 0.28f;
+				A.CooldownDuration = 0.55f;
+				// 绿色靠新美术(占位 enemy_slime 是洋红, tint 变 muddy 出不来绿): TintColor 保持 White。
+				// 子史莱姆独立图已导入 /Game/Graytail/Sprites/Monsters/enemy_slimeling; 表现层仍额外缩 0.7 显"小"。
+				A.SpritePath = TEXT("/Game/Graytail/Sprites/Monsters/enemy_slimeling");
+				A.TintColor = FLinearColor::White;
+				return A;
+			}();
+			return Slimeling;
+		}
+
 		const FGT_MonsterArchetype& DroneArchetype()
 		{
 			static const FGT_MonsterArchetype Drone = []()
@@ -75,6 +103,7 @@ namespace GT_MonsterCatalog
 				A.AimTurnRateDeg = 0.f;        // 蓄力开始即锁死发射方向(红线固定预警): 蓄力期移开红线 -> 发射必脱靶
 				A.KiteStrength = 1.0f;         // 严格保持距离(慢肉怪靠激光压制)
 				A.WanderWeight = 0.5f;
+				A.bDashAwayOnHit = true;       // 仅无人机: 受击冲刺脱困(纯表现层), 不被逼墙角挨砍
 				A.SpritePath = TEXT("/Game/Graytail/Sprites/Monsters/drone_idle_0");
 				A.TintColor = FLinearColor::White;   // 真彩贴图自带蓝灰, 不再占位染色
 				return A;
@@ -91,6 +120,8 @@ namespace GT_MonsterCatalog
 			return BatArchetype();
 		case EGT_MonsterType::Drone:
 			return DroneArchetype();
+		case EGT_MonsterType::Slimeling:
+			return SlimelingArchetype();
 		case EGT_MonsterType::Slime:
 		default:
 			return SlimeArchetype();

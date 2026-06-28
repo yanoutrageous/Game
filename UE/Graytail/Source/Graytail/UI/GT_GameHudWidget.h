@@ -109,6 +109,8 @@ private:
 	void HandleEventPanelClosed();
 	// Q 键使用消耗品(默认止血贴): 发命令走真规则, 刷新血条/背包。
 	void OnUseConsumable();
+	// 怪物房逃跑确认(RoomView 门口第二次 F): 走 FleeCombat 命令扣惩罚, 刷新金币/背包。
+	void OnFlee();
 	// 居中播报(对齐 Lua HUD.DrawCenterToast): 给无粒子/无显眼数值变化的动作一个明确反馈(如幸运硬币结果)。
 	void ShowToast(const FString& Message, float Duration = 2.2f);
 	// 罗盘装备: 开局播报撤离信标相对玩家的方位(对齐 Lua compass showExitHint)。无罗盘/无撤离点则静默。

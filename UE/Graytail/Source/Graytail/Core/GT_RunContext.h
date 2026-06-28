@@ -24,6 +24,40 @@ enum class EGT_RunState : uint8
 	Ended UMETA(DisplayName = "Ended")
 };
 
+// Standard 多怪战斗里的一只小怪(实战 <=2: 史莱姆母体死亡裂成 2 子体)。
+// 仅 Standard 战斗用; BasicDebug 走 DummyEnemyHp 标量 1v1, 不碰 Enemies。
+USTRUCT(BlueprintType)
+struct GRAYTAIL_API FGT_CombatEnemy
+{
+	GENERATED_BODY()
+
+	// 本场战斗内唯一 id(单调自增): 表现层按此对账渲染槽, 分裂时母体腾出、子体填入(裸索引会错位)。
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat")
+	int32 EnemyId = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat")
+	EGT_MonsterType Type = EGT_MonsterType::Slime;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat")
+	int32 Hp = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat")
+	int32 MaxHp = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat")
+	int32 Power = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat")
+	int32 Damage = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat")
+	FString Name;
+
+	// 死亡时是否分裂(仅史莱姆母体 true → 替换成 2 子史莱姆); 子体/蝙蝠/无人机 false。
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat")
+	bool bSplitsOnDeath = false;
+};
+
 USTRUCT(BlueprintType)
 struct GRAYTAIL_API FGT_CombatRuntimeState
 {
@@ -77,6 +111,11 @@ struct GRAYTAIL_API FGT_CombatRuntimeState
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat")
 	int32 EnemyDamage = 0;
+
+	// Standard 多怪列表(实战 <=2)。上面的标量字段(EnemyHp/MaxHp/Type/Damage/Name)是"当前代表怪"镜像,
+	// 给 BasicDebug/163/旧读者用; EnemyPower 保持开战母体战力(击杀奖励基准, 不随子体覆盖, 经济保持原版)。
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat")
+	TArray<FGT_CombatEnemy> Enemies;
 };
 
 USTRUCT(BlueprintType)
@@ -187,12 +226,20 @@ public:
 	bool MarkTruthCellEntered(int32 X, int32 Y);
 	bool MarkTruthCellResolved(int32 X, int32 Y);
 	bool StartDummyCombat(int32 X, int32 Y, FName RoomContentId, FName RoomRuleId, int32 InitialDummyHp = 1);
-	bool AttackDummyCombat(FGT_CombatRuntimeState& OutState);
+	bool AttackDummyCombat(FGT_CombatRuntimeState& OutState) { return AttackDummyCombat(TArray<int32>(), OutState); }
+	bool AttackDummyCombat(const TArray<int32>& HitEnemyIds, FGT_CombatRuntimeState& OutState);
 
 	// Standard 实时战斗: 怪物对玩家造成一次伤害(对齐 Combat.UpdateEnemy 的 active 命中分支)。
 	// 无敌帧由表现层(RoomView)门控, 此处只在战斗激活、怪未死时按 EnemyDamage 扣血。
 	// OutDamage = 实际扣血; bOutDead = 扣血后是否归零。返回是否真打到(战斗未激活/怪已死则 false)。
 	bool MonsterHitPlayer(int32& OutDamage, bool& bOutDead);
+
+	// 怪物房逃跑(Standard 战斗中): 扣 PendingGold 10% + 确定性掉落最低稀有度(common 白)非消耗品回收物,
+	// 然后结束战斗(逃跑≠击杀: 不置 bCombatResolved、不进 DefeatedCombatRooms → 可重刷)。
+	// OutGoldDropped = 实际掉金; OutDroppedItems = 掉落明细(同 id 合并)。守卫失败(非 Standard/未战斗)返回 false。
+	// 必须经 Command 管线(FleeCombat 命令)调到这里, 不直接给 UI 调。
+	bool FleeFromCombat(int32& OutGoldDropped, TArray<FGT_ItemStack>& OutDroppedItems);
+
 	bool ResolveDummyCombat(FName ResultId, FGT_CombatRuntimeState& OutState);
 	bool GetCombatStateSnapshot(FGT_CombatRuntimeState& OutState) const;
 	bool GenerateExtractSummary(int32 TotalEventCount);
@@ -367,6 +414,9 @@ private:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Combat", meta = (AllowPrivateAccess = "true"))
 	FGT_CombatRuntimeState CombatRuntimeState;
+
+	// 战斗小怪 id 单调自增源(本局内唯一; 表现层按 id 对账渲染槽)。InitializeFromSpec/ResetRun 重置。
+	int32 CombatEnemyIdCounter = 0;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Run", meta = (AllowPrivateAccess = "true"))
 	FGT_RunSummary RunSummary;

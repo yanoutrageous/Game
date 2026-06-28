@@ -768,6 +768,38 @@ namespace
 			*Snapshot.Summary);
 	}
 
+	void HandleFlee(const TArray<FString>& Args, UWorld* World)
+	{
+		FString FailureReason;
+		UGT_DebugSubsystem* DebugSubsystem = FindDebugSubsystem(World, FailureReason);
+		if (!DebugSubsystem)
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("gt.Flee failed: %s"), *FailureReason);
+			return;
+		}
+
+		if (!Args.IsEmpty())
+		{
+			UE_LOG(LogGraytailManualPlay, Warning, TEXT("Usage: gt.Flee"));
+			return;
+		}
+
+		// 逃跑前背包(掉金/掉白货对账基线)。
+		FString BagBefore;
+		DebugSubsystem->GetDebugInventoryText(BagBefore);
+		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.Flee BEFORE: %s"), *BagBefore);
+
+		FGT_DebugRunSnapshot Snapshot;
+		const bool bAccepted = DebugSubsystem->DebugFlee(Snapshot);
+		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.Flee %s: %s"),
+			bAccepted ? TEXT("accepted") : TEXT("rejected"), *Snapshot.Summary);
+
+		// 逃跑后背包(确认 PendingGold 减 ~10% + 白货件数减少)。
+		FString BagAfter;
+		DebugSubsystem->GetDebugInventoryText(BagAfter);
+		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.Flee AFTER: %s"), *BagAfter);
+	}
+
 	void HandleSummary(const TArray<FString>& Args, UWorld* World)
 	{
 		if (!Args.IsEmpty())
@@ -1090,6 +1122,11 @@ namespace
 		TEXT("gt.MonsterHit"),
 		TEXT("Standard real-time combat: applies one monster hit to the player (i-frames are presentation-gated, so this always lands when combat is active). Usage: gt.MonsterHit"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleMonsterHit));
+
+	FAutoConsoleCommandWithWorldAndArgs GTFleeCommand(
+		TEXT("gt.Flee"),
+		TEXT("Standard combat room: flee through the command path (drops 10% pending gold + common/white recyclables). Usage: gt.Flee"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleFlee));
 
 	FAutoConsoleCommandWithWorldAndArgs GTSummaryCommand(
 		TEXT("gt.Summary"),

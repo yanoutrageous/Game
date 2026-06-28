@@ -56,11 +56,16 @@ public:
 	bool DebugResolveCombat(FName ResultId, FGT_DebugRunSnapshot& OutSnapshot);
 
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
-	bool DebugAttack(FGT_DebugRunSnapshot& OutSnapshot);
+	bool DebugAttack(FGT_DebugRunSnapshot& OutSnapshot, FName PayloadId = NAME_None);
 
 	// 怪物对玩家落地一次攻击(Standard 实时战斗, 由 RoomView 在命中时机调用)。
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
 	bool DebugMonsterHit(FGT_DebugRunSnapshot& OutSnapshot);
+
+	// 怪物房逃跑(经 FleeCombat 命令): 内核扣惩罚(掉钱 + 确定性掉白货)并结束战斗。
+	// Summary 带逃跑前后对账(掉金/掉物件数/CombatActive), 供无头断言。由 RoomView 确认条第二次 F 调入。
+	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
+	bool DebugFlee(FGT_DebugRunSnapshot& OutSnapshot);
 
 	// 使用玩家背包里的消耗品(默认应急止血贴)。经命令管线走真规则。
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")

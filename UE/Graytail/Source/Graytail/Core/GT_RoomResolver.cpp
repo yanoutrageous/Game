@@ -250,7 +250,7 @@ bool UGT_RoomResolver::ResolveCombatAt(int32 X, int32 Y, FName ResultId, FGT_Roo
 	return true;
 }
 
-bool UGT_RoomResolver::AttackCombatAt(int32 X, int32 Y, FGT_RoomResolveResult& OutResult)
+bool UGT_RoomResolver::AttackCombatAt(int32 X, int32 Y, FGT_RoomResolveResult& OutResult, const TArray<int32>& HitEnemyIds)
 {
 	if (!BuildResultFromTruthCell(X, Y, OutResult))
 	{
@@ -281,7 +281,7 @@ bool UGT_RoomResolver::AttackCombatAt(int32 X, int32 Y, FGT_RoomResolveResult& O
 	}
 
 	FGT_CombatRuntimeState CombatState;
-	if (!RunContext->AttackDummyCombat(CombatState))
+	if (!RunContext->AttackDummyCombat(HitEnemyIds, CombatState))
 	{
 		RunContext->GetCombatStateSnapshot(CombatState);
 		PublishInteractionEvent(

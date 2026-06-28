@@ -845,6 +845,16 @@ void UGT_RoomViewWidget::RefreshRoomDecor()
 		return;
 	}
 
+	// 死亡碎裂是上一场战斗的遗留, 换房/刷新即取消, 防残留到新房间。
+	bPlayingDeathShatter = false;
+	DeathShatterTimer = 0.f;
+	DeathShatterFrame = -1;
+	if (DeathEffectImage) { DeathEffectImage->SetVisibility(ESlateVisibility::Collapsed); }
+	bSlot1Shatter = false;
+	Slot1ShatterTimer = 0.f;
+	Slot1ShatterFrame = -1;
+	if (DeathEffectImage1) { DeathEffectImage1->SetVisibility(ESlateVisibility::Collapsed); }
+
 	// 房间底图: 复用 Lua 版 room_*.png(资产化在 Sprites/Misc 下), 按房型切换(对齐 DungeonRoom.lua)。
 	// 房型不再加文字标签(用户要求): 地板美术本身已表达房型。
 	FLinearColor FloorColor = GTFloor_Normal;
@@ -881,13 +891,17 @@ void UGT_RoomViewWidget::RefreshRoomDecor()
 	// 战斗激活时显示史莱姆。
 	const bool bShowEnemy = Snapshot.bCombatActive
 		&& Snapshot.CurrentRoomBaseType == EGT_RoomBaseType::Combat;
-	if (bShowEnemy && !EnemyImage->GetBrush().GetResourceObject())
+	if (bShowEnemy)
 	{
+		// 每次进战斗房都重置占位贴图 + 帧缓存(换房时上一场怪的末帧/攻击帧不能残留到新房间)。
 		if (UTexture2D* SlimeTexture = LoadTextureAsset(TEXT("/Game/Graytail/Sprites/enemy_slime")))
 		{
 			EnemyImage->SetBrushFromTexture(SlimeTexture);
 		}
-		CurrentEnemyFrameKey.Reset();   // 占位后让战斗 tick 重新按怪种刷新本体帧
+		CurrentEnemyFrameKey.Reset();   // 让战斗 tick 重新按怪种刷新本体帧
+		EnemyImage->SetBrushTintColor(FSlateColor(FLinearColor::White));
+		EnemyImage->SetRenderTransform(FWidgetTransform(FVector2D::ZeroVector, FVector2D(1.f, 1.f), FVector2D::ZeroVector, 0.f));
+		EnemyImage->SetRenderOpacity(1.f);
 	}
 	EnemyImage->SetVisibility(bShowEnemy ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 
@@ -1428,6 +1442,12 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 
 		if (bIsCombatRoom && EnemyImage->GetVisibility() == ESlateVisibility::HitTestInvisible)
 		{
+			// 进入战斗时确保上一场的碎裂特效已隐藏(防换房残留)。
+			bPlayingDeathShatter = false;
+			if (DeathEffectImage) { DeathEffectImage->SetVisibility(ESlateVisibility::Collapsed); }
+			bSlot1Shatter = false;
+			if (DeathEffectImage1) { DeathEffectImage1->SetVisibility(ESlateVisibility::Collapsed); }
+
 			// 暂停门控: ESC 暂停菜单(或任何抢走键盘焦点的顶层界面)打开时, 冻结整段战斗模拟 ——
 			// 怪物不移动、不进入攻击相位、不发射弹道、不扣血。表现层保持当前帧, 恢复焦点后接着算。
 			// 玩家移动在下方同样以 HasKeyboardFocus 门控, 这里补上怪物侧, 真正实现"暂停=全停"。

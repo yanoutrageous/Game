@@ -12,6 +12,8 @@ public class Graytail : ModuleRules
 			"CoreUObject",
 			"Engine",
 			"InputCore",
+			"Json",
+			"JsonUtilities",
 			"UMG",
 			"Slate",
 			"SlateCore"

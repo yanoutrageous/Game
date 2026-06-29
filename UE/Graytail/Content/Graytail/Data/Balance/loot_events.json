@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "search": {
+    "baseMin": 2,
+    "baseMax": 5,
+    "adjacentDivisor": 2,
+    "goldCap": 10,
+    "highAdjacentAtLeast": 3,
+    "highAdjacentRareBonus": 10,
+    "dropTable": [
+      { "maxRoll": 35, "quality": "none" },
+      { "maxRoll": 76, "quality": "low" },
+      { "maxRoll": 91, "quality": "common" },
+      { "maxRoll": 96, "quality": "rare" },
+      { "maxRoll": 99, "quality": "precious" },
+      { "maxRoll": 100, "quality": "abnormal" }
+    ]
+  },
+  "chest": {
+    "baseMin": 8,
+    "baseMax": 16,
+    "goldCap": 24,
+    "minItems": 1,
+    "maxItems": 2,
+    "dropTable": [
+      { "maxRoll": 32, "quality": "common" },
+      { "maxRoll": 77, "quality": "rare" },
+      { "maxRoll": 93, "quality": "precious" },
+      { "maxRoll": 100, "quality": "abnormal" }
+    ]
+  },
+  "gambler": {
+    "bet": 20,
+    "loseMaxRoll": 4,
+    "smallWinNet": 20,
+    "bigWinRoll": 6,
+    "bigWinNet": 60
+  },
+  "altarSteps": [
+    { "hpCost": 10, "rewardGold": 8, "rewardQuality": "low" },
+    { "hpCost": 15, "rewardGold": 12, "rewardQuality": "common" },
+    { "hpCost": 25, "rewardGold": 18, "rewardQuality": "rare" },
+    { "hpCost": 35, "rewardGold": 24, "rewardQuality": "precious" },
+    { "hpCost": 50, "rewardGold": 35, "rewardQuality": "abnormal" }
+  ],
+  "trap": {
+    "powerRequirement": 8,
+    "successGold": 25,
+    "failHpLoss": 1,
+    "failPressure": 5
+  },
+  "trader": {
+    "baseSalePercent": 75
+  },
+  "flee": {
+    "goldDropPercent": 10,
+    "itemDropPercent": 25,
+    "dropSalt": 5407
+  },
+  "luckyCoin": {
+    "goldChancePercent": 50,
+    "safeGoldReward": 30,
+    "revealCount": 1
+  },
+  "eventWeights": [
+    { "id": "trader", "weight": 30 },
+    { "id": "dice", "weight": 25 },
+    { "id": "altar", "weight": 25 },
+    { "id": "trap", "weight": 20 }
+  ]
+}

@@ -1,5 +1,6 @@
 #include "UI/GT_GameHudWidget.h"
 
+#include "Domains/Events/GT_EventRules.h"
 #include "Blueprint/UserWidget.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
@@ -1671,7 +1672,12 @@ void UGT_GameHudWidget::OnUseConsumable()
 		{
 			const UGT_RunContext* RC = GetRunContext();
 			const FName Status = RC ? RC->GetLastConsumableOutcome().Status : NAME_None;
-			if (Status == FName(TEXT("lucky_gold")))       { ShowToast(TEXT("幸运硬币 · 正面! +30 结算币")); }
+			if (Status == FName(TEXT("lucky_gold")))
+			{
+				ShowToast(FString::Printf(
+					TEXT("幸运硬币 · 正面! +%d 结算币"),
+					GT_EventRules::GetLuckyCoin().SafeGoldReward));
+			}
 			else if (Status == FName(TEXT("lucky_reveal"))) { ShowToast(TEXT("幸运硬币 · 反面! 揭示了相邻区域")); }
 			else                                            { ShowToast(TEXT("幸运硬币 · 已使用")); }
 		}

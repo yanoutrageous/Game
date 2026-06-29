@@ -7,6 +7,7 @@
 #include "Core/GT_EventBus.h"
 #include "Core/GT_QueryFacade.h"
 #include "Core/GT_RunContext.h"
+#include "Data/GT_GameDataSubsystem.h"
 #include "Domains/Meta/GT_MetaProgressSubsystem.h"
 #include "Domains/Meta/GT_MetaSettlement.h"
 #include "Engine/GameInstance.h"
@@ -48,6 +49,12 @@ void UGT_RunSubsystem::Deinitialize()
 
 UGT_RunContext* UGT_RunSubsystem::StartNewRun(int32 Seed, int32 Width, int32 Height)
 {
+	if (!GT_GameData::IsReady())
+	{
+		UE_LOG(LogTemp, Display, TEXT("StartNewRun blocked by invalid game data: %s"), *GT_GameData::GetErrorText());
+		return nullptr;
+	}
+
 	EndCurrentRun();
 	CurrentRunContext = NewObject<UGT_RunContext>(this);
 	bRunSettled = false;
@@ -58,6 +65,12 @@ UGT_RunContext* UGT_RunSubsystem::StartNewRun(int32 Seed, int32 Width, int32 Hei
 
 UGT_RunContext* UGT_RunSubsystem::StartNewRunStandard(int32 Seed, EGT_Difficulty Difficulty)
 {
+	if (!GT_GameData::IsReady())
+	{
+		UE_LOG(LogTemp, Display, TEXT("StartNewRunStandard blocked by invalid game data: %s"), *GT_GameData::GetErrorText());
+		return nullptr;
+	}
+
 	EndCurrentRun();
 	CurrentRunContext = NewObject<UGT_RunContext>(this);
 	bRunSettled = false;

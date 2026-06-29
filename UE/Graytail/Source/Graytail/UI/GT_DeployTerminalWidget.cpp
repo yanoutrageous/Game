@@ -22,6 +22,7 @@
 #include "Domains/Meta/GT_MetaCatalog.h"
 #include "Domains/Meta/GT_MetaProgressSubsystem.h"
 #include "Domains/Meta/GT_MetaTypes.h"
+#include "Domains/Events/GT_EventRules.h"
 #include "Domains/Inventory/GT_ItemCatalog.h"
 #include "Domains/Inventory/GT_InventoryTypes.h"
 #include "UI/GT_IndexedButton.h"
@@ -116,7 +117,15 @@ namespace
 	// 消耗品效果文案(按物品真效果, 非一律"回复 N 生命"——幸运硬币 Heal=0 不该显示"回复0生命")。
 	FString ConsumableEffectText(const FGT_ConsumableDef& Def)
 	{
-		if (Def.Id == FName(TEXT("lucky_coin"))) { return TEXT("局内使用: 50% 得 30 结算币 / 50% 揭示相邻未知房"); }
+		if (Def.Id == FName(TEXT("lucky_coin")))
+		{
+			const FGT_LuckyCoinBalanceConfig& LuckyCoin = GT_EventRules::GetLuckyCoin();
+			return FString::Printf(
+				TEXT("局内使用: %d%% 得 %d 结算币 / 其余概率揭示 %d 个相邻未知房"),
+				LuckyCoin.GoldChancePercent,
+				LuckyCoin.SafeGoldReward,
+				LuckyCoin.RevealCount);
+		}
 		if (Def.Heal > 0) { return FString::Printf(TEXT("局内使用: 回复 %d 生命"), Def.Heal); }
 		return TEXT("局内使用");
 	}
@@ -805,7 +814,12 @@ void UGT_DeployTerminalWidget::RebuildContent()
 	}
 	else if (CurrentSection == ESection::Loadout)
 	{
-		if (DetailText) { DetailText->SetText(FText::FromString(TEXT("装备: 点击装/卸(最多 2 件)。消耗品: 点击循环设置带入数量。"))); }
+		if (DetailText)
+		{
+			DetailText->SetText(FText::FromString(FString::Printf(
+				TEXT("装备: 点击装/卸(最多 %d 件)。消耗品: 点击循环设置带入数量。"),
+				GT_MetaCatalog::GetMaxEquipped())));
+		}
 		bool bAny = false;
 		for (const FGT_EquipDef& Def : GT_MetaCatalog::GetEquipDefs())
 		{
@@ -815,7 +829,7 @@ void UGT_DeployTerminalWidget::RebuildContent()
 			const bool bEq = Meta->IsEquipped(Def.Id);
 			AddItemCard(CurrentRows.Num(), IconForEquip(Def.Id), Def.DisplayName, TEXT("装备"),
 				EquipEffectText(Def), EquipFlavor(Def.Id), TEXT("拥有 x1"), bEq ? TEXT("已装备") : TEXT("已拥有"),
-				bEq ? TEXT("卸下") : TEXT("装备"), bEq ? true : EquippedNum < GT_MetaCatalog::MaxEquipped, bEq);
+				bEq ? TEXT("卸下") : TEXT("装备"), bEq ? true : EquippedNum < GT_MetaCatalog::GetMaxEquipped(), bEq);
 			CurrentRows.Add({ Def.Id, ERowKind::Equip });
 		}
 		for (const FGT_ConsumableDef& Def : GT_MetaCatalog::GetConsumableDefs())

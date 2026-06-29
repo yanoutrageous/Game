@@ -240,7 +240,7 @@ public:
 	// OutDamage = 实际扣血; bOutDead = 扣血后是否归零。返回是否真打到(战斗未激活/怪已死则 false)。
 	bool MonsterHitPlayer(int32& OutDamage, bool& bOutDead);
 
-	// 怪物房逃跑(Standard 战斗中): 扣 PendingGold 10% + 确定性掉落最低稀有度(common 白)非消耗品回收物,
+	// 怪物房逃跑(Standard 战斗中): 按配置扣 PendingGold + 确定性掉落最低稀有度(common 白)非消耗品回收物,
 	// 然后结束战斗(逃跑≠击杀: 不置 bCombatResolved、不进 DefeatedCombatRooms → 可重刷)。
 	// OutGoldDropped = 实际掉金; OutDroppedItems = 掉落明细(同 id 合并)。守卫失败(非 Standard/未战斗)返回 false。
 	// 必须经 Command 管线(FleeCombat 命令)调到这里, 不直接给 UI 调。
@@ -437,7 +437,7 @@ private:
 	int32 LoadoutMineDmgReduce = 0;
 	bool bLoadoutMineImmunityAvailable = false;
 	int32 LoadoutSearchBonusPercent = 0;
-	int32 LoadoutTradeBonusPercent = 0;   // S4: 议价天赋 → 旅商收购价 +N%(0 = 无议价, 基础 0.75 不变)
+	int32 LoadoutTradeBonusPercent = 0;   // S4: 议价天赋 -> 旅商收购价 +N%
 	// S5 表现/感知类 loadout(开局存, 表现层读): 罗盘方向提示 / 邻域高亮 / 怪物避让窗口秒数。
 	bool bLoadoutShowExitHint = false;
 	bool bLoadoutMapHighlight = false;

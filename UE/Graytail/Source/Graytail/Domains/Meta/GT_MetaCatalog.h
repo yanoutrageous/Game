@@ -72,7 +72,6 @@ namespace GT_MetaCatalog
 	const FGT_TalentDef* FindTalent(FName Id);
 	const FGT_ConsumableDef* FindConsumable(FName Id);
 
-	// 上限常量(对齐 Lua MAX_EQUIPPED / RECENT_RECOVERY_MAX)。
-	constexpr int32 MaxEquipped = 2;
-	constexpr int32 RecentRecoveryMax = 5;
+	GRAYTAIL_API int32 GetMaxEquipped();
+	GRAYTAIL_API int32 GetRecentRecoveryMax();
 }

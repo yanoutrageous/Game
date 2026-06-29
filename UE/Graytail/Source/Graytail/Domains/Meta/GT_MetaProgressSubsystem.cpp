@@ -2,7 +2,14 @@
 
 #include "Domains/Meta/GT_MetaCatalog.h"
 #include "Save/GT_MetaSaveGame.h"
+#include "Dom/JsonObject.h"
+#include "HAL/FileManager.h"
+#include "JsonObjectConverter.h"
 #include "Kismet/GameplayStatics.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+#include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogGraytailMeta, Log, All);
 
@@ -31,6 +38,39 @@ void UGT_MetaProgressSubsystem::Save()
 		UE_LOG(LogGraytailMeta, Warning, TEXT("Save: SaveGameToSlot failed."));
 		return;
 	}
+
+#if !UE_BUILD_SHIPPING
+	TSharedRef<FJsonObject> StateObject = MakeShared<FJsonObject>();
+	if (FJsonObjectConverter::UStructToJsonObject(
+		FGT_MetaProgressState::StaticStruct(),
+		&SaveObj->State,
+		StateObject,
+		0,
+		0))
+	{
+		TSharedRef<FJsonObject> RootObject = MakeShared<FJsonObject>();
+		RootObject->SetNumberField(TEXT("saveVersion"), SaveObj->SaveVersion);
+		RootObject->SetObjectField(TEXT("state"), StateObject);
+
+		FString Json;
+		const TSharedRef<TJsonWriter<TCHAR, TPrettyJsonPrintPolicy<TCHAR>>> Writer =
+			TJsonWriterFactory<TCHAR, TPrettyJsonPrintPolicy<TCHAR>>::Create(&Json);
+		if (FJsonSerializer::Serialize(RootObject, Writer))
+		{
+			const FString MirrorDirectory = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("SaveGames"));
+			IFileManager::Get().MakeDirectory(*MirrorDirectory, true);
+			const FString MirrorPath = FPaths::Combine(MirrorDirectory, TEXT("GraytailMeta.debug.json"));
+			if (!FFileHelper::SaveStringToFile(
+				Json,
+				*MirrorPath,
+				FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+			{
+				UE_LOG(LogGraytailMeta, Warning, TEXT("Save: failed to write debug mirror %s."), *MirrorPath);
+			}
+		}
+	}
+#endif
+
 	UE_LOG(LogGraytailMeta, Log, TEXT("Saved: gold=%d"), State.Gold);
 }
 
@@ -65,9 +105,9 @@ void UGT_MetaProgressSubsystem::SanitizeAfterLoad()
 		return !State.OwnedItems.Contains(Id);
 	});
 	// 上限保护。
-	if (State.EquippedItems.Num() > GT_MetaCatalog::MaxEquipped)
+	if (State.EquippedItems.Num() > GT_MetaCatalog::GetMaxEquipped())
 	{
-		State.EquippedItems.SetNum(GT_MetaCatalog::MaxEquipped);
+		State.EquippedItems.SetNum(GT_MetaCatalog::GetMaxEquipped());
 	}
 	// loadout 数量夹到库存且不超 maxCarry, 去掉未知/<=0。
 	for (auto It = State.LoadoutConsumables.CreateIterator(); It; ++It)
@@ -139,7 +179,7 @@ bool UGT_MetaProgressSubsystem::ToggleEquip(FName ItemId, FName& OutError)
 		Save();
 		return true;
 	}
-	if (State.EquippedItems.Num() >= GT_MetaCatalog::MaxEquipped)
+	if (State.EquippedItems.Num() >= GT_MetaCatalog::GetMaxEquipped())
 	{
 		OutError = TEXT("max_equipped");
 		return false;
@@ -369,9 +409,9 @@ void UGT_MetaProgressSubsystem::RecordExtractionReward(const FGT_ExtractionRewar
 				State.Recovery.RecentItemIds.Insert(Item.ItemId, 0);
 			}
 		}
-		if (State.Recovery.RecentItemIds.Num() > GT_MetaCatalog::RecentRecoveryMax)
+		if (State.Recovery.RecentItemIds.Num() > GT_MetaCatalog::GetRecentRecoveryMax())
 		{
-			State.Recovery.RecentItemIds.SetNum(GT_MetaCatalog::RecentRecoveryMax);
+			State.Recovery.RecentItemIds.SetNum(GT_MetaCatalog::GetRecentRecoveryMax());
 		}
 		AddWarehouseItems(Reward.CarriedItems, FName(TEXT("recovered")));
 	}
@@ -401,7 +441,7 @@ FGT_EquipBonus UGT_MetaProgressSubsystem::GetEquipBonus() const
 
 FGT_TalentEffects UGT_MetaProgressSubsystem::GetTalentEffects() const
 {
-	FGT_TalentEffects Effects;   // TradePrice 默认 0(无议价 = 收购价无加成, 基础 0.75 不变)
+	FGT_TalentEffects Effects;
 	for (const FName& TalentId : State.UnlockedTalents)
 	{
 		const FGT_TalentDef* Def = GT_MetaCatalog::FindTalent(TalentId);

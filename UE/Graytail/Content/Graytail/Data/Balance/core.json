@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "player": {
+    "baseHp": 100,
+    "basePower": 10
+  },
+  "combat": {
+    "mineDamage": 30,
+    "mineDamageFloor": 5,
+    "enemyPowerMin": 5,
+    "enemyPowerMax": 20,
+    "monsterGoldMin": 0,
+    "monsterGoldMax": 3,
+    "powerGainPerKill": 1,
+    "powerGainCap": 5,
+    "defaultMonsterHpBase": 18,
+    "monsterDamageMin": 4
+  },
+  "protocol": {
+    "maxPressure": 100,
+    "explorePressure": 2,
+    "minePressure": 10,
+    "combatKillPressure": 5,
+    "thresholds": [
+      { "pressure": 80, "level": 1 },
+      { "pressure": 60, "level": 2 },
+      { "pressure": 40, "level": 3 },
+      { "pressure": 20, "level": 4 },
+      { "pressure": 0, "level": 5 }
+    ]
+  }
+}

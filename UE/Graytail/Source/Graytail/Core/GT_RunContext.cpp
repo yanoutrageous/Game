@@ -1,6 +1,7 @@
 #include "Core/GT_RunContext.h"
 
 #include "Core/GT_ProtocolState.h"
+#include "Data/GT_GameDataSubsystem.h"
 #include "Domains/Events/GT_EventRules.h"
 #include "Domains/Inventory/GT_ItemCatalog.h"
 #include "Domains/Inventory/GT_LootRules.h"
@@ -57,6 +58,11 @@ void UGT_RunContext::InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec)
 	LastConsumableOutcome = FGT_ConsumableOutcome();
 	EventRoomStates.Reset();
 	PlayerCombatState = FGT_PlayerCombatState();
+	const FGT_GameDataSnapshot* GameData = GT_GameData::GetSnapshot();
+	checkf(GameData, TEXT("Run context initialized without valid game data."));
+	PlayerCombatState.MaxHp = GameData->Core.Player.BaseHp;
+	PlayerCombatState.Hp = PlayerCombatState.MaxHp;
+	PlayerCombatState.Power = GameData->Core.Player.BasePower;
 	ProtocolState.Reset();
 	DefeatedCombatRooms.Reset();
 	CombatEnemyIdCounter = 0;
@@ -452,9 +458,10 @@ bool UGT_RunContext::AttackDummyCombat(const TArray<int32>& HitEnemyIds, FGT_Com
 			{
 				// 母体死亡: 原地裂成 2 子史莱姆(确定性派生数值, 无随机)。Power=floor(母体×0.45),
 				// HP/Damage 用 Slimeling 原型派生(HpBase=9 / DamageMult=0.6)。
-				const int32 ChildPower = FMath::FloorToInt(E.Power * 0.45f);
+				const FGT_MonsterArchetype& ParentArch = GT_MonsterCatalog::GetArchetype(E.Type);
+				const int32 ChildPower = FMath::FloorToInt(E.Power * ParentArch.SplitPowerMultiplier);
 				const FGT_MonsterArchetype& ChildArch = GT_MonsterCatalog::GetArchetype(EGT_MonsterType::Slimeling);
-				for (int32 i = 0; i < 2; ++i)
+				for (int32 i = 0; i < ParentArch.SplitCount; ++i)
 				{
 					FGT_CombatEnemy Child;
 					Child.EnemyId = ++CombatEnemyIdCounter;
@@ -495,7 +502,9 @@ bool UGT_RunContext::AttackDummyCombat(const TArray<int32>& HitEnemyIds, FGT_Com
 		DefeatedCombatRooms.AddUnique(FIntPoint(CombatRuntimeState.CombatX, CombatRuntimeState.CombatY));
 
 		RunInventory.AddPendingGold(GT_CombatRules::KillRewardGold(CombatRuntimeState.EnemyPower));
-		const int32 PowerGain = FMath::Min(GT_CombatRules::PowerGainPerKill, GT_CombatRules::PowerGainCap - PlayerCombatState.MonsterPowerBonus);
+		const int32 PowerGain = FMath::Min(
+			GT_CombatRules::GetPowerGainPerKill(),
+			GT_CombatRules::GetPowerGainCap() - PlayerCombatState.MonsterPowerBonus);
 		if (PowerGain > 0)
 		{
 			PlayerCombatState.Power += PowerGain;
@@ -572,8 +581,7 @@ bool UGT_RunContext::FleeFromCombat(int32& OutGoldDropped, TArray<FGT_ItemStack>
 		return false;
 	}
 
-	// 掉钱: 扣 PendingGold 的 10%(向下取整; SafeGold 不动)。无随机。
-	const int32 GoldDrop = FMath::FloorToInt(RunInventory.PendingGold * 0.1f);
+	const int32 GoldDrop = RunInventory.PendingGold * GT_LootRules::GetFleeGoldDropPercent() / 100;
 	if (GoldDrop > 0)
 	{
 		RunInventory.SpendPendingGold(GoldDrop);
@@ -606,11 +614,13 @@ bool UGT_RunContext::FleeFromCombat(int32& OutGoldDropped, TArray<FGT_ItemStack>
 
 	if (EligiblePool.Num() > 0)
 	{
-		const int32 DropCount = FMath::Max(1, FMath::CeilToInt(EligiblePool.Num() * 0.25f));
+		const int32 DropCount = FMath::DivideAndRoundUp(
+			EligiblePool.Num() * GT_LootRules::GetFleeItemDropPercent(),
+			100);
 		for (int32 i = 0; i < DropCount && EligiblePool.Num() > 0; ++i)
 		{
 			const int32 Index = GT_LootRules::RollRange(Seed, PlayerX, PlayerY,
-				GT_LootRules::FleeDropSalt + i, 0, EligiblePool.Num() - 1);
+				GT_LootRules::GetFleeDropSalt() + i, 0, EligiblePool.Num() - 1);
 			const FName DroppedId = EligiblePool[Index];
 
 			RunInventory.RemoveCarriedItem(DroppedId, 1);
@@ -741,7 +751,9 @@ void UGT_RunContext::ApplyMineHitToPlayer(int32& OutDamage, bool& bOutDead)
 		return;
 	}
 	// 对齐 Combat.TakeMineHit: 雷伤 30, 装备(绝缘套)/天赋(厚皮)减免后最低 5。
-	OutDamage = FMath::Max(GT_CombatRules::MineDamageFloor, GT_CombatRules::MineDamage - LoadoutMineDmgReduce);
+	OutDamage = FMath::Max(
+		GT_CombatRules::GetMineDamageFloor(),
+		GT_CombatRules::GetMineDamage() - LoadoutMineDmgReduce);
 	OutDamage = ApplyPlayerDamage(OutDamage);
 	bOutDead = !PlayerCombatState.IsAlive();
 }
@@ -1104,8 +1116,9 @@ bool UGT_RunContext::UseConsumableAtPlayer(FName ItemId, FGT_ConsumableOutcome& 
 			return false;
 		}
 
-		constexpr int32 BandageHeal = 25; // Lua RunInventory.UseConsumable 硬编码值。
-		const int32 HealTarget = FMath::Min(BandageHeal, PlayerCombatState.MaxHp - PlayerCombatState.Hp);
+		const FGT_ConsumableDef* Consumable = GT_MetaCatalog::FindConsumable(ItemId);
+		check(Consumable);
+		const int32 HealTarget = FMath::Min(Consumable->Heal, PlayerCombatState.MaxHp - PlayerCombatState.Hp);
 		OutOutcome.HealAmount = PlayerCombatState.Heal(HealTarget);
 		RunInventory.RemoveCarriedItem(ItemId, 1);
 		OutOutcome.bUsed = true;
@@ -1115,21 +1128,22 @@ bool UGT_RunContext::UseConsumableAtPlayer(FName ItemId, FGT_ConsumableOutcome& 
 		return true;
 	}
 
-	// S6 幸运硬币: 确定性 RNG(seed,x,y)二选一 —— 50% 得 30 安全金 / 50% 揭示 1 个相邻未知房(免协议压力)。
 	if (ItemId == FName(TEXT("lucky_coin")))
 	{
+		const FGT_LuckyCoinBalanceConfig& LuckyCoin = GT_EventRules::GetLuckyCoin();
 		int32 PX = 0;
 		int32 PY = 0;
 		TryGetPlayerPosition(PX, PY);
 		const uint32 Hash = static_cast<uint32>(Seed * 1103515245 + PX * 928371 + PY * 364479 + 7919);
-		const bool bGold = (Hash % 2u) == 0u;
+		const bool bGold = static_cast<int32>(Hash % 100u) < LuckyCoin.GoldChancePercent;
 
 		bool bRevealed = false;
 		if (!bGold)
 		{
 			const int32 DX[4] = { 1, -1, 0, 0 };
 			const int32 DY[4] = { 0, 0, 1, -1 };
-			for (int32 Dir = 0; Dir < 4; ++Dir)
+			int32 RevealRemaining = LuckyCoin.RevealCount;
+			for (int32 Dir = 0; Dir < 4 && RevealRemaining > 0; ++Dir)
 			{
 				const int32 NX = PX + DX[Dir];
 				const int32 NY = PY + DY[Dir];
@@ -1144,14 +1158,14 @@ bool UGT_RunContext::UseConsumableAtPlayer(FName ItemId, FGT_ConsumableOutcome& 
 						SetPlayerIntelCellScannedNumber(NX, NY, Adj);
 					}
 					bRevealed = true;
-					break;
+					--RevealRemaining;
 				}
 			}
 		}
 
 		if (bGold || !bRevealed)   // 选金, 或无未知相邻格可揭示时给金兜底
 		{
-			RunInventory.AddSafeGold(30);
+			RunInventory.AddSafeGold(LuckyCoin.SafeGoldReward);
 			OutOutcome.Status = FName(TEXT("lucky_gold"));
 		}
 		else
@@ -1304,13 +1318,18 @@ bool UGT_RunContext::GetEventMenuAtPlayer(FGT_EventMenuView& OutMenu) const
 	}
 	case EGT_EventKind::Dice:
 	{
-		const bool bCanBet = RunInventory.PendingGold >= GT_EventRules::Gambler::Bet;
+		const FGT_GamblerBalanceConfig& Gambler = GT_EventRules::GetGambler();
+		const bool bCanBet = RunInventory.PendingGold >= Gambler.Bet;
 		OutMenu.Options.Add(MakeEventOption(GTEventOption_BetSmall,
-			TEXT("下注 20 待结算币"),
-			TEXT("下注 20 待结算币。1-4 亏损，5 小赢，6 大赢。收益不会立即入账。"),
-			FString::Printf(TEXT("待结算币 %d"), GT_EventRules::Gambler::Bet),
-			TEXT("5:+20 / 6:+60"),
-			TEXT("1-4:-20"),
+			FString::Printf(TEXT("下注 %d 待结算币"), Gambler.Bet),
+			FString::Printf(
+				TEXT("下注 %d 待结算币。1-%d 亏损，其他点数小赢，%d 大赢。收益不会立即入账。"),
+				Gambler.Bet,
+				Gambler.LoseMaxRoll,
+				Gambler.BigWinRoll),
+			FString::Printf(TEXT("待结算币 %d"), Gambler.Bet),
+			FString::Printf(TEXT("小赢:+%d / 大赢:+%d"), Gambler.SmallWinNet, Gambler.BigWinNet),
+			FString::Printf(TEXT("失败:-%d"), Gambler.Bet),
 			bCanBet,
 			TEXT("待结算币不足。狐狸不会借，赌徒也不会。")));
 		OutMenu.Options.Add(MakeEventOption(GTEventOption_Leave,
@@ -1319,15 +1338,16 @@ bool UGT_RunContext::GetEventMenuAtPlayer(FGT_EventMenuView& OutMenu) const
 	}
 	case EGT_EventKind::Altar:
 	{
+		const TArray<FGT_AltarStepConfig>& AltarSteps = GT_EventRules::GetAltarSteps();
 		const int32 Step = AltarStep + 1;
-		if (Step > GT_EventRules::Altar::StepCount)
+		if (!AltarSteps.IsValidIndex(Step - 1))
 		{
 			OutMenu.Options.Add(MakeEventOption(GTEventOption_Leave,
 				TEXT("关闭"), TEXT("祭坛已经沉默。"), TEXT("无"), TEXT("无"), TEXT("无"), true, FString()));
 			break;
 		}
-		const int32 Cost = GT_EventRules::Altar::HpCosts[Step - 1];
-		const int32 RewardGold = GT_EventRules::Altar::RewardGold[Step - 1];
+		const int32 Cost = AltarSteps[Step - 1].HpCost;
+		const int32 RewardGold = AltarSteps[Step - 1].RewardGold;
 		const bool bCanOffer = PlayerCombatState.Hp > Cost;
 		OutMenu.Options.Add(MakeEventOption(GTEventOption_OfferHp,
 			FString::Printf(TEXT("献祭生命 %d"), Cost),
@@ -1343,12 +1363,13 @@ bool UGT_RunContext::GetEventMenuAtPlayer(FGT_EventMenuView& OutMenu) const
 	}
 	case EGT_EventKind::Trap:
 	{
+		const FGT_TrapBalanceConfig& Trap = GT_EventRules::GetTrap();
 		OutMenu.Options.Add(MakeEventOption(GTEventOption_Disarm,
 			TEXT("处理机关"),
 			TEXT("使用战斗力进行一次检定。"),
 			TEXT("一次检定"),
-			FString::Printf(TEXT("成功: 待结算币 +%d / 回收物 x2"), GT_EventRules::Trap::SuccessGold),
-			FString::Printf(TEXT("失败: 生命 -%d / 协议压力 +%d"), GT_EventRules::Trap::FailHpLoss, GT_EventRules::Trap::FailPressure),
+			FString::Printf(TEXT("成功: 待结算币 +%d / 回收物 x2"), Trap.SuccessGold),
+			FString::Printf(TEXT("失败: 生命 -%d / 协议压力 +%d"), Trap.FailHpLoss, Trap.FailPressure),
 			true,
 			FString()));
 		OutMenu.Options.Add(MakeEventOption(GTEventOption_Leave,
@@ -1485,7 +1506,8 @@ bool UGT_RunContext::ExecuteEventOptionAtPlayer(FName OptionId, FGT_EventOutcome
 	}
 	case EGT_EventKind::Dice:
 	{
-		if (RunInventory.PendingGold < GT_EventRules::Gambler::Bet)
+		const FGT_GamblerBalanceConfig& Gambler = GT_EventRules::GetGambler();
+		if (RunInventory.PendingGold < Gambler.Bet)
 		{
 			OutOutcome.Message = TEXT("待结算币不足。狐狸不会借，赌徒也不会。");
 			LastEventOutcome = OutOutcome;
@@ -1497,37 +1519,44 @@ bool UGT_RunContext::ExecuteEventOptionAtPlayer(FName OptionId, FGT_EventOutcome
 		OutOutcome.bOk = true;
 		OutOutcome.bCompleted = true;
 		OutOutcome.bClosePanel = true;
-		if (Roll <= GT_EventRules::Gambler::LoseMaxRoll)
+		if (Roll <= Gambler.LoseMaxRoll)
 		{
-			RunInventory.AddPendingGold(-GT_EventRules::Gambler::Bet);
-			OutOutcome.PendingGoldDelta = -GT_EventRules::Gambler::Bet;
-			OutOutcome.Message = FString::Printf(TEXT("骰点 %d。下注失败，待结算 -20。"), Roll);
+			RunInventory.AddPendingGold(-Gambler.Bet);
+			OutOutcome.PendingGoldDelta = -Gambler.Bet;
+			OutOutcome.Message = FString::Printf(TEXT("骰点 %d。下注失败，待结算 -%d。"), Roll, Gambler.Bet);
 		}
-		else if (Roll == GT_EventRules::Gambler::BigWinRoll)
+		else if (Roll == Gambler.BigWinRoll)
 		{
-			RunInventory.AddPendingGold(GT_EventRules::Gambler::BigWinNet);
-			OutOutcome.PendingGoldDelta = GT_EventRules::Gambler::BigWinNet;
-			OutOutcome.Message = TEXT("骰点 6。大赢一把，待结算 +60。");
+			RunInventory.AddPendingGold(Gambler.BigWinNet);
+			OutOutcome.PendingGoldDelta = Gambler.BigWinNet;
+			OutOutcome.Message = FString::Printf(
+				TEXT("骰点 %d。大赢一把，待结算 +%d。"),
+				Roll,
+				Gambler.BigWinNet);
 		}
 		else
 		{
-			RunInventory.AddPendingGold(GT_EventRules::Gambler::SmallWinNet);
-			OutOutcome.PendingGoldDelta = GT_EventRules::Gambler::SmallWinNet;
-			OutOutcome.Message = TEXT("骰点 5。小赢一把，待结算 +20。");
+			RunInventory.AddPendingGold(Gambler.SmallWinNet);
+			OutOutcome.PendingGoldDelta = Gambler.SmallWinNet;
+			OutOutcome.Message = FString::Printf(
+				TEXT("骰点 %d。小赢一把，待结算 +%d。"),
+				Roll,
+				Gambler.SmallWinNet);
 		}
 		break;
 	}
 	case EGT_EventKind::Altar:
 	{
+		const TArray<FGT_AltarStepConfig>& AltarSteps = GT_EventRules::GetAltarSteps();
 		const int32 Step = State.AltarStep + 1;
-		if (Step > GT_EventRules::Altar::StepCount)
+		if (!AltarSteps.IsValidIndex(Step - 1))
 		{
 			State.bCompleted = true;
 			OutOutcome.Message = TEXT("祭坛已完成全部回应。");
 			LastEventOutcome = OutOutcome;
 			return false;
 		}
-		const int32 Cost = GT_EventRules::Altar::HpCosts[Step - 1];
+		const int32 Cost = AltarSteps[Step - 1].HpCost;
 		if (PlayerCombatState.Hp <= Cost)
 		{
 			OutOutcome.Message = TEXT("当前生命不足，祭坛拒收。");
@@ -1538,11 +1567,11 @@ bool UGT_RunContext::ExecuteEventOptionAtPlayer(FName OptionId, FGT_EventOutcome
 		State.AltarStep = Step;
 		// 检定保证 Hp > Cost, 献祭后至少剩 1 点, 不会致死。
 		PlayerCombatState.Hp -= Cost;
-		const int32 RewardGold = GT_EventRules::Altar::RewardGold[Step - 1];
+		const int32 RewardGold = AltarSteps[Step - 1].RewardGold;
 		RunInventory.AddPendingGold(RewardGold);
-		GrantQualityItem(GT_EventRules::Altar::RewardQuality[Step - 1]);
+		GrantQualityItem(GT_EventRules::GetAltarRewardQuality(Step - 1));
 
-		const bool bAltarDone = Step >= GT_EventRules::Altar::StepCount;
+		const bool bAltarDone = Step >= AltarSteps.Num();
 		State.bCompleted = bAltarDone;
 		OutOutcome.bOk = true;
 		OutOutcome.HpDelta = -Cost;
@@ -1554,28 +1583,29 @@ bool UGT_RunContext::ExecuteEventOptionAtPlayer(FName OptionId, FGT_EventOutcome
 	}
 	case EGT_EventKind::Trap:
 	{
+		const FGT_TrapBalanceConfig& Trap = GT_EventRules::GetTrap();
 		State.bCompleted = true;
 		OutOutcome.bOk = true;
 		OutOutcome.bCompleted = true;
 		OutOutcome.bClosePanel = true;
 		const int32 EffectivePower = PlayerCombatState.Power + PlayerCombatState.MonsterPowerBonus;
-		if (EffectivePower >= GT_EventRules::Trap::PowerRequirement)
+		if (EffectivePower >= Trap.PowerRequirement)
 		{
-			RunInventory.AddPendingGold(GT_EventRules::Trap::SuccessGold);
+			RunInventory.AddPendingGold(Trap.SuccessGold);
 			GrantQualityItem(EGT_ItemQuality::Common);
 			GrantQualityItem(EGT_ItemQuality::Low);
-			OutOutcome.PendingGoldDelta = GT_EventRules::Trap::SuccessGold;
+			OutOutcome.PendingGoldDelta = Trap.SuccessGold;
 			OutOutcome.Message = FString::Printf(
-				TEXT("机关处理成功: 待结算币 +%d，回收物 +2。"), GT_EventRules::Trap::SuccessGold);
+				TEXT("机关处理成功: 待结算币 +%d，回收物 +2。"), Trap.SuccessGold);
 		}
 		else
 		{
-			const int32 TrapDamage = ApplyPlayerDamage(GT_EventRules::Trap::FailHpLoss);
-			AddProtocolPressure(GT_EventRules::Trap::FailPressure);
+			const int32 TrapDamage = ApplyPlayerDamage(Trap.FailHpLoss);
+			AddProtocolPressure(Trap.FailPressure);
 			OutOutcome.HpDelta = -TrapDamage;
-			OutOutcome.PressureDelta = GT_EventRules::Trap::FailPressure;
+			OutOutcome.PressureDelta = Trap.FailPressure;
 			OutOutcome.Message = FString::Printf(
-				TEXT("机关失控: 生命 -%d，协议压力 +%d。"), TrapDamage, GT_EventRules::Trap::FailPressure);
+				TEXT("机关失控: 生命 -%d，协议压力 +%d。"), TrapDamage, Trap.FailPressure);
 		}
 		break;
 	}

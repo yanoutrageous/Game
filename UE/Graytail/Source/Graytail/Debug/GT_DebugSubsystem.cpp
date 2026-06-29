@@ -1,5 +1,6 @@
 #include "Debug/GT_DebugSubsystem.h"
 
+#include "Domains/Inventory/GT_LootRules.h"
 #include "Core/GT_CommandBus.h"
 #include "Core/GT_ContentRegistry.h"
 #include "Core/GT_EventBus.h"
@@ -1013,7 +1014,9 @@ void UGT_DebugSubsystem::GetDebugCommandHelpLines(TArray<FString>& OutLines) con
 	OutLines.Add(TEXT("    Example: gt.ResolveCombat Combat_DebugResult_Success"));
 	OutLines.Add(TEXT("    Example: gt.ResolveCombat Combat_DebugResult_Retreat"));
 	OutLines.Add(TEXT("  gt.Attack - Attack active dummy combat once through the command path."));
-	OutLines.Add(TEXT("  gt.Flee - Standard combat room: flee (drops 10% pending gold + common/white recyclables), ends combat."));
+	OutLines.Add(FString::Printf(
+		TEXT("  gt.Flee - Standard combat room: flee (drops %d%% pending gold + common/white recyclables), ends combat."),
+		GT_LootRules::GetFleeGoldDropPercent()));
 	OutLines.Add(TEXT("  gt.RunDemo - Run a fixed Event, Combat, Attack, Extract, and Summary demo path."));
 	OutLines.Add(TEXT("-- CHEAT (fast testing) --"));
 	OutLines.Add(TEXT("  gt.God [0|1] - Toggle invincibility (mine/monster/protocol/trap damage -> 0). No arg = on."));

@@ -4,7 +4,7 @@ Graytail is a minesweeper-style extraction game prototype. The repository now pr
 
 ## Current Active Branch
 
-`feature/editor-playable-prototype`
+`main`
 
 ## Current Milestones
 
@@ -41,7 +41,8 @@ Graytail is a minesweeper-style extraction game prototype. The repository now pr
 - `gt.ChooseEventOption` and `gt.ResolveCombat` validate through the registry before resolving placeholder rooms.
 - Minimal Combat Dummy State adds `gt.Attack`, starts dummy combat with HP 1, and resolves combat when dummy HP reaches 0.
 - Run Summary / Extract Summary Minimal adds `gt.Summary` and successful Extract summary output.
-- Runtime smoke is `163/163 pass`; the previous `151/151` behavior remains covered.
+- The Unreal implementation now includes a C++ player-facing UI, random Standard maps, inventory and loot, combat and event rooms, extraction settlement, persistent meta progression, settings, and tutorial flow.
+- Runtime smoke is `168/168 pass`; the original MVP and placeholder behavior remains covered.
 - Latest repository tracking document: `docs/PROJECT_CONTENT_TRACKING.md`.
 
 ## Validation Commands
@@ -49,22 +50,22 @@ Graytail is a minesweeper-style extraction game prototype. The repository now pr
 Build:
 
 ```powershell
-& "D:\UE\UE_5.7\Engine\Binaries\ThirdParty\DotNet\8.0.412\win-x64\dotnet.exe" "D:\UE\UE_5.7\Engine\Binaries\DotNET\UnrealBuildTool\UnrealBuildTool.dll" GraytailEditor Win64 Development -Project="<repo>\UE\Graytail\Graytail.uproject" -WaitMutex -FromMsBuild
+& "G:\Epic\UE_5.7\Engine\Build\BatchFiles\Build.bat" GraytailEditor Win64 Development "-Project=<repo>\UE\Graytail\Graytail.uproject" -WaitMutex
 ```
 
 Smoke:
 
 ```powershell
-& "D:\UE\UE_5.7\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "<repo>\UE\Graytail\Graytail.uproject" -run=GT_RuntimeSmokeRunner -unattended -nop4 -nosplash -NoShaderCompile -log
+& "G:\Epic\UE_5.7\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "<repo>\UE\Graytail\Graytail.uproject" -run=GT_RuntimeSmokeRunner -unattended -nopause -nop4 -nosplash -NoShaderCompile -log
 ```
 
 Expected smoke result:
 
 ```text
 Overall=Pass
-Pass=163
+Pass=168
 Fail=0
-Count=163
+Count=168
 ```
 
 ## Important Documents
@@ -93,25 +94,13 @@ Architecture and design references:
 - `docs/可行性判断.md`
 - `docs/难度判断.md`
 
-## Explicitly Not Implemented Yet
+## Known Remaining Architecture Work
 
-- Player-facing UI / UMG
-- Blueprint assets
-- Input binding
-- Map rendering
-- Loot / inventory gameplay
-- Combat gameplay
-- Event room effects
-- Reward settlement
-- Save / Load disk flow
-- Effect interpreter
-- ModifierSystem
-- Random map generation
-- Formal Combat / Event room gameplay
-- Formal Event option selection
-- Formal Event option effect execution
-- Combat actor/enemy systems
-- Meta progression
+- Blueprint-authored UI/content assets are not tracked; the current player-facing interface is implemented in C++.
+- `EffectSystem` is still a minimal boundary rather than a general data-driven effect interpreter or modifier pipeline.
+- `RunContext` and the largest UI widgets still carry multiple responsibilities and should be split incrementally when those areas next change.
+- Some presentation code still reads `RunContext` directly; new UI work should prefer `QueryFacade` or focused ViewModels.
+- Automated coverage is centered on the commandlet smoke suite; packaging and long-session playtesting remain release checks.
 
 ## Editor Manual Console Commands
 
@@ -141,4 +130,4 @@ Current placeholder data ids:
 
 ## Next Suggested Stage
 
-Review and tag the Editor Playable Prototype V2 documentation milestone, then fast-forward `feature/editor-playable-prototype` to the documentation commit without adding gameplay, UI, asset, reward, inventory, or save/load systems.
+Run a packaged-build validation and a focused manual playtest pass, then address only release-blocking issues. Keep larger `RunContext`/UI decomposition as incremental follow-up work rather than a last-minute rewrite.

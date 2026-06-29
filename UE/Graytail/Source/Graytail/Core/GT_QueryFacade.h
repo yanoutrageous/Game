@@ -78,4 +78,7 @@ public:
 private:
 	UPROPERTY(Transient)
 	UGT_RunContext* RunContext = nullptr;
+
+	UPROPERTY(Transient)
+	UGT_MiniMapViewModel* MiniMapViewModel = nullptr;
 };

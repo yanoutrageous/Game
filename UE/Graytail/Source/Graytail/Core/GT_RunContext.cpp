@@ -331,8 +331,15 @@ bool UGT_RunContext::MarkTruthCellResolved(int32 X, int32 Y)
 	return TruthMap.MarkCellResolved(X, Y);
 }
 
-bool UGT_RunContext::StartDummyCombat(int32 X, int32 Y, FName RoomContentId, FName RoomRuleId, int32 InitialDummyHp)
+bool UGT_RunContext::StartDummyCombat(
+	int32 X,
+	int32 Y,
+	FName RoomContentId,
+	FName RoomRuleId,
+	int32 InitialDummyHp,
+	bool& bOutStarted)
 {
+	bOutStarted = false;
 	if (!IsRunActive() || !IsValidMapCoord(X, Y))
 	{
 		return false;
@@ -366,6 +373,7 @@ bool UGT_RunContext::StartDummyCombat(int32 X, int32 Y, FName RoomContentId, FNa
 	CombatRuntimeState.EnemyHp = 0;
 	CombatRuntimeState.EnemyMaxHp = 0;
 	CombatRuntimeState.EnemyDamage = 0;
+	bOutStarted = true;
 
 	// Standard 模式: 用确定性规则生成真怪(对齐 Combat.TrySpawnEnemy + ensureMonsterState), 替换 1 血 dummy。
 	// 行为原型由 GT_MonsterCatalog 选型(决定 HP 基底/移动/攻击模式); 战力缩放沿用共享公式。

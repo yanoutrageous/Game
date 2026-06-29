@@ -5,11 +5,23 @@
 void UGT_QueryFacade::Initialize(UGT_RunContext* InRunContext)
 {
 	RunContext = InRunContext;
+	if (!MiniMapViewModel)
+	{
+		MiniMapViewModel = NewObject<UGT_MiniMapViewModel>(this);
+	}
+	else
+	{
+		MiniMapViewModel->Reset();
+	}
 }
 
 void UGT_QueryFacade::Reset()
 {
 	RunContext = nullptr;
+	if (MiniMapViewModel)
+	{
+		MiniMapViewModel->Reset();
+	}
 }
 
 bool UGT_QueryFacade::HasValidRunContext() const
@@ -69,7 +81,6 @@ void UGT_QueryFacade::BuildMiniMapViewData(TArray<FGT_MiniMapCellViewData>& OutC
 	}
 
 	const FGT_IntelMap& IntelMap = RunContext->GetPlayerIntelMap();
-	UGT_MiniMapViewModel* MiniMapViewModel = NewObject<UGT_MiniMapViewModel>(const_cast<UGT_QueryFacade*>(this));
 	if (!MiniMapViewModel)
 	{
 		return;

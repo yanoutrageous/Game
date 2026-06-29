@@ -94,10 +94,14 @@ bool UGT_RoomResolver::ResolveRoomAt(int32 X, int32 Y, FGT_RoomResolveResult& Ou
 		PublishResolverEvent(GTEventType_EventRoomEntered, OutResult, true);
 		PublishResolverEvent(GTEventType_EventPresented, OutResult, true);
 	}
-	else if (OutResult.Outcome == EGT_RoomResolveOutcome::CombatStarted)
+	else if (OutResult.Outcome == EGT_RoomResolveOutcome::CombatStarted
+		|| OutResult.Outcome == EGT_RoomResolveOutcome::CombatAlreadyResolved)
 	{
 		PublishResolverEvent(GTEventType_CombatRoomEntered, OutResult, true);
-		PublishResolverEvent(GTEventType_CombatStarted, OutResult, true);
+		if (OutResult.Outcome == EGT_RoomResolveOutcome::CombatStarted)
+		{
+			PublishResolverEvent(GTEventType_CombatStarted, OutResult, true);
+		}
 	}
 
 	return true;
@@ -442,7 +446,14 @@ bool UGT_RoomResolver::ResolveCombatRoomPlaceholder(const FGT_TruthCell& TruthCe
 		return false;
 	}
 
-	if (!RunContext->StartDummyCombat(TruthCell.X, TruthCell.Y, TruthCell.RoomContentId, TruthCell.RoomRuleId, 1))
+	bool bCombatStarted = false;
+	if (!RunContext->StartDummyCombat(
+		TruthCell.X,
+		TruthCell.Y,
+		TruthCell.RoomContentId,
+		TruthCell.RoomRuleId,
+		1,
+		bCombatStarted))
 	{
 		OutResult.Outcome = EGT_RoomResolveOutcome::Unsupported;
 		PublishInteractionEvent(
@@ -454,7 +465,9 @@ bool UGT_RoomResolver::ResolveCombatRoomPlaceholder(const FGT_TruthCell& TruthCe
 		return false;
 	}
 
-	OutResult.Outcome = EGT_RoomResolveOutcome::CombatStarted;
+	OutResult.Outcome = bCombatStarted
+		? EGT_RoomResolveOutcome::CombatStarted
+		: EGT_RoomResolveOutcome::CombatAlreadyResolved;
 	return true;
 }
 

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "maxEquipped": 2,
+  "recentRecoveryMax": 5,
+  "equipment": [
+    { "id": "armor", "price": 110, "bonusHp": 20, "bonusPower": 0, "bMineImmunity": false, "mineDamageReduce": 0, "bShowExitHint": false, "searchBonus": 0, "trigger": "none", "triggerCap": 0, "triggerAmount": 0 },
+    { "id": "whetstone", "price": 90, "bonusHp": 0, "bonusPower": 2, "bMineImmunity": false, "mineDamageReduce": 0, "bShowExitHint": false, "searchBonus": 0, "trigger": "none", "triggerCap": 0, "triggerAmount": 0 },
+    { "id": "medkit", "price": 120, "bonusHp": 0, "bonusPower": 0, "bMineImmunity": true, "mineDamageReduce": 0, "bShowExitHint": false, "searchBonus": 0, "trigger": "none", "triggerCap": 0, "triggerAmount": 0 },
+    { "id": "insulated_gloves", "price": 140, "bonusHp": 0, "bonusPower": 0, "bMineImmunity": false, "mineDamageReduce": 10, "bShowExitHint": false, "searchBonus": 0, "trigger": "none", "triggerCap": 0, "triggerAmount": 0 },
+    { "id": "compass", "price": 160, "bonusHp": 0, "bonusPower": 0, "bMineImmunity": false, "mineDamageReduce": 0, "bShowExitHint": true, "searchBonus": 0, "trigger": "none", "triggerCap": 0, "triggerAmount": 0 },
+    { "id": "backpack", "price": 220, "bonusHp": 0, "bonusPower": 0, "bMineImmunity": false, "mineDamageReduce": 0, "bShowExitHint": false, "searchBonus": 50, "trigger": "none", "triggerCap": 0, "triggerAmount": 0 },
+    { "id": "anomaly_fang", "price": 160, "bonusHp": 0, "bonusPower": 0, "bMineImmunity": false, "mineDamageReduce": 0, "bShowExitHint": false, "searchBonus": 0, "trigger": "killPowerStack", "triggerCap": 5, "triggerAmount": 2 },
+    { "id": "lockdown_crystal", "price": 320, "bonusHp": 0, "bonusPower": 0, "bMineImmunity": false, "mineDamageReduce": 0, "bShowExitHint": false, "searchBonus": 0, "trigger": "protocolHeal", "triggerCap": 4, "triggerAmount": 4 },
+    { "id": "company_badge", "price": 260, "bonusHp": 0, "bonusPower": 0, "bMineImmunity": false, "mineDamageReduce": 0, "bShowExitHint": false, "searchBonus": 0, "trigger": "settleGoldBonus", "triggerCap": 0, "triggerAmount": 15 },
+    { "id": "salvage_magnet", "price": 180, "bonusHp": 0, "bonusPower": 0, "bMineImmunity": false, "mineDamageReduce": 0, "bShowExitHint": false, "searchBonus": 0, "trigger": "chestBonusLoot", "triggerCap": 0, "triggerAmount": 1 }
+  ],
+  "talents": [
+    { "id": "talent_map", "price": 100, "mineDamageReduce": 0, "monsterFleeBonus": 0, "failureGoldBonus": 0, "tradePrice": 0, "bMapHighlight": true },
+    { "id": "talent_mine", "price": 120, "mineDamageReduce": 10, "monsterFleeBonus": 0, "failureGoldBonus": 0, "tradePrice": 0, "bMapHighlight": false },
+    { "id": "talent_monster", "price": 120, "mineDamageReduce": 0, "monsterFleeBonus": 2, "failureGoldBonus": 0, "tradePrice": 0, "bMapHighlight": false },
+    { "id": "talent_extract", "price": 140, "mineDamageReduce": 0, "monsterFleeBonus": 0, "failureGoldBonus": 10, "tradePrice": 0, "bMapHighlight": false },
+    { "id": "talent_event", "price": 140, "mineDamageReduce": 0, "monsterFleeBonus": 0, "failureGoldBonus": 0, "tradePrice": 20, "bMapHighlight": false }
+  ],
+  "consumables": [
+    { "id": "emergency_bandage", "price": 12, "heal": 25, "maxCarry": 3, "trigger": "none" },
+    { "id": "lucky_coin", "price": 80, "heal": 0, "maxCarry": 3, "trigger": "luckyCoin" }
+  ]
+}

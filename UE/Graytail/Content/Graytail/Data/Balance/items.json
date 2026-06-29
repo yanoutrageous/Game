@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "items": [
+    { "id": "broken_copper_wire", "value": 8, "quality": "low" },
+    { "id": "dim_capacitor", "value": 10, "quality": "low" },
+    { "id": "old_gear", "value": 9, "quality": "low" },
+    { "id": "broken_terminal", "value": 13, "quality": "low" },
+    { "id": "dead_battery", "value": 15, "quality": "common" },
+    { "id": "old_gauge", "value": 16, "quality": "common" },
+    { "id": "damaged_circuit", "value": 20, "quality": "common" },
+    { "id": "static_lens", "value": 26, "quality": "rare" },
+    { "id": "blackbox_tag", "value": 28, "quality": "rare" },
+    { "id": "data_disk", "value": 30, "quality": "rare" },
+    { "id": "whisper_wick", "value": 48, "quality": "precious" },
+    { "id": "fluorescent_shard", "value": 54, "quality": "precious" },
+    { "id": "sealed_core_shard", "value": 78, "quality": "abnormal" },
+    { "id": "anomaly_core_shard", "value": 98, "quality": "abnormal" },
+    { "id": "emergency_bandage", "value": 10, "quality": "low" },
+    { "id": "lucky_coin", "value": 50, "quality": "rare" }
+  ],
+  "dropPools": [
+    { "quality": "low", "itemIds": ["broken_copper_wire", "dim_capacitor", "old_gear", "broken_terminal"] },
+    { "quality": "common", "itemIds": ["dead_battery", "old_gauge", "damaged_circuit"] },
+    { "quality": "rare", "itemIds": ["static_lens", "blackbox_tag", "data_disk"] },
+    { "quality": "precious", "itemIds": ["whisper_wick", "fluorescent_shard"] },
+    { "quality": "abnormal", "itemIds": ["sealed_core_shard", "anomaly_core_shard"] }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "monsters": [
+    {
+      "id": "slime", "hpBase": 24, "moveSpeed": 0.18, "damageMult": 1.3,
+      "attackRadius": 0.20, "playerAttackRange": 0.21,
+      "idleDuration": 1.10, "warningDuration": 0.75, "activeDuration": 0.28, "cooldownDuration": 0.55,
+      "idealDistance": 0.0, "aimDuration": 0.0, "attackInterval": 0.0,
+      "spreadCount": 0, "spreadHalfAngleDeg": 0.0, "laserDuration": 0.0, "laserTickInterval": 0.0,
+      "laserTurnRateDeg": 0.0, "aimTurnRateDeg": 0.0, "kiteStrength": 1.0, "wanderWeight": 0.5,
+      "bChaseWhenFar": false, "bDashAwayOnHit": false, "spawnWeight": 1,
+      "splitPowerMultiplier": 0.45, "splitCount": 2
+    },
+    {
+      "id": "bat", "hpBase": 12, "moveSpeed": 0.28, "damageMult": 1.0,
+      "attackRadius": 0.0, "playerAttackRange": 0.21,
+      "idleDuration": 0.0, "warningDuration": 0.0, "activeDuration": 0.0, "cooldownDuration": 0.0,
+      "idealDistance": 0.34, "aimDuration": 0.5, "attackInterval": 1.5,
+      "spreadCount": 3, "spreadHalfAngleDeg": 25.0, "laserDuration": 0.0, "laserTickInterval": 0.0,
+      "laserTurnRateDeg": 0.0, "aimTurnRateDeg": 0.0, "kiteStrength": 0.45, "wanderWeight": 1.1,
+      "bChaseWhenFar": false, "bDashAwayOnHit": false, "spawnWeight": 1,
+      "splitPowerMultiplier": 0.0, "splitCount": 0
+    },
+    {
+      "id": "drone", "hpBase": 28, "moveSpeed": 0.10, "damageMult": 1.5,
+      "attackRadius": 0.0, "playerAttackRange": 0.21,
+      "idleDuration": 0.0, "warningDuration": 0.0, "activeDuration": 0.0, "cooldownDuration": 0.0,
+      "idealDistance": 0.50, "aimDuration": 0.5, "attackInterval": 2.5,
+      "spreadCount": 0, "spreadHalfAngleDeg": 0.0, "laserDuration": 1.2, "laserTickInterval": 0.3,
+      "laserTurnRateDeg": 24.0, "aimTurnRateDeg": 0.0, "kiteStrength": 1.0, "wanderWeight": 0.5,
+      "bChaseWhenFar": false, "bDashAwayOnHit": true, "spawnWeight": 1,
+      "splitPowerMultiplier": 0.0, "splitCount": 0
+    },
+    {
+      "id": "slimeling", "hpBase": 9, "moveSpeed": 0.30, "damageMult": 0.6,
+      "attackRadius": 0.20, "playerAttackRange": 0.21,
+      "idleDuration": 1.10, "warningDuration": 0.75, "activeDuration": 0.28, "cooldownDuration": 0.55,
+      "idealDistance": 0.0, "aimDuration": 0.0, "attackInterval": 0.0,
+      "spreadCount": 0, "spreadHalfAngleDeg": 0.0, "laserDuration": 0.0, "laserTickInterval": 0.0,
+      "laserTurnRateDeg": 0.0, "aimTurnRateDeg": 0.0, "kiteStrength": 1.0, "wanderWeight": 0.5,
+      "bChaseWhenFar": false, "bDashAwayOnHit": false, "spawnWeight": 0,
+      "splitPowerMultiplier": 0.0, "splitCount": 0
+    }
+  ]
+}

@@ -9,7 +9,20 @@
 #include "Core/GT_RunSubsystem.h"
 #include "Debug/GT_DebugSubsystem.h"
 #include "Debug/GT_DebugTypes.h"
+#include "Data/GT_GameDataSubsystem.h"
+#include "Dom/JsonObject.h"
+#include "Domains/Events/GT_EventRules.h"
+#include "Domains/Inventory/GT_LootRules.h"
+#include "Domains/Meta/GT_MetaCatalog.h"
+#include "Domains/Meta/GT_MetaProgressSubsystem.h"
+#include "Engine/Engine.h"
+#include "HAL/FileManager.h"
 #include "UI/ViewModels/GT_MiniMapViewModel.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Guid.h"
+#include "Misc/Paths.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 #include "UObject/UObjectHash.h"
 
 namespace
@@ -182,6 +195,66 @@ namespace
 	const FName GTCheck_ResolvedCombatRoomDoesNotRestart(TEXT("ResolvedCombatRoomDoesNotRestart"));
 	const FName GTCheck_ProtocolDrainStopsRoomResolution(TEXT("ProtocolDrainStopsRoomResolution"));
 	const FName GTCheck_AbandonRunClearsRuntimeState(TEXT("AbandonRunClearsRuntimeState"));
+	const FName GTCheck_GameDataDefaultLoads(TEXT("GameDataDefaultLoads"));
+	const FName GTCheck_GameDataMissingDirectoryRejected(TEXT("GameDataMissingDirectoryRejected"));
+	const FName GTCheck_GameDataMalformedJsonRejected(TEXT("GameDataMalformedJsonRejected"));
+	const FName GTCheck_GameDataVersionRejected(TEXT("GameDataVersionRejected"));
+	const FName GTCheck_GameDataDuplicateIdRejected(TEXT("GameDataDuplicateIdRejected"));
+	const FName GTCheck_GameDataNegativeValueRejected(TEXT("GameDataNegativeValueRejected"));
+	const FName GTCheck_GameDataProbabilityRejected(TEXT("GameDataProbabilityRejected"));
+	const FName GTCheck_GameDataInvalidReferenceRejected(TEXT("GameDataInvalidReferenceRejected"));
+	const FName GTCheck_GameDataMissingRequiredIdRejected(TEXT("GameDataMissingRequiredIdRejected"));
+	const FName GTCheck_GameDataUnknownEventRejected(TEXT("GameDataUnknownEventRejected"));
+	const FName GTCheck_GameDataUnknownTriggerRejected(TEXT("GameDataUnknownTriggerRejected"));
+	const FName GTCheck_GameDataExternalValueReloaded(TEXT("GameDataExternalValueReloaded"));
+	const FName GTCheck_GameDataLootFacadeReloaded(TEXT("GameDataLootFacadeReloaded"));
+	const FName GTCheck_GameDataEventFacadeReloaded(TEXT("GameDataEventFacadeReloaded"));
+	const FName GTCheck_GameDataMetaFacadeReloaded(TEXT("GameDataMetaFacadeReloaded"));
+	const FName GTCheck_GameDataInvalidBlocksRun(TEXT("GameDataInvalidBlocksRun"));
+	const FName GTCheck_MetaSaveDebugMirrorWritten(TEXT("MetaSaveDebugMirrorWritten"));
+	const FName GTCheck_MetaSaveDebugMirrorMatches(TEXT("MetaSaveDebugMirrorMatches"));
+	const FName GTCheck_MetaSaveIgnoresDebugMirror(TEXT("MetaSaveIgnoresDebugMirror"));
+
+	const TCHAR* GTGameDataFileNames[] = {
+		TEXT("core.json"),
+		TEXT("difficulties.json"),
+		TEXT("monsters.json"),
+		TEXT("items.json"),
+		TEXT("loot_events.json"),
+		TEXT("meta_catalog.json")
+	};
+
+	FString MakeGameDataTestDirectory(const FString& Tag)
+	{
+		const FString Directory = FPaths::Combine(
+			FPaths::ProjectSavedDir(),
+			TEXT("GameDataSmoke"),
+			Tag + TEXT("_") + FGuid::NewGuid().ToString(EGuidFormats::Digits));
+		IFileManager::Get().MakeDirectory(*Directory, true);
+		for (const TCHAR* FileName : GTGameDataFileNames)
+		{
+			IFileManager::Get().Copy(
+				*FPaths::Combine(Directory, FileName),
+				*FPaths::Combine(UGT_GameDataSubsystem::GetDefaultDataDirectory(), FileName));
+		}
+		return Directory;
+	}
+
+	bool ReplaceGameDataText(
+		const FString& Directory,
+		const TCHAR* FileName,
+		const FString& From,
+		const FString& To)
+	{
+		const FString Path = FPaths::Combine(Directory, FileName);
+		FString Text;
+		if (!FFileHelper::LoadFileToString(Text, *Path) || !Text.Contains(From))
+		{
+			return false;
+		}
+		Text.ReplaceInline(*From, *To, ESearchCase::CaseSensitive);
+		return FFileHelper::SaveStringToFile(Text, *Path, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+	}
 
 	const FName GTCommandType_Move(TEXT("Move"));
 	const FName GTCommandType_Scan(TEXT("Scan"));
@@ -238,6 +311,265 @@ void UGT_RuntimeSmokeValidator::SetDebugSubsystem(UGT_DebugSubsystem* InDebugSub
 bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSmokeCheckResult>& OutResults)
 {
 	OutResults.Reset();
+
+	FGT_GameDataSnapshot DefaultGameData;
+	TArray<FString> DefaultGameDataErrors;
+	const bool bDefaultGameDataLoads = FGT_GameDataLoader::LoadFromDirectory(
+		UGT_GameDataSubsystem::GetDefaultDataDirectory(),
+		DefaultGameData,
+		DefaultGameDataErrors);
+	AddCheck(
+		OutResults,
+		GTCheck_GameDataDefaultLoads,
+		bDefaultGameDataLoads,
+		bDefaultGameDataLoads ? TEXT("Default JSON game data loaded.") : FString::Join(DefaultGameDataErrors, TEXT(" | ")));
+
+	FGT_GameDataSnapshot MissingGameData;
+	TArray<FString> MissingGameDataErrors;
+	const bool bMissingDirectoryRejected = !FGT_GameDataLoader::LoadFromDirectory(
+		FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("MissingGameDataDirectory")),
+		MissingGameData,
+		MissingGameDataErrors)
+		&& MissingGameDataErrors.Num() > 0;
+	AddCheck(
+		OutResults,
+		GTCheck_GameDataMissingDirectoryRejected,
+		bMissingDirectoryRejected,
+		FString::Printf(TEXT("Missing directory produced %d error(s)."), MissingGameDataErrors.Num()));
+
+	auto AddRejectedGameDataCheck = [&OutResults](
+		FName CheckName,
+		const FString& Directory,
+		const FString& SetupDescription)
+	{
+		FGT_GameDataSnapshot Snapshot;
+		TArray<FString> Errors;
+		const bool bRejected = !FGT_GameDataLoader::LoadFromDirectory(Directory, Snapshot, Errors)
+			&& Errors.Num() > 0;
+		AddCheck(
+			OutResults,
+			CheckName,
+			bRejected,
+			FString::Printf(TEXT("%s produced %d error(s): %s"), *SetupDescription, Errors.Num(), *FString::Join(Errors, TEXT(" | "))));
+	};
+
+	const FString MalformedDirectory = MakeGameDataTestDirectory(TEXT("Malformed"));
+	FFileHelper::SaveStringToFile(
+		TEXT("{"),
+		*FPaths::Combine(MalformedDirectory, TEXT("core.json")),
+		FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+	AddRejectedGameDataCheck(GTCheck_GameDataMalformedJsonRejected, MalformedDirectory, TEXT("Malformed JSON"));
+
+	const FString VersionDirectory = MakeGameDataTestDirectory(TEXT("Version"));
+	ReplaceGameDataText(VersionDirectory, TEXT("core.json"), TEXT("\"schemaVersion\": 1"), TEXT("\"schemaVersion\": 2"));
+	AddRejectedGameDataCheck(GTCheck_GameDataVersionRejected, VersionDirectory, TEXT("Unsupported schemaVersion"));
+
+	const FString DuplicateDirectory = MakeGameDataTestDirectory(TEXT("Duplicate"));
+	ReplaceGameDataText(DuplicateDirectory, TEXT("difficulties.json"), TEXT("\"id\": \"easy\""), TEXT("\"id\": \"standard\""));
+	AddRejectedGameDataCheck(GTCheck_GameDataDuplicateIdRejected, DuplicateDirectory, TEXT("Duplicate id"));
+
+	const FString NegativeDirectory = MakeGameDataTestDirectory(TEXT("Negative"));
+	ReplaceGameDataText(NegativeDirectory, TEXT("core.json"), TEXT("\"mineDamage\": 30"), TEXT("\"mineDamage\": -30"));
+	AddRejectedGameDataCheck(GTCheck_GameDataNegativeValueRejected, NegativeDirectory, TEXT("Negative value"));
+
+	const FString ProbabilityDirectory = MakeGameDataTestDirectory(TEXT("Probability"));
+	ReplaceGameDataText(ProbabilityDirectory, TEXT("difficulties.json"), TEXT("\"mineDensity\": 0.20"), TEXT("\"mineDensity\": 1.20"));
+	AddRejectedGameDataCheck(GTCheck_GameDataProbabilityRejected, ProbabilityDirectory, TEXT("Out-of-range probability"));
+
+	const FString ReferenceDirectory = MakeGameDataTestDirectory(TEXT("Reference"));
+	ReplaceGameDataText(
+		ReferenceDirectory,
+		TEXT("items.json"),
+		TEXT("\"itemIds\": [\"broken_copper_wire\""),
+		TEXT("\"itemIds\": [\"missing_item\""));
+	AddRejectedGameDataCheck(GTCheck_GameDataInvalidReferenceRejected, ReferenceDirectory, TEXT("Invalid item reference"));
+
+	const FString MissingRequiredIdDirectory = MakeGameDataTestDirectory(TEXT("MissingRequiredId"));
+	ReplaceGameDataText(
+		MissingRequiredIdDirectory,
+		TEXT("monsters.json"),
+		TEXT("\"id\": \"slime\""),
+		TEXT("\"id\": \"removed_slime\""));
+	AddRejectedGameDataCheck(
+		GTCheck_GameDataMissingRequiredIdRejected,
+		MissingRequiredIdDirectory,
+		TEXT("Missing required monster id"));
+
+	const FString UnknownEventDirectory = MakeGameDataTestDirectory(TEXT("UnknownEvent"));
+	ReplaceGameDataText(
+		UnknownEventDirectory,
+		TEXT("loot_events.json"),
+		TEXT("\"id\": \"trader\", \"weight\": 30"),
+		TEXT("\"id\": \"unknown\", \"weight\": 30"));
+	AddRejectedGameDataCheck(
+		GTCheck_GameDataUnknownEventRejected,
+		UnknownEventDirectory,
+		TEXT("Unknown event id"));
+
+	const FString UnknownTriggerDirectory = MakeGameDataTestDirectory(TEXT("UnknownTrigger"));
+	ReplaceGameDataText(
+		UnknownTriggerDirectory,
+		TEXT("meta_catalog.json"),
+		TEXT("\"trigger\": \"luckyCoin\""),
+		TEXT("\"trigger\": \"unknown\""));
+	AddRejectedGameDataCheck(
+		GTCheck_GameDataUnknownTriggerRejected,
+		UnknownTriggerDirectory,
+		TEXT("Unknown trigger"));
+
+	const FString ExternalValueDirectory = MakeGameDataTestDirectory(TEXT("ExternalValue"));
+	const bool bExternalValueWritten = ReplaceGameDataText(
+		ExternalValueDirectory,
+		TEXT("core.json"),
+		TEXT("\"mineDamage\": 30"),
+		TEXT("\"mineDamage\": 31"));
+	FGT_GameDataSnapshot ExternalValueSnapshot;
+	TArray<FString> ExternalValueErrors;
+	const bool bExternalValueReloaded = bExternalValueWritten
+		&& FGT_GameDataLoader::LoadFromDirectory(ExternalValueDirectory, ExternalValueSnapshot, ExternalValueErrors)
+		&& ExternalValueSnapshot.Core.Combat.MineDamage == 31;
+	AddCheck(
+		OutResults,
+		GTCheck_GameDataExternalValueReloaded,
+		bExternalValueReloaded,
+		FString::Printf(
+			TEXT("External mineDamage=%d errors=%s."),
+			ExternalValueSnapshot.Core.Combat.MineDamage,
+			*FString::Join(ExternalValueErrors, TEXT(" | "))));
+
+	UGT_GameDataSubsystem* GameDataSubsystem = GEngine
+		? GEngine->GetEngineSubsystem<UGT_GameDataSubsystem>()
+		: nullptr;
+
+	const FString FacadeDirectory = MakeGameDataTestDirectory(TEXT("Facade"));
+	const bool bFacadeValuesWritten =
+		ReplaceGameDataText(FacadeDirectory, TEXT("loot_events.json"), TEXT("\"baseMin\": 2"), TEXT("\"baseMin\": 37"))
+		&& ReplaceGameDataText(FacadeDirectory, TEXT("loot_events.json"), TEXT("\"baseMax\": 5"), TEXT("\"baseMax\": 37"))
+		&& ReplaceGameDataText(FacadeDirectory, TEXT("loot_events.json"), TEXT("\"goldCap\": 10"), TEXT("\"goldCap\": 37"))
+		&& ReplaceGameDataText(FacadeDirectory, TEXT("loot_events.json"), TEXT("\"baseSalePercent\": 75"), TEXT("\"baseSalePercent\": 50"))
+		&& ReplaceGameDataText(FacadeDirectory, TEXT("loot_events.json"), TEXT("\"goldDropPercent\": 10"), TEXT("\"goldDropPercent\": 11"))
+		&& ReplaceGameDataText(FacadeDirectory, TEXT("meta_catalog.json"), TEXT("\"maxEquipped\": 2"), TEXT("\"maxEquipped\": 3"))
+		&& ReplaceGameDataText(FacadeDirectory, TEXT("meta_catalog.json"), TEXT("\"id\": \"armor\", \"price\": 110"), TEXT("\"id\": \"armor\", \"price\": 111"));
+	const bool bFacadeDataLoaded = GameDataSubsystem
+		&& bFacadeValuesWritten
+		&& GameDataSubsystem->ReloadFromDirectory(FacadeDirectory, false);
+	const FGT_SearchReward FacadeSearchReward = bFacadeDataLoaded
+		? GT_LootRules::ComputeSearchReward(123, 0, 0, 0, false)
+		: FGT_SearchReward();
+	AddCheck(
+		OutResults,
+		GTCheck_GameDataLootFacadeReloaded,
+		bFacadeDataLoaded
+			&& FacadeSearchReward.Gold == 37
+			&& GT_LootRules::GetFleeGoldDropPercent() == 11,
+		FString::Printf(
+			TEXT("Search gold=%d flee gold percent=%d."),
+			FacadeSearchReward.Gold,
+			GT_LootRules::GetFleeGoldDropPercent()));
+	AddCheck(
+		OutResults,
+		GTCheck_GameDataEventFacadeReloaded,
+		bFacadeDataLoaded && GT_EventRules::GetTraderSaleValue(100) == 50,
+		FString::Printf(TEXT("Trader sale value=%d."), GT_EventRules::GetTraderSaleValue(100)));
+	const FGT_EquipDef* FacadeArmor = bFacadeDataLoaded
+		? GT_MetaCatalog::FindEquip(FName(TEXT("armor")))
+		: nullptr;
+	AddCheck(
+		OutResults,
+		GTCheck_GameDataMetaFacadeReloaded,
+		FacadeArmor
+			&& FacadeArmor->Price == 111
+			&& GT_MetaCatalog::GetMaxEquipped() == 3,
+		FString::Printf(
+			TEXT("Armor price=%d max equipped=%d."),
+			FacadeArmor ? FacadeArmor->Price : INDEX_NONE,
+			GT_MetaCatalog::GetMaxEquipped()));
+
+	const bool bInvalidLoaded = GameDataSubsystem
+		&& !GameDataSubsystem->ReloadFromDirectory(MalformedDirectory, false);
+	UGT_RunContext* InvalidConfigRun = bInvalidLoaded && RunSubsystem
+		? RunSubsystem->StartNewRun(7777, 10, 10)
+		: nullptr;
+	const bool bInvalidBlocksRun = bInvalidLoaded && InvalidConfigRun == nullptr;
+	if (RunSubsystem)
+	{
+		RunSubsystem->EndCurrentRun();
+	}
+	const bool bDefaultReloaded = GameDataSubsystem
+		&& GameDataSubsystem->ReloadFromDirectory(UGT_GameDataSubsystem::GetDefaultDataDirectory(), false);
+	AddCheck(
+		OutResults,
+		GTCheck_GameDataInvalidBlocksRun,
+		bInvalidBlocksRun && bDefaultReloaded,
+		FString::Printf(
+			TEXT("Invalid loaded=%s run=%s default reloaded=%s."),
+			bInvalidLoaded ? TEXT("true") : TEXT("false"),
+			InvalidConfigRun ? TEXT("created") : TEXT("null"),
+			bDefaultReloaded ? TEXT("true") : TEXT("false")));
+
+	UGT_MetaProgressSubsystem* MetaProgress = DebugSubsystem && DebugSubsystem->GetGameInstance()
+		? DebugSubsystem->GetGameInstance()->GetSubsystem<UGT_MetaProgressSubsystem>()
+		: nullptr;
+	const FString DebugMirrorPath = FPaths::Combine(
+		FPaths::ProjectSavedDir(),
+		TEXT("SaveGames/GraytailMeta.debug.json"));
+	if (MetaProgress)
+	{
+		MetaProgress->Save();
+	}
+	FString DebugMirrorJson;
+	const bool bMirrorWritten = MetaProgress
+		&& FFileHelper::LoadFileToString(DebugMirrorJson, *DebugMirrorPath);
+	AddCheck(
+		OutResults,
+		GTCheck_MetaSaveDebugMirrorWritten,
+		bMirrorWritten,
+		FString::Printf(TEXT("Debug mirror path=%s."), *DebugMirrorPath));
+
+	TSharedPtr<FJsonObject> DebugMirrorObject;
+	const TSharedRef<TJsonReader<>> DebugMirrorReader = TJsonReaderFactory<>::Create(DebugMirrorJson);
+	const bool bMirrorParsed = bMirrorWritten
+		&& FJsonSerializer::Deserialize(DebugMirrorReader, DebugMirrorObject)
+		&& DebugMirrorObject.IsValid();
+	const TSharedPtr<FJsonObject>* DebugStateObject = nullptr;
+	const bool bMirrorMatches = bMirrorParsed
+		&& DebugMirrorObject->GetIntegerField(TEXT("saveVersion")) == 1
+		&& DebugMirrorObject->TryGetObjectField(TEXT("state"), DebugStateObject)
+		&& DebugStateObject
+		&& (*DebugStateObject)->GetIntegerField(TEXT("gold")) == MetaProgress->GetGold();
+	AddCheck(
+		OutResults,
+		GTCheck_MetaSaveDebugMirrorMatches,
+		bMirrorMatches,
+		FString::Printf(
+			TEXT("Mirror parsed=%s gold=%d."),
+			bMirrorParsed ? TEXT("true") : TEXT("false"),
+			MetaProgress ? MetaProgress->GetGold() : INDEX_NONE));
+
+	const int32 CanonicalGold = MetaProgress ? MetaProgress->GetGold() : INDEX_NONE;
+	const bool bMirrorCorrupted = FFileHelper::SaveStringToFile(
+		TEXT("{\"saveVersion\":999,\"state\":{\"gold\":2147480000}}"),
+		*DebugMirrorPath,
+		FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+	if (MetaProgress)
+	{
+		MetaProgress->Load();
+	}
+	const bool bMirrorIgnored = MetaProgress
+		&& bMirrorCorrupted
+		&& MetaProgress->GetGold() == CanonicalGold;
+	AddCheck(
+		OutResults,
+		GTCheck_MetaSaveIgnoresDebugMirror,
+		bMirrorIgnored,
+		FString::Printf(
+			TEXT("Canonical gold=%d loaded gold=%d."),
+			CanonicalGold,
+			MetaProgress ? MetaProgress->GetGold() : INDEX_NONE));
+	if (MetaProgress)
+	{
+		MetaProgress->Save();
+	}
 
 	if (!IsValid(RunSubsystem))
 	{

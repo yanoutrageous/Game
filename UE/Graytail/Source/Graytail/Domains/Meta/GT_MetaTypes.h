@@ -25,7 +25,7 @@ struct GRAYTAIL_API FGT_RecoverySummary
 	UPROPERTY() int32 TotalItems = 0;
 	UPROPERTY() int32 TotalValue = 0;
 	UPROPERTY() int32 TotalExtractionsWithItems = 0;
-	UPROPERTY() TArray<FName> RecentItemIds;   // 最近带回, 上限 5
+	UPROPERTY() TArray<FName> RecentItemIds;
 };
 
 // 统计(对齐 Lua data.stats)。
@@ -47,7 +47,7 @@ struct GRAYTAIL_API FGT_MetaProgressState
 
 	UPROPERTY() int32 Gold = 0;
 	UPROPERTY() TArray<FName> OwnedItems;          // 已购装备 id
-	UPROPERTY() TArray<FName> EquippedItems;       // 已装备 id, 上限 2, 有序
+	UPROPERTY() TArray<FName> EquippedItems;       // 已装备 id, 有序
 	UPROPERTY() TArray<FName> UnlockedTalents;     // 已解锁天赋 id
 	UPROPERTY() TArray<FGT_WarehouseEntry> Warehouse;
 	UPROPERTY() TMap<FName, int32> ConsumableStock;     // 消耗品库存 id->数量

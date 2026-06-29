@@ -15,6 +15,7 @@
 #include "Styling/CoreStyle.h"
 #include "UI/GT_UIStyle.h"
 #include "Core/GT_SettingsSubsystem.h"
+#include "Data/GT_GameDataSubsystem.h"
 #include "Engine/GameInstance.h"
 #include "UObject/Package.h"
 
@@ -564,6 +565,14 @@ void UGT_MainMenuWidget::RefreshOptionStyles()
 	UTextBlock* Hint = CurrentPage == EPage::Main ? HintMain : CurrentPage == EPage::Size ? HintSize : HintDiff;
 	if (Hint && SelectedIndex >= 0 && SelectedIndex < CurrentOptionCount())
 	{
+		if (!GT_GameData::IsReady())
+		{
+			Hint->SetColorAndOpacity(FSlateColor(GTMenuHintLocked));
+			Hint->SetText(FText::FromString(FString::Printf(
+				TEXT("【配置错误，无法开始】%s"),
+				*GT_GameData::GetErrorText())));
+			return;
+		}
 		Hint->SetColorAndOpacity(FSlateColor(GTMenuHintNormal));
 		Hint->SetText(FText::FromString(CurrentHint(SelectedIndex)));
 	}
@@ -573,6 +582,18 @@ void UGT_MainMenuWidget::ConfirmSelection()
 {
 	if (SelectedIndex < 0 || SelectedIndex >= CurrentOptionCount())
 	{
+		return;
+	}
+	const bool bRequiresGameData =
+		(CurrentPage == EPage::Main
+			&& (SelectedIndex == GTMainOption_Depart
+				|| SelectedIndex == GTMainOption_Tutorial
+				|| SelectedIndex == GTMainOption_Deploy))
+		|| (CurrentPage == EPage::Size && SelectedIndex != GTSizeOption_Back)
+		|| (CurrentPage == EPage::Difficulty && SelectedIndex != GTDiffOption_Back);
+	if (bRequiresGameData && !GT_GameData::IsReady())
+	{
+		RefreshOptionStyles();
 		return;
 	}
 	if (UGameInstance* GI = GetGameInstance())

@@ -1,5 +1,6 @@
 #include "Domains/Map/GT_MapGenerator.h"
 
+#include "Data/GT_GameDataSubsystem.h"
 #include "Domains/Map/GT_Random.h"
 
 namespace
@@ -207,55 +208,55 @@ void UGT_MapGenerator::ApplyManualLayout(FGT_TruthMap& TruthMap, const FGT_MapGe
 
 FGT_MapGenerationSpec UGT_MapGenerator::MakeSpecForDifficulty(EGT_Difficulty Difficulty, int32 Seed)
 {
-	FGT_MapGenerationSpec Spec;
-	Spec.MapMode = EGT_MapMode::Standard;
-	Spec.Seed = Seed;
-	Spec.SpawnSafeRadius = 1;
-
-	// 三档雷率/特殊房比例统一(对齐 docs/难度判断.md): 雷 ~20%, 怪物/事件各 ~10%, 宝箱 2-5 个。
-	Spec.MineDensity = 0.20f;
-	Spec.MonsterRoomRatio = 0.10f;
-	Spec.EventRoomRatio = 0.10f;
-	Spec.ChestRoomRatio = 0.025f;
-
-	// 难度 = 尺寸 × 撤离点数(撤离点越少越难)。
+	FString DifficultyId;
 	switch (Difficulty)
 	{
-	case EGT_Difficulty::Tutorial:
-		// 新手教程 = 固定手摆 5×5 安全图(对齐 Lua Tutorial.GetMapConfig 的 manualMap, 坐标 1-based→0-based)。
-		// 沿反对角线: 出生→数字格→雷险→事件→怪物→宝箱→撤离, 配合教学弹窗逐格教学。
-		// seed 固定 777(对齐 Lua), 让怪物战力/掉落/事件可复现, 每次教程体验一致。
-		// 撤离点开局可见(bRevealExitsAtStart), 让新手一开始就知道目标在哪。
-		Spec.Width = 5; Spec.Height = 5;
-		Spec.Seed = 777;
-		Spec.RandomExitCount = 0;
-		Spec.bRevealExitsAtStart = true;
-		Spec.ManualLayout.bEnabled = true;
-		Spec.ManualLayout.Spawn = FIntPoint(0, 0);
-		Spec.ManualLayout.Mines = { {0,2}, {1,1}, {2,0}, {3,3} };
-		Spec.ManualLayout.EventRooms = { {0,3}, {1,2}, {2,1}, {3,0} };
-		Spec.ManualLayout.MonsterRooms = { {0,4}, {1,3}, {2,2}, {3,1}, {4,0} };
-		Spec.ManualLayout.ChestRooms = { {1,4}, {2,3}, {3,2}, {4,1} };
-		Spec.ManualLayout.Exits = { {4,4} };
-		break;
-	case EGT_Difficulty::Easy:
-		Spec.Width = 10; Spec.Height = 10; Spec.RandomExitCount = 3; break;
-	case EGT_Difficulty::Standard:
-		Spec.Width = 10; Spec.Height = 10; Spec.RandomExitCount = 2; break;
-	case EGT_Difficulty::Hard:
-		Spec.Width = 10; Spec.Height = 10; Spec.RandomExitCount = 1;
-		Spec.MonsterRoomRatio = 0.15f; break;   // 困难: 怪物房加密(基准 0.10)
-	case EGT_Difficulty::Veteran:
-		Spec.Width = 13; Spec.Height = 13; Spec.RandomExitCount = 4; break;
-	case EGT_Difficulty::Elite:
-		Spec.Width = 13; Spec.Height = 13; Spec.RandomExitCount = 2;
-		Spec.MonsterRoomRatio = 0.15f; break;   // 困难(大图): 怪物房加密
-	case EGT_Difficulty::Nightmare:
-		Spec.Width = 13; Spec.Height = 13; Spec.RandomExitCount = 1;
-		Spec.MonsterRoomRatio = 0.18f; break;   // 地狱: 怪物房最密
-	default:
-		Spec.Width = 10; Spec.Height = 10; Spec.RandomExitCount = 2; break;
+	case EGT_Difficulty::Tutorial: DifficultyId = TEXT("tutorial"); break;
+	case EGT_Difficulty::Easy: DifficultyId = TEXT("easy"); break;
+	case EGT_Difficulty::Standard: DifficultyId = TEXT("standard"); break;
+	case EGT_Difficulty::Hard: DifficultyId = TEXT("hard"); break;
+	case EGT_Difficulty::Veteran: DifficultyId = TEXT("veteran"); break;
+	case EGT_Difficulty::Elite: DifficultyId = TEXT("elite"); break;
+	case EGT_Difficulty::Nightmare: DifficultyId = TEXT("nightmare"); break;
+	default: break;
 	}
 
+	const FGT_GameDataSnapshot* Snapshot = GT_GameData::GetSnapshot();
+	checkf(Snapshot, TEXT("Difficulty rules accessed without valid game data."));
+	const FGT_DifficultyBalanceRow* Row = Snapshot->Difficulties.Difficulties.FindByPredicate(
+		[&DifficultyId](const FGT_DifficultyBalanceRow& Candidate)
+		{
+			return Candidate.Id == DifficultyId;
+		});
+	checkf(Row, TEXT("Validated difficulty '%s' is missing."), *DifficultyId);
+
+	FGT_MapGenerationSpec Spec;
+	Spec.MapMode = EGT_MapMode::Standard;
+	Spec.Seed = Row->FixedSeed != 0 ? Row->FixedSeed : Seed;
+	Spec.Width = Row->Width;
+	Spec.Height = Row->Height;
+	Spec.MineDensity = Row->MineDensity;
+	Spec.SpawnSafeRadius = Row->SpawnSafeRadius;
+	Spec.MonsterRoomRatio = Row->MonsterRoomRatio;
+	Spec.EventRoomRatio = Row->EventRoomRatio;
+	Spec.ChestRoomRatio = Row->ChestRoomRatio;
+	Spec.RandomExitCount = Row->RandomExitCount;
+	Spec.bRevealExitsAtStart = Row->bRevealExitsAtStart;
+	Spec.ManualLayout.bEnabled = Row->ManualLayout.bEnabled;
+	Spec.ManualLayout.Spawn = FIntPoint(Row->ManualLayout.Spawn.X, Row->ManualLayout.Spawn.Y);
+
+	auto CopyCoords = [](const TArray<FGT_DataCoord>& Source, TArray<FIntPoint>& Target)
+	{
+		Target.Reset(Source.Num());
+		for (const FGT_DataCoord& Coord : Source)
+		{
+			Target.Add(FIntPoint(Coord.X, Coord.Y));
+		}
+	};
+	CopyCoords(Row->ManualLayout.Mines, Spec.ManualLayout.Mines);
+	CopyCoords(Row->ManualLayout.MonsterRooms, Spec.ManualLayout.MonsterRooms);
+	CopyCoords(Row->ManualLayout.ChestRooms, Spec.ManualLayout.ChestRooms);
+	CopyCoords(Row->ManualLayout.EventRooms, Spec.ManualLayout.EventRooms);
+	CopyCoords(Row->ManualLayout.Exits, Spec.ManualLayout.Exits);
 	return Spec;
 }

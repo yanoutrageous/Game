@@ -1,24 +1,30 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "GT_ProtocolState.generated.h"
 
-// 五四三二一协议运行时状态(对齐 Protocol.lua)。
-// 挂在 UGT_RunContext 上, 一局一份。
-// 压力随行动上升, 触发阈值时协议等级下降(5→1), 满压强制败北。
+namespace GT_ProtocolRules
+{
+	GRAYTAIL_API int32 GetMaxPressure();
+	GRAYTAIL_API int32 GetExplorePressure();
+	GRAYTAIL_API int32 GetMinePressure();
+	GRAYTAIL_API int32 GetCombatKillPressure();
+	GRAYTAIL_API int32 ComputeLevel(int32 Pressure);
+}
+
 USTRUCT(BlueprintType)
 struct GRAYTAIL_API FGT_ProtocolState
 {
 	GENERATED_BODY()
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Protocol")
-	int32 Level = 5;
+	int32 Level = 0;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Protocol")
 	int32 Pressure = 0;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Protocol")
-	int32 MaxPressure = 100;
+	int32 MaxPressure = 0;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Protocol")
 	bool bLevelChanged = false;
@@ -28,9 +34,9 @@ struct GRAYTAIL_API FGT_ProtocolState
 
 	void Reset()
 	{
-		Level = 5;
+		Level = GT_ProtocolRules::ComputeLevel(0);
 		Pressure = 0;
-		MaxPressure = 100;
+		MaxPressure = GT_ProtocolRules::GetMaxPressure();
 		bLevelChanged = false;
 		LastDelta = 0;
 	}
@@ -41,44 +47,8 @@ struct GRAYTAIL_API FGT_ProtocolState
 	}
 };
 
-// 协议规则常量(对齐 Balance.pressure)。
 namespace GT_ProtocolRules
 {
-	constexpr int32 MaxPressure = 100;
-	constexpr int32 ExplorePressure = 2;    // 首次探索未知房
-	constexpr int32 MinePressure = 10;      // 踩雷
-	constexpr int32 CombatKillPressure = 5; // 击杀怪物
-
-	// 阈值: 压力 >= threshold 时协议等级 = level。从高到低排列。
-	struct FPressureThreshold
-	{
-		int32 Pressure;
-		int32 Level;
-	};
-
-	constexpr FPressureThreshold Thresholds[] = {
-		{ 80, 1 },
-		{ 60, 2 },
-		{ 40, 3 },
-		{ 20, 4 },
-		{ 0,  5 },
-	};
-	constexpr int32 ThresholdCount = sizeof(Thresholds) / sizeof(Thresholds[0]);
-
-	// 对齐 Protocol._ComputeLevel: 从高到低遍历阈值。
-	inline int32 ComputeLevel(int32 Pressure)
-	{
-		for (int32 i = 0; i < ThresholdCount; ++i)
-		{
-			if (Pressure >= Thresholds[i].Pressure)
-			{
-				return Thresholds[i].Level;
-			}
-		}
-		return 5;
-	}
-
-	// 协议等级描述(对齐 GameText.protocol.levels[*].short)。
 	inline FString GetLevelDescription(int32 Level)
 	{
 		switch (Level)
@@ -92,7 +62,6 @@ namespace GT_ProtocolRules
 		}
 	}
 
-	// 协议等级播报(对齐 GameText.protocol.broadcasts[*])。
 	inline FString GetLevelBroadcast(int32 Level)
 	{
 		switch (Level)

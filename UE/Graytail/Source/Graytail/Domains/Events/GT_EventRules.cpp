@@ -1,7 +1,64 @@
 #include "Domains/Events/GT_EventRules.h"
 
+#include "Data/GT_GameDataSubsystem.h"
+
+namespace
+{
+	const FGT_LootEventsBalanceFile& GetBalance()
+	{
+		const FGT_GameDataSnapshot* Snapshot = GT_GameData::GetSnapshot();
+		checkf(Snapshot, TEXT("Event rules accessed without valid game data."));
+		return Snapshot->LootEvents;
+	}
+
+	EGT_EventKind ParseEventKind(const FString& Id)
+	{
+		if (Id == TEXT("trader")) return EGT_EventKind::Trader;
+		if (Id == TEXT("dice")) return EGT_EventKind::Dice;
+		if (Id == TEXT("altar")) return EGT_EventKind::Altar;
+		if (Id == TEXT("trap")) return EGT_EventKind::Trap;
+		return EGT_EventKind::None;
+	}
+}
+
 namespace GT_EventRules
 {
+	const FGT_GamblerBalanceConfig& GetGambler()
+	{
+		return GetBalance().Gambler;
+	}
+
+	const TArray<FGT_AltarStepConfig>& GetAltarSteps()
+	{
+		return GetBalance().AltarSteps;
+	}
+
+	EGT_ItemQuality GetAltarRewardQuality(int32 StepIndex)
+	{
+		const TArray<FGT_AltarStepConfig>& Steps = GetAltarSteps();
+		if (!Steps.IsValidIndex(StepIndex))
+		{
+			return EGT_ItemQuality::None;
+		}
+		const FString& Quality = Steps[StepIndex].RewardQuality;
+		if (Quality == TEXT("low")) return EGT_ItemQuality::Low;
+		if (Quality == TEXT("common")) return EGT_ItemQuality::Common;
+		if (Quality == TEXT("rare")) return EGT_ItemQuality::Rare;
+		if (Quality == TEXT("precious")) return EGT_ItemQuality::Precious;
+		if (Quality == TEXT("abnormal")) return EGT_ItemQuality::Abnormal;
+		return EGT_ItemQuality::None;
+	}
+
+	const FGT_TrapBalanceConfig& GetTrap()
+	{
+		return GetBalance().Trap;
+	}
+
+	const FGT_LuckyCoinBalanceConfig& GetLuckyCoin()
+	{
+		return GetBalance().LuckyCoin;
+	}
+
 	EGT_EventKind GetEventKindAt(int32 Seed, int32 X, int32 Y)
 	{
 		// 对齐 Lua: hash = (x*73 + y*137 + seed*31) % 10000; roll = hash % totalWeight(100)。
@@ -11,20 +68,16 @@ namespace GT_EventRules
 			+ static_cast<int64>(Seed) * 31) % 10000;
 		const int32 Roll = static_cast<int32>(((Hash % 100) + 100) % 100);
 
-		// 权重表顺序与 Lua EVENT_TYPES 一致: trader 30 / dice 25 / altar 25 / trap 20。
-		if (Roll < 30)
+		int32 Threshold = 0;
+		for (const FGT_EventWeightConfig& Entry : GetBalance().EventWeights)
 		{
-			return EGT_EventKind::Trader;
+			Threshold += Entry.Weight;
+			if (Roll < Threshold)
+			{
+				return ParseEventKind(Entry.Id);
+			}
 		}
-		if (Roll < 55)
-		{
-			return EGT_EventKind::Dice;
-		}
-		if (Roll < 80)
-		{
-			return EGT_EventKind::Altar;
-		}
-		return EGT_EventKind::Trap;
+		return EGT_EventKind::None;
 	}
 
 	int32 RollDiceAt(int32 Seed, int32 X, int32 Y, int32 PendingGold)
@@ -43,10 +96,10 @@ namespace GT_EventRules
 		{
 			return 0;
 		}
-		// floor(baseValue * 0.75 * (100+Bonus)/100) = baseValue * 3 * (100+Bonus) / 400; 整数乘除避免浮点。
-		// Bonus=0 时 = baseValue*3/4(与原值一致); Bonus=20(议价) 时 = baseValue*9/10。
 		const int32 Pct = FMath::Max(0, BonusPercent);
-		return FMath::Max(1, BaseValue * 3 * (100 + Pct) / 400);
+		return FMath::Max(
+			1,
+			BaseValue * GetBalance().Trader.BaseSalePercent * (100 + Pct) / 10000);
 	}
 
 	FString GetEventTitle(EGT_EventKind Kind)

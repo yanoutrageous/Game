@@ -164,8 +164,9 @@ bool UGT_CommandProcessor::ProcessMoveCommand(const FGT_Command& Command)
 			// 首次探索未知房加协议压力(对齐 Balance.pressure.explore = 2)。
 			if (RunContext->MarkExploredForPressure(Command.TargetX, Command.TargetY))
 			{
-				const auto PressureResult = RunContext->AddProtocolPressure(GT_ProtocolRules::ExplorePressure);
-				PublishProtocolPressureEvent(Command.TargetActorId, Command.TargetX, Command.TargetY, GT_ProtocolRules::ExplorePressure, PressureResult);
+				const int32 ExplorePressure = GT_ProtocolRules::GetExplorePressure();
+				const auto PressureResult = RunContext->AddProtocolPressure(ExplorePressure);
+				PublishProtocolPressureEvent(Command.TargetActorId, Command.TargetX, Command.TargetY, ExplorePressure, PressureResult);
 
 				// 满压惩罚: 已满压时每进一个新房按难度扣血(替代直接败北)。血量显示走移动后常规刷新; 这里只处理致死。
 				int32 PressureDamage = 0;
@@ -227,8 +228,9 @@ bool UGT_CommandProcessor::ProcessMoveCommand(const FGT_Command& Command)
 
 				// 踩雷加协议压力(对齐 Balance.pressure.mine = 10)。
 				{
-					const auto MinePressureResult = RunContext->AddProtocolPressure(GT_ProtocolRules::MinePressure);
-					PublishProtocolPressureEvent(Command.TargetActorId, Command.TargetX, Command.TargetY, GT_ProtocolRules::MinePressure, MinePressureResult);
+					const int32 MinePressure = GT_ProtocolRules::GetMinePressure();
+					const auto MinePressureResult = RunContext->AddProtocolPressure(MinePressure);
+					PublishProtocolPressureEvent(Command.TargetActorId, Command.TargetX, Command.TargetY, MinePressure, MinePressureResult);
 				}
 
 				if (bPlayerDead && RunContext->MarkRunFailed(GTRunFailureReason_Mine))
@@ -530,8 +532,9 @@ bool UGT_CommandProcessor::ProcessAttackCommand(const FGT_Command& Command)
 		if (bJustKilled)
 		{
 			// 击杀怪物加协议压力(对齐 Balance.pressure.monsterKill = 5)。
-			const UGT_RunContext::FProtocolPressureResult KillPressureResult = RunContext->AddProtocolPressure(GT_ProtocolRules::CombatKillPressure);
-			PublishProtocolPressureEvent(EventTargetActorId, PlayerX, PlayerY, GT_ProtocolRules::CombatKillPressure, KillPressureResult);
+			const int32 CombatKillPressure = GT_ProtocolRules::GetCombatKillPressure();
+			const UGT_RunContext::FProtocolPressureResult KillPressureResult = RunContext->AddProtocolPressure(CombatKillPressure);
+			PublishProtocolPressureEvent(EventTargetActorId, PlayerX, PlayerY, CombatKillPressure, KillPressureResult);
 		}
 	}
 

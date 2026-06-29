@@ -794,7 +794,7 @@ namespace
 		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.Flee %s: %s"),
 			bAccepted ? TEXT("accepted") : TEXT("rejected"), *Snapshot.Summary);
 
-		// 逃跑后背包(确认 PendingGold 减 ~10% + 白货件数减少)。
+		// 逃跑后背包(确认 PendingGold 按配置减少 + 白货件数减少)。
 		FString BagAfter;
 		DebugSubsystem->GetDebugInventoryText(BagAfter);
 		UE_LOG(LogGraytailManualPlay, Display, TEXT("gt.Flee AFTER: %s"), *BagAfter);
@@ -1125,7 +1125,7 @@ namespace
 
 	FAutoConsoleCommandWithWorldAndArgs GTFleeCommand(
 		TEXT("gt.Flee"),
-		TEXT("Standard combat room: flee through the command path (drops 10% pending gold + common/white recyclables). Usage: gt.Flee"),
+		TEXT("Standard combat room: flee through the command path (configured pending-gold loss + common/white recyclables). Usage: gt.Flee"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleFlee));
 
 	FAutoConsoleCommandWithWorldAndArgs GTSummaryCommand(

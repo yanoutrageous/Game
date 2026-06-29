@@ -177,6 +177,7 @@ bool UGT_CommandProcessor::ProcessMoveCommand(const FGT_Command& Command)
 					{
 						PublishCommandEvent(GTEventType_RunFailed, Command.SourceActorId, Command.TargetActorId, Command.TargetX, Command.TargetY, true);
 					}
+					return true;
 				}
 			}
 

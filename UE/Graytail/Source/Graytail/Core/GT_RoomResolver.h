@@ -21,7 +21,8 @@ enum class EGT_RoomResolveOutcome : uint8
 	ExitFound UMETA(DisplayName = "Exit Found"),
 	Unsupported UMETA(DisplayName = "Unsupported"),
 	EventPresented UMETA(DisplayName = "Event Presented"),
-	CombatStarted UMETA(DisplayName = "Combat Started")
+	CombatStarted UMETA(DisplayName = "Combat Started"),
+	CombatAlreadyResolved UMETA(DisplayName = "Combat Already Resolved")
 };
 
 USTRUCT(BlueprintType)

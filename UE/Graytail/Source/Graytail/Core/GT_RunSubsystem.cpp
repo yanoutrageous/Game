@@ -48,6 +48,7 @@ void UGT_RunSubsystem::Deinitialize()
 
 UGT_RunContext* UGT_RunSubsystem::StartNewRun(int32 Seed, int32 Width, int32 Height)
 {
+	EndCurrentRun();
 	CurrentRunContext = NewObject<UGT_RunContext>(this);
 	bRunSettled = false;
 	CurrentRunContext->InitializeRun(Seed, Width, Height);
@@ -57,6 +58,7 @@ UGT_RunContext* UGT_RunSubsystem::StartNewRun(int32 Seed, int32 Width, int32 Hei
 
 UGT_RunContext* UGT_RunSubsystem::StartNewRunStandard(int32 Seed, EGT_Difficulty Difficulty)
 {
+	EndCurrentRun();
 	CurrentRunContext = NewObject<UGT_RunContext>(this);
 	bRunSettled = false;
 	CurrentRunContext->InitializeRunStandard(Seed, Difficulty);
@@ -112,7 +114,9 @@ bool UGT_RunSubsystem::SubmitCommand(const FGT_Command& Command)
 	}
 
 	CommandBus->SubmitCommand(Command);
-	return CommandProcessor->ProcessCommand(Command);
+	const bool bProcessed = CommandProcessor->ProcessCommand(Command);
+	CommandBus->ClearPendingCommands();
+	return bProcessed;
 }
 
 UGT_RunContext* UGT_RunSubsystem::GetCurrentRunContext() const
@@ -137,6 +141,18 @@ void UGT_RunSubsystem::EndCurrentRun()
 	{
 		CommandProcessor->Initialize(nullptr, EventBus, ContentRegistry);
 	}
+
+	if (CommandBus)
+	{
+		CommandBus->ClearPendingCommands();
+	}
+
+	if (EventBus)
+	{
+		EventBus->ClearEventHistory();
+	}
+
+	bRunSettled = false;
 }
 
 void UGT_RunSubsystem::ApplyMetaLoadoutToRun()
@@ -209,16 +225,17 @@ void UGT_RunSubsystem::AbandonRun()
 	// 阵亡走 SettleFailure 还能拿安全金 + 抢救 1 件, 放弃啥都不剩)。
 	CurrentRunContext->MarkRunFailed(FName(TEXT("Abandoned")));
 	// 但带入(已装备)的装备照样损失 —— 防"快死了放弃保装备"的 exploit(对齐撤离失败丢装备)。
-	if (CurrentRunContext->GetMapMode() != EGT_MapMode::Standard || CurrentRunContext->IsTutorialRun())
+	if (CurrentRunContext->GetMapMode() == EGT_MapMode::Standard && !CurrentRunContext->IsTutorialRun())
 	{
-		return;
+		UGameInstance* GameInstance = GetGameInstance();
+		UGT_MetaProgressSubsystem* Meta = GameInstance ? GameInstance->GetSubsystem<UGT_MetaProgressSubsystem>() : nullptr;
+		if (Meta)
+		{
+			Meta->LoseEquippedItemsOnFailure();
+		}
 	}
-	UGameInstance* GameInstance = GetGameInstance();
-	UGT_MetaProgressSubsystem* Meta = GameInstance ? GameInstance->GetSubsystem<UGT_MetaProgressSubsystem>() : nullptr;
-	if (Meta)
-	{
-		Meta->LoseEquippedItemsOnFailure();
-	}
+
+	EndCurrentRun();
 }
 
 UGT_CommandBus* UGT_RunSubsystem::GetCommandBus() const

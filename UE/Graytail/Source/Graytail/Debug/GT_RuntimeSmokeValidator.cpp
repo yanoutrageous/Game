@@ -1,6 +1,7 @@
 #include "Debug/GT_RuntimeSmokeValidator.h"
 
 #include "Core/GT_CommandBus.h"
+#include "Core/GT_CommandProcessor.h"
 #include "Core/GT_ContentRegistry.h"
 #include "Core/GT_EventBus.h"
 #include "Core/GT_QueryFacade.h"
@@ -9,6 +10,7 @@
 #include "Debug/GT_DebugSubsystem.h"
 #include "Debug/GT_DebugTypes.h"
 #include "UI/ViewModels/GT_MiniMapViewModel.h"
+#include "UObject/UObjectHash.h"
 
 namespace
 {
@@ -59,6 +61,7 @@ namespace
 	const FName GTCheck_MiniMapViewModelDisplayedNumber(TEXT("MiniMapViewModelDisplayedNumber"));
 	const FName GTCheck_MiniMapViewModelCellVisibleExplored(TEXT("MiniMapViewModelCellVisibleExplored"));
 	const FName GTCheck_MiniMapViewModelReliability(TEXT("MiniMapViewModelReliability"));
+	const FName GTCheck_QueryFacadeReusesMiniMapViewModel(TEXT("QueryFacadeReusesMiniMapViewModel"));
 	const FName GTCheck_NormalRoomResolveOutcome(TEXT("NormalRoomResolveOutcome"));
 	const FName GTCheck_NormalRoomEvents(TEXT("NormalRoomEvents"));
 	const FName GTCheck_MineRoomResolveOutcome(TEXT("MineRoomResolveOutcome"));
@@ -175,6 +178,10 @@ namespace
 	const FName GTCheck_DebugResolveCombatDefaultAccepted(TEXT("DebugResolveCombatDefaultAccepted"));
 	const FName GTCheck_DebugResolveCombatRetreatAccepted(TEXT("DebugResolveCombatRetreatAccepted"));
 	const FName GTCheck_DebugResolveCombatInvalidRejected(TEXT("DebugResolveCombatInvalidRejected"));
+	const FName GTCheck_NewRunStartsWithFreshEventHistory(TEXT("NewRunStartsWithFreshEventHistory"));
+	const FName GTCheck_ResolvedCombatRoomDoesNotRestart(TEXT("ResolvedCombatRoomDoesNotRestart"));
+	const FName GTCheck_ProtocolDrainStopsRoomResolution(TEXT("ProtocolDrainStopsRoomResolution"));
+	const FName GTCheck_AbandonRunClearsRuntimeState(TEXT("AbandonRunClearsRuntimeState"));
 
 	const FName GTCommandType_Move(TEXT("Move"));
 	const FName GTCommandType_Scan(TEXT("Scan"));
@@ -704,6 +711,53 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		GTCheck_MiniMapViewModelSize,
 		bMiniMapViewModelSizeOk,
 		FString::Printf(TEXT("MiniMapViewModel size is %dx%d with %d cells."), MiniMapWidth, MiniMapHeight, MiniMapCells.Num()));
+
+	auto CountQueryMiniMapViewModels = [QueryFacade]() -> int32
+	{
+		if (!QueryFacade)
+		{
+			return 0;
+		}
+
+		TArray<UObject*> QueryChildren;
+		GetObjectsWithOuter(QueryFacade, QueryChildren, false);
+		int32 MiniMapViewModelCount = 0;
+		for (const UObject* Child : QueryChildren)
+		{
+			if (IsValid(Child) && Child->IsA<UGT_MiniMapViewModel>())
+			{
+				++MiniMapViewModelCount;
+			}
+		}
+		return MiniMapViewModelCount;
+	};
+
+	TArray<FGT_MiniMapCellViewData> QueryMiniMapCells;
+	int32 QueryMiniMapWidth = 0;
+	int32 QueryMiniMapHeight = 0;
+	const int32 QueryMiniMapModelsBeforeBuild = CountQueryMiniMapViewModels();
+	if (QueryFacade)
+	{
+		QueryFacade->BuildMiniMapViewData(QueryMiniMapCells, QueryMiniMapWidth, QueryMiniMapHeight);
+	}
+	const int32 QueryMiniMapModelsAfterFirstBuild = CountQueryMiniMapViewModels();
+	if (QueryFacade)
+	{
+		QueryFacade->BuildMiniMapViewData(QueryMiniMapCells, QueryMiniMapWidth, QueryMiniMapHeight);
+	}
+	const int32 QueryMiniMapModelsAfterSecondBuild = CountQueryMiniMapViewModels();
+	const bool bQueryFacadeReusesMiniMapViewModel = QueryFacade
+		&& QueryMiniMapModelsBeforeBuild == 1
+		&& QueryMiniMapModelsAfterFirstBuild == QueryMiniMapModelsBeforeBuild
+		&& QueryMiniMapModelsAfterSecondBuild == QueryMiniMapModelsAfterFirstBuild;
+	AddCheck(
+		OutResults,
+		GTCheck_QueryFacadeReusesMiniMapViewModel,
+		bQueryFacadeReusesMiniMapViewModel,
+		FString::Printf(TEXT("QueryFacade MiniMapViewModel children %d->%d->%d."),
+			QueryMiniMapModelsBeforeBuild,
+			QueryMiniMapModelsAfterFirstBuild,
+			QueryMiniMapModelsAfterSecondBuild));
 
 	FGT_MiniMapCellViewData MiniMapScannedCell;
 	bool bFoundMiniMapScannedCell = false;
@@ -1268,6 +1322,14 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		FString::Printf(TEXT("New StartRun summary available=%s outcome=%s."),
 			bRunSummaryAvailableAfterNewStart ? TEXT("true") : TEXT("false"),
 			*ClearedRunSummary.Outcome.ToString()));
+	const int32 NewRunInitialEventCount = EventBus ? EventBus->GetEventCount() : 0;
+	AddCheck(
+		OutResults,
+		GTCheck_NewRunStartsWithFreshEventHistory,
+		NewRunInitialEventCount == 1
+			&& EventBus
+			&& EventBus->CountEventsOfType(FName(TEXT("RunStarted"))) == 1,
+		FString::Printf(TEXT("New run starts with %d event(s); expected only RunStarted."), NewRunInitialEventCount));
 	if (EventBus)
 	{
 		EventBus->ClearEventHistory();
@@ -2284,6 +2346,28 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 			CombatResolvedCountBeforeAttack,
 			CombatResolvedCountAfterAttack));
 
+	const int32 CombatStartedCountBeforeResolvedReentry = EventBus ? EventBus->CountEventsOfType(GTEventType_CombatStarted) : 0;
+	const bool bDebugMoveAwayFromResolvedCombat = IsValid(DebugSubsystem)
+		&& DebugSubsystem->DebugMoveTo(0, 4, PlaceholderSnapshot);
+	const bool bDebugReenterResolvedCombat = bDebugMoveAwayFromResolvedCombat
+		&& DebugSubsystem->DebugMoveTo(1, 4, PlaceholderSnapshot);
+	const int32 CombatStartedCountAfterResolvedReentry = EventBus ? EventBus->CountEventsOfType(GTEventType_CombatStarted) : 0;
+	const bool bResolvedCombatRoomDoesNotRestart = bDebugReenterResolvedCombat
+		&& PlaceholderSnapshot.CurrentRoomBaseType == EGT_RoomBaseType::Combat
+		&& !PlaceholderSnapshot.bCombatActive
+		&& PlaceholderSnapshot.bCombatResolved
+		&& CombatStartedCountAfterResolvedReentry == CombatStartedCountBeforeResolvedReentry;
+	AddCheck(
+		OutResults,
+		GTCheck_ResolvedCombatRoomDoesNotRestart,
+		bResolvedCombatRoomDoesNotRestart,
+		FString::Printf(TEXT("Resolved combat reentry accepted=%s CombatStarted %d->%d active=%s resolved=%s."),
+			bDebugReenterResolvedCombat ? TEXT("true") : TEXT("false"),
+			CombatStartedCountBeforeResolvedReentry,
+			CombatStartedCountAfterResolvedReentry,
+			PlaceholderSnapshot.bCombatActive ? TEXT("true") : TEXT("false"),
+			PlaceholderSnapshot.bCombatResolved ? TEXT("true") : TEXT("false")));
+
 	const int32 CombatResolvedCountBeforeResolve = EventBus ? EventBus->CountEventsOfType(GTEventType_CombatResolved) : 0;
 	const bool bDebugResolveCombatAccepted = IsValid(DebugSubsystem)
 		&& DebugSubsystem->DebugResolveCombat(GTCombatResult_Success, PlaceholderSnapshot);
@@ -2496,6 +2580,91 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		GTCheck_DebugManualPlayRunDemoEvents,
 		bManualPlayRunDemoEventsOk,
 		FString::Printf(TEXT("RunDemo event summary contains %d event types."), ManualPlayDemoEventSummary.Num()));
+
+	UGT_RunContext* ProtocolDrainRunContext = NewObject<UGT_RunContext>(this);
+	UGT_EventBus* ProtocolDrainEventBus = NewObject<UGT_EventBus>(this);
+	UGT_CommandProcessor* ProtocolDrainProcessor = NewObject<UGT_CommandProcessor>(this);
+	ProtocolDrainRunContext->InitializeRunStandard(82345, EGT_Difficulty::Easy);
+	ProtocolDrainProcessor->Initialize(ProtocolDrainRunContext, ProtocolDrainEventBus, ContentRegistry);
+	ProtocolDrainRunContext->CheatSetPlayerHp(1);
+	ProtocolDrainRunContext->AddProtocolPressure(ProtocolDrainRunContext->GetProtocolMaxPressure());
+
+	int32 ProtocolDrainStartX = 0;
+	int32 ProtocolDrainStartY = 0;
+	ProtocolDrainRunContext->TryGetPlayerPosition(ProtocolDrainStartX, ProtocolDrainStartY);
+	const TArray<FIntPoint> ProtocolDrainMoveCandidates = {
+		FIntPoint(ProtocolDrainStartX + 1, ProtocolDrainStartY),
+		FIntPoint(ProtocolDrainStartX - 1, ProtocolDrainStartY),
+		FIntPoint(ProtocolDrainStartX, ProtocolDrainStartY + 1),
+		FIntPoint(ProtocolDrainStartX, ProtocolDrainStartY - 1)
+	};
+	FIntPoint ProtocolDrainTarget = FIntPoint::ZeroValue;
+	bool bFoundProtocolDrainTarget = false;
+	for (const FIntPoint& Candidate : ProtocolDrainMoveCandidates)
+	{
+		if (ProtocolDrainRunContext->IsValidMapCoord(Candidate.X, Candidate.Y))
+		{
+			ProtocolDrainTarget = Candidate;
+			bFoundProtocolDrainTarget = true;
+			break;
+		}
+	}
+
+	FGT_Command ProtocolDrainMove;
+	ProtocolDrainMove.CommandType = GTCommandType_Move;
+	ProtocolDrainMove.SourceActorId = GTActorId_Player;
+	ProtocolDrainMove.TargetActorId = GTActorId_Player;
+	ProtocolDrainMove.TargetX = ProtocolDrainTarget.X;
+	ProtocolDrainMove.TargetY = ProtocolDrainTarget.Y;
+	const bool bProtocolDrainMoveAccepted = bFoundProtocolDrainTarget
+		&& ProtocolDrainProcessor->ProcessCommand(ProtocolDrainMove);
+	const int32 ProtocolDrainActorMovedCount = ProtocolDrainEventBus->CountEventsOfType(GTEventType_ActorMoved);
+	const int32 ProtocolDrainRoomEnteredCount = ProtocolDrainEventBus->CountEventsOfType(GTEventType_RoomEntered);
+	const int32 ProtocolDrainRunFailedCount = ProtocolDrainEventBus->CountEventsOfType(GTEventType_RunFailed);
+	const bool bProtocolDrainStopsRoomResolution = bProtocolDrainMoveAccepted
+		&& ProtocolDrainRunContext->GetRunState() == EGT_RunState::Failed
+		&& ProtocolDrainRunFailedCount == 1
+		&& ProtocolDrainActorMovedCount == 0
+		&& ProtocolDrainRoomEnteredCount == 0;
+	AddCheck(
+		OutResults,
+		GTCheck_ProtocolDrainStopsRoomResolution,
+		bProtocolDrainStopsRoomResolution,
+		FString::Printf(TEXT("Protocol drain move accepted=%s state=%d RunFailed=%d ActorMoved=%d RoomEntered=%d."),
+			bProtocolDrainMoveAccepted ? TEXT("true") : TEXT("false"),
+			static_cast<int32>(ProtocolDrainRunContext->GetRunState()),
+			ProtocolDrainRunFailedCount,
+			ProtocolDrainActorMovedCount,
+			ProtocolDrainRoomEnteredCount));
+
+	RunSubsystem->StartNewRun(92345, 10, 10);
+	FGT_Command AbandonSetupMove;
+	AbandonSetupMove.CommandType = GTCommandType_Move;
+	AbandonSetupMove.SourceActorId = GTActorId_Player;
+	AbandonSetupMove.TargetActorId = GTActorId_Player;
+	AbandonSetupMove.TargetX = 1;
+	AbandonSetupMove.TargetY = 0;
+	RunSubsystem->SubmitCommand(AbandonSetupMove);
+	RunSubsystem->AbandonRun();
+	const UGT_QueryFacade* AbandonQueryFacade = RunSubsystem->GetQueryFacade();
+	const UGT_EventBus* AbandonEventBus = RunSubsystem->GetEventBus();
+	const UGT_CommandBus* AbandonCommandBus = RunSubsystem->GetCommandBus();
+	const bool bAbandonRunClearsRuntimeState = RunSubsystem->GetCurrentRunContext() == nullptr
+		&& AbandonQueryFacade
+		&& AbandonQueryFacade->GetRunState() == EGT_RunState::NotStarted
+		&& AbandonEventBus
+		&& AbandonEventBus->GetEventCount() == 0
+		&& AbandonCommandBus
+		&& AbandonCommandBus->GetPendingCommandCount() == 0;
+	AddCheck(
+		OutResults,
+		GTCheck_AbandonRunClearsRuntimeState,
+		bAbandonRunClearsRuntimeState,
+		FString::Printf(TEXT("After abandon context=%s state=%d events=%d commands=%d."),
+			RunSubsystem->GetCurrentRunContext() ? TEXT("valid") : TEXT("null"),
+			AbandonQueryFacade ? static_cast<int32>(AbandonQueryFacade->GetRunState()) : INDEX_NONE,
+			AbandonEventBus ? AbandonEventBus->GetEventCount() : INDEX_NONE,
+			AbandonCommandBus ? AbandonCommandBus->GetPendingCommandCount() : INDEX_NONE));
 
 	for (const FGT_RuntimeSmokeCheckResult& Result : OutResults)
 	{

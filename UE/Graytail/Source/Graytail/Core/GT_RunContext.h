@@ -225,7 +225,13 @@ public:
 	bool GetTruthCellSnapshot(int32 X, int32 Y, FGT_TruthCell& OutCell) const;
 	bool MarkTruthCellEntered(int32 X, int32 Y);
 	bool MarkTruthCellResolved(int32 X, int32 Y);
-	bool StartDummyCombat(int32 X, int32 Y, FName RoomContentId, FName RoomRuleId, int32 InitialDummyHp = 1);
+	bool StartDummyCombat(
+		int32 X,
+		int32 Y,
+		FName RoomContentId,
+		FName RoomRuleId,
+		int32 InitialDummyHp,
+		bool& bOutStarted);
 	bool AttackDummyCombat(FGT_CombatRuntimeState& OutState) { return AttackDummyCombat(TArray<int32>(), OutState); }
 	bool AttackDummyCombat(const TArray<int32>& HitEnemyIds, FGT_CombatRuntimeState& OutState);
 

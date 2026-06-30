@@ -209,6 +209,15 @@ namespace
 	const FName GTCheck_GameDataMissingRequiredIdRejected(TEXT("GameDataMissingRequiredIdRejected"));
 	const FName GTCheck_GameDataUnknownEventRejected(TEXT("GameDataUnknownEventRejected"));
 	const FName GTCheck_GameDataUnknownTriggerRejected(TEXT("GameDataUnknownTriggerRejected"));
+	const FName GTCheck_GameDataProtocolOrderRejected(TEXT("GameDataProtocolOrderRejected"));
+	const FName GTCheck_GameDataInvalidManualLayoutRejected(TEXT("GameDataInvalidManualLayoutRejected"));
+	const FName GTCheck_GameDataNoRandomExitRejected(TEXT("GameDataNoRandomExitRejected"));
+	const FName GTCheck_GameDataAssetlessItemRejected(TEXT("GameDataAssetlessItemRejected"));
+	const FName GTCheck_GameDataMissingQualityPoolRejected(TEXT("GameDataMissingQualityPoolRejected"));
+	const FName GTCheck_GameDataNegativeMetaEffectRejected(TEXT("GameDataNegativeMetaEffectRejected"));
+	const FName GTCheck_GameDataMineFloorRejected(TEXT("GameDataMineFloorRejected"));
+	const FName GTCheck_GameDataSlimelingSpawnRejected(TEXT("GameDataSlimelingSpawnRejected"));
+	const FName GTCheck_GameDataMissingPersistentMetaIdRejected(TEXT("GameDataMissingPersistentMetaIdRejected"));
 	const FName GTCheck_GameDataExternalValueReloaded(TEXT("GameDataExternalValueReloaded"));
 	const FName GTCheck_GameDataLootFacadeReloaded(TEXT("GameDataLootFacadeReloaded"));
 	const FName GTCheck_GameDataEventFacadeReloaded(TEXT("GameDataEventFacadeReloaded"));
@@ -453,6 +462,110 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		GTCheck_GameDataUnknownTriggerRejected,
 		UnknownTriggerDirectory,
 		TEXT("Unknown trigger"));
+
+	const FString ProtocolOrderDirectory = MakeGameDataTestDirectory(TEXT("ProtocolOrder"));
+	ReplaceGameDataText(
+		ProtocolOrderDirectory,
+		TEXT("core.json"),
+		TEXT("{ \"pressure\": 80, \"level\": 1 }"),
+		TEXT("{ \"pressure\": 0, \"level\": 1 }"));
+	AddRejectedGameDataCheck(
+		GTCheck_GameDataProtocolOrderRejected,
+		ProtocolOrderDirectory,
+		TEXT("Misordered protocol thresholds"));
+
+	const FString InvalidManualLayoutDirectory = MakeGameDataTestDirectory(TEXT("InvalidManualLayout"));
+	ReplaceGameDataText(
+		InvalidManualLayoutDirectory,
+		TEXT("difficulties.json"),
+		TEXT("\"spawn\": { \"x\": 0, \"y\": 0 }"),
+		TEXT("\"spawn\": { \"x\": 99, \"y\": 99 }"));
+	AddRejectedGameDataCheck(
+		GTCheck_GameDataInvalidManualLayoutRejected,
+		InvalidManualLayoutDirectory,
+		TEXT("Out-of-bounds manual layout"));
+
+	const FString NoRandomExitDirectory = MakeGameDataTestDirectory(TEXT("NoRandomExit"));
+	ReplaceGameDataText(
+		NoRandomExitDirectory,
+		TEXT("difficulties.json"),
+		TEXT("\"randomExitCount\": 3"),
+		TEXT("\"randomExitCount\": 0"));
+	AddRejectedGameDataCheck(
+		GTCheck_GameDataNoRandomExitRejected,
+		NoRandomExitDirectory,
+		TEXT("Random map without exits"));
+
+	const FString AssetlessItemDirectory = MakeGameDataTestDirectory(TEXT("AssetlessItem"));
+	ReplaceGameDataText(
+		AssetlessItemDirectory,
+		TEXT("items.json"),
+		TEXT("\"id\": \"broken_copper_wire\""),
+		TEXT("\"id\": \"missing_asset\""));
+	ReplaceGameDataText(
+		AssetlessItemDirectory,
+		TEXT("items.json"),
+		TEXT("\"broken_copper_wire\", \"dim_capacitor\""),
+		TEXT("\"missing_asset\", \"dim_capacitor\""));
+	AddRejectedGameDataCheck(
+		GTCheck_GameDataAssetlessItemRejected,
+		AssetlessItemDirectory,
+		TEXT("Item without runtime asset"));
+
+	const FString MissingQualityPoolDirectory = MakeGameDataTestDirectory(TEXT("MissingQualityPool"));
+	ReplaceGameDataText(
+		MissingQualityPoolDirectory,
+		TEXT("items.json"),
+		TEXT("{ \"quality\": \"rare\", \"itemIds\": [\"static_lens\", \"blackbox_tag\", \"data_disk\"] },"),
+		TEXT(""));
+	AddRejectedGameDataCheck(
+		GTCheck_GameDataMissingQualityPoolRejected,
+		MissingQualityPoolDirectory,
+		TEXT("Missing quality pool"));
+
+	const FString NegativeMetaEffectDirectory = MakeGameDataTestDirectory(TEXT("NegativeMetaEffect"));
+	ReplaceGameDataText(
+		NegativeMetaEffectDirectory,
+		TEXT("meta_catalog.json"),
+		TEXT("\"bonusHp\": 20"),
+		TEXT("\"bonusHp\": -101"));
+	AddRejectedGameDataCheck(
+		GTCheck_GameDataNegativeMetaEffectRejected,
+		NegativeMetaEffectDirectory,
+		TEXT("Negative meta effect"));
+
+	const FString MineFloorDirectory = MakeGameDataTestDirectory(TEXT("MineFloor"));
+	ReplaceGameDataText(
+		MineFloorDirectory,
+		TEXT("core.json"),
+		TEXT("\"mineDamageFloor\": 5"),
+		TEXT("\"mineDamageFloor\": 31"));
+	AddRejectedGameDataCheck(
+		GTCheck_GameDataMineFloorRejected,
+		MineFloorDirectory,
+		TEXT("Mine damage floor above base damage"));
+
+	const FString SlimelingSpawnDirectory = MakeGameDataTestDirectory(TEXT("SlimelingSpawn"));
+	ReplaceGameDataText(
+		SlimelingSpawnDirectory,
+		TEXT("monsters.json"),
+		TEXT("\"bChaseWhenFar\": false, \"bDashAwayOnHit\": false, \"spawnWeight\": 0"),
+		TEXT("\"bChaseWhenFar\": false, \"bDashAwayOnHit\": false, \"spawnWeight\": 1"));
+	AddRejectedGameDataCheck(
+		GTCheck_GameDataSlimelingSpawnRejected,
+		SlimelingSpawnDirectory,
+		TEXT("Slimeling direct spawn weight"));
+
+	const FString MissingPersistentMetaIdDirectory = MakeGameDataTestDirectory(TEXT("MissingPersistentMetaId"));
+	ReplaceGameDataText(
+		MissingPersistentMetaIdDirectory,
+		TEXT("meta_catalog.json"),
+		TEXT("\"id\": \"armor\""),
+		TEXT("\"id\": \"renamed_armor\""));
+	AddRejectedGameDataCheck(
+		GTCheck_GameDataMissingPersistentMetaIdRejected,
+		MissingPersistentMetaIdDirectory,
+		TEXT("Missing persistent meta id"));
 
 	const FString ExternalValueDirectory = MakeGameDataTestDirectory(TEXT("ExternalValue"));
 	const bool bExternalValueWritten = ReplaceGameDataText(

@@ -868,10 +868,12 @@ bool UGT_GameDataSubsystem::ReloadFromDirectory(const FString& Directory, bool b
 {
 	FGT_GameDataSnapshot Candidate;
 	TArray<FString> CandidateErrors;
-	bReady = FGT_GameDataLoader::LoadFromDirectory(Directory, Candidate, CandidateErrors);
-	if (bReady)
+	const bool bCandidateReady =
+		FGT_GameDataLoader::LoadFromDirectory(Directory, Candidate, CandidateErrors);
+	if (bCandidateReady)
 	{
 		Snapshot = MoveTemp(Candidate);
+		bReady = true;
 		Errors.Reset();
 		++Revision;
 		UE_LOG(LogGraytailGameData, Display, TEXT("Loaded balance data from %s."), *Directory);
@@ -887,7 +889,7 @@ bool UGT_GameDataSubsystem::ReloadFromDirectory(const FString& Directory, bool b
 			}
 		}
 	}
-	return bReady;
+	return bCandidateReady;
 }
 
 bool UGT_GameDataSubsystem::IsReady() const

@@ -11,7 +11,9 @@
 #include "Debug/GT_DebugTypes.h"
 #include "Data/GT_GameDataSubsystem.h"
 #include "Dom/JsonObject.h"
+#include "Domains/Combat/GT_MonsterCatalog.h"
 #include "Domains/Events/GT_EventRules.h"
+#include "Domains/Inventory/GT_ItemCatalog.h"
 #include "Domains/Inventory/GT_LootRules.h"
 #include "Domains/Meta/GT_MetaCatalog.h"
 #include "Domains/Meta/GT_MetaProgressSubsystem.h"
@@ -222,7 +224,9 @@ namespace
 	const FName GTCheck_GameDataLootFacadeReloaded(TEXT("GameDataLootFacadeReloaded"));
 	const FName GTCheck_GameDataEventFacadeReloaded(TEXT("GameDataEventFacadeReloaded"));
 	const FName GTCheck_GameDataMetaFacadeReloaded(TEXT("GameDataMetaFacadeReloaded"));
-	const FName GTCheck_GameDataInvalidBlocksRun(TEXT("GameDataInvalidBlocksRun"));
+	const FName GTCheck_GameDataItemFacadeReloaded(TEXT("GameDataItemFacadeReloaded"));
+	const FName GTCheck_GameDataMonsterFacadeReloaded(TEXT("GameDataMonsterFacadeReloaded"));
+	const FName GTCheck_GameDataInvalidReloadKeepsSnapshot(TEXT("GameDataInvalidReloadKeepsSnapshot"));
 	const FName GTCheck_SmokeUsesIsolatedSaveSlot(TEXT("SmokeUsesIsolatedSaveSlot"));
 	const FName GTCheck_MetaSaveDebugMirrorWritten(TEXT("MetaSaveDebugMirrorWritten"));
 	const FName GTCheck_MetaSaveDebugMirrorMatches(TEXT("MetaSaveDebugMirrorMatches"));
@@ -591,6 +595,8 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		? GEngine->GetEngineSubsystem<UGT_GameDataSubsystem>()
 		: nullptr;
 
+	const int32 DefaultWireValue = GT_ItemCatalog::GetItemValue(FName(TEXT("broken_copper_wire")));
+	const int32 DefaultSlimeHp = GT_MonsterCatalog::GetArchetype(EGT_MonsterType::Slime).HpBase;
 	const FString FacadeDirectory = MakeGameDataTestDirectory(TEXT("Facade"));
 	const bool bFacadeValuesWritten =
 		ReplaceGameDataText(FacadeDirectory, TEXT("loot_events.json"), TEXT("\"baseMin\": 2"), TEXT("\"baseMin\": 37"))
@@ -599,7 +605,9 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		&& ReplaceGameDataText(FacadeDirectory, TEXT("loot_events.json"), TEXT("\"baseSalePercent\": 75"), TEXT("\"baseSalePercent\": 50"))
 		&& ReplaceGameDataText(FacadeDirectory, TEXT("loot_events.json"), TEXT("\"goldDropPercent\": 10"), TEXT("\"goldDropPercent\": 11"))
 		&& ReplaceGameDataText(FacadeDirectory, TEXT("meta_catalog.json"), TEXT("\"maxEquipped\": 2"), TEXT("\"maxEquipped\": 3"))
-		&& ReplaceGameDataText(FacadeDirectory, TEXT("meta_catalog.json"), TEXT("\"id\": \"armor\", \"price\": 110"), TEXT("\"id\": \"armor\", \"price\": 111"));
+		&& ReplaceGameDataText(FacadeDirectory, TEXT("meta_catalog.json"), TEXT("\"id\": \"armor\", \"price\": 110"), TEXT("\"id\": \"armor\", \"price\": 111"))
+		&& ReplaceGameDataText(FacadeDirectory, TEXT("items.json"), TEXT("\"id\": \"broken_copper_wire\", \"value\": 8"), TEXT("\"id\": \"broken_copper_wire\", \"value\": 9"))
+		&& ReplaceGameDataText(FacadeDirectory, TEXT("monsters.json"), TEXT("\"id\": \"slime\", \"hpBase\": 24"), TEXT("\"id\": \"slime\", \"hpBase\": 25"));
 	const bool bFacadeDataLoaded = GameDataSubsystem
 		&& bFacadeValuesWritten
 		&& GameDataSubsystem->ReloadFromDirectory(FacadeDirectory, false);
@@ -635,27 +643,61 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 			FacadeArmor ? FacadeArmor->Price : INDEX_NONE,
 			GT_MetaCatalog::GetMaxEquipped()));
 
-	const bool bInvalidLoaded = GameDataSubsystem
-		&& !GameDataSubsystem->ReloadFromDirectory(MalformedDirectory, false);
-	UGT_RunContext* InvalidConfigRun = bInvalidLoaded && RunSubsystem
-		? RunSubsystem->StartNewRun(7777, 10, 10)
-		: nullptr;
-	const bool bInvalidBlocksRun = bInvalidLoaded && InvalidConfigRun == nullptr;
-	if (RunSubsystem)
-	{
-		RunSubsystem->EndCurrentRun();
-	}
-	const bool bDefaultReloaded = GameDataSubsystem
-		&& GameDataSubsystem->ReloadFromDirectory(UGT_GameDataSubsystem::GetDefaultDataDirectory(), false);
 	AddCheck(
 		OutResults,
-		GTCheck_GameDataInvalidBlocksRun,
-		bInvalidBlocksRun && bDefaultReloaded,
+		GTCheck_GameDataItemFacadeReloaded,
+		bFacadeDataLoaded
+			&& DefaultWireValue == 8
+			&& GT_ItemCatalog::GetItemValue(FName(TEXT("broken_copper_wire"))) == 9,
 		FString::Printf(
-			TEXT("Invalid loaded=%s run=%s default reloaded=%s."),
-			bInvalidLoaded ? TEXT("true") : TEXT("false"),
-			InvalidConfigRun ? TEXT("created") : TEXT("null"),
-			bDefaultReloaded ? TEXT("true") : TEXT("false")));
+			TEXT("Wire value default=%d reloaded=%d."),
+			DefaultWireValue,
+			GT_ItemCatalog::GetItemValue(FName(TEXT("broken_copper_wire")))));
+	AddCheck(
+		OutResults,
+		GTCheck_GameDataMonsterFacadeReloaded,
+		bFacadeDataLoaded
+			&& DefaultSlimeHp == 24
+			&& GT_MonsterCatalog::GetArchetype(EGT_MonsterType::Slime).HpBase == 25,
+		FString::Printf(
+			TEXT("Slime HP default=%d reloaded=%d."),
+			DefaultSlimeHp,
+			GT_MonsterCatalog::GetArchetype(EGT_MonsterType::Slime).HpBase));
+
+	const uint64 RevisionBeforeInvalidReload = GameDataSubsystem
+		? GameDataSubsystem->GetRevision()
+		: 0;
+	const bool bInvalidRejected = GameDataSubsystem
+		&& !GameDataSubsystem->ReloadFromDirectory(MalformedDirectory, false);
+	const FGT_GameDataSnapshot* SnapshotAfterInvalidReload = GameDataSubsystem
+		? GameDataSubsystem->GetSnapshot()
+		: nullptr;
+	const bool bInvalidReloadKeepsSnapshot = bInvalidRejected
+		&& GameDataSubsystem->IsReady()
+		&& GameDataSubsystem->GetRevision() == RevisionBeforeInvalidReload
+		&& SnapshotAfterInvalidReload
+		&& SnapshotAfterInvalidReload->Core.Combat.MineDamage == 30;
+	AddCheck(
+		OutResults,
+		GTCheck_GameDataInvalidReloadKeepsSnapshot,
+		bInvalidReloadKeepsSnapshot,
+		FString::Printf(
+			TEXT("Rejected=%s ready=%s revision=%llu->%llu snapshot=%s."),
+			bInvalidRejected ? TEXT("true") : TEXT("false"),
+			GameDataSubsystem && GameDataSubsystem->IsReady() ? TEXT("true") : TEXT("false"),
+			RevisionBeforeInvalidReload,
+			GameDataSubsystem ? GameDataSubsystem->GetRevision() : 0,
+			SnapshotAfterInvalidReload ? TEXT("valid") : TEXT("null")));
+	const bool bDefaultReloaded = GameDataSubsystem
+		&& GameDataSubsystem->ReloadFromDirectory(UGT_GameDataSubsystem::GetDefaultDataDirectory(), false);
+	if (!bDefaultReloaded)
+	{
+		AddCheck(
+			OutResults,
+			FName(TEXT("GameDataDefaultRestored")),
+			false,
+			TEXT("Default game data could not be restored after reload tests."));
+	}
 
 	UGT_MetaProgressSubsystem* MetaProgress = DebugSubsystem && DebugSubsystem->GetGameInstance()
 		? DebugSubsystem->GetGameInstance()->GetSubsystem<UGT_MetaProgressSubsystem>()

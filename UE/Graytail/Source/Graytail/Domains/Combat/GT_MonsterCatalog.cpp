@@ -88,23 +88,50 @@ namespace
 		ApplyBalance(Result, FindBalance(TEXT("slimeling")));
 		return Result;
 	}
+
+	struct FGT_MonsterCatalogCache
+	{
+		uint64 Revision = MAX_uint64;
+		FGT_MonsterArchetype Slime;
+		FGT_MonsterArchetype Bat;
+		FGT_MonsterArchetype Drone;
+		FGT_MonsterArchetype Slimeling;
+
+		void Refresh()
+		{
+			const uint64 CurrentRevision = GT_GameData::GetRevision();
+			if (Revision == CurrentRevision)
+			{
+				return;
+			}
+			Slime = BuildSlime();
+			Bat = BuildBat();
+			Drone = BuildDrone();
+			Slimeling = BuildSlimeling();
+			Revision = CurrentRevision;
+		}
+	};
+
+	FGT_MonsterCatalogCache& GetCache()
+	{
+		static FGT_MonsterCatalogCache Cache;
+		Cache.Refresh();
+		return Cache;
+	}
 }
 
 namespace GT_MonsterCatalog
 {
 	const FGT_MonsterArchetype& GetArchetype(EGT_MonsterType Type)
 	{
-		static const FGT_MonsterArchetype Slime = BuildSlime();
-		static const FGT_MonsterArchetype Bat = BuildBat();
-		static const FGT_MonsterArchetype Drone = BuildDrone();
-		static const FGT_MonsterArchetype Slimeling = BuildSlimeling();
+		FGT_MonsterCatalogCache& Cache = GetCache();
 		switch (Type)
 		{
-		case EGT_MonsterType::Bat: return Bat;
-		case EGT_MonsterType::Drone: return Drone;
-		case EGT_MonsterType::Slimeling: return Slimeling;
+		case EGT_MonsterType::Bat: return Cache.Bat;
+		case EGT_MonsterType::Drone: return Cache.Drone;
+		case EGT_MonsterType::Slimeling: return Cache.Slimeling;
 		case EGT_MonsterType::Slime:
-		default: return Slime;
+		default: return Cache.Slime;
 		}
 	}
 

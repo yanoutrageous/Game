@@ -1,6 +1,7 @@
 #include "Domains/Meta/GT_MetaProgressSubsystem.h"
 
 #include "Domains/Meta/GT_MetaCatalog.h"
+#include "Data/GT_GameDataSubsystem.h"
 #include "Save/GT_MetaSaveGame.h"
 #include "Dom/JsonObject.h"
 #include "HAL/FileManager.h"
@@ -111,6 +112,10 @@ void UGT_MetaProgressSubsystem::Load()
 void UGT_MetaProgressSubsystem::SanitizeAfterLoad()
 {
 	State.Gold = ClampNonNegative(State.Gold);
+	if (!GT_GameData::IsReady())
+	{
+		return;
+	}
 
 	// 已装备项必须确实拥有(对齐 Lua 校验)。
 	State.EquippedItems.RemoveAll([this](const FName& Id)

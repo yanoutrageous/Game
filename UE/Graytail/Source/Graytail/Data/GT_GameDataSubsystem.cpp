@@ -7,12 +7,137 @@
 #include "Misc/Paths.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "UObject/UnrealType.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogGraytailGameData, Log, All);
 
 namespace
 {
 	constexpr int32 SupportedSchemaVersion = 1;
+
+	bool ValidateJsonValueShape(
+		const TSharedPtr<FJsonValue>& Value,
+		const FProperty* Property,
+		const FString& Path,
+		TArray<FString>& OutErrors);
+
+	bool ValidateJsonObjectShape(
+		const TSharedPtr<FJsonObject>& Object,
+		const UStruct* StructType,
+		const FString& Path,
+		TArray<FString>& OutErrors)
+	{
+		if (!Object.IsValid())
+		{
+			OutErrors.Add(FString::Printf(TEXT("%s: expected an object."), *Path));
+			return false;
+		}
+
+		bool bValid = true;
+		TSet<FString> KnownFields;
+		for (TFieldIterator<FProperty> It(StructType); It; ++It)
+		{
+			const FProperty* Property = *It;
+			const FString FieldName = StructType->GetAuthoredNameForField(Property);
+			const FString FieldPath = Path + TEXT(".") + FieldName;
+			KnownFields.Add(FieldName);
+
+			const TSharedPtr<FJsonValue>* FieldValue = Object->Values.Find(FieldName);
+			if (!FieldValue)
+			{
+				OutErrors.Add(FString::Printf(TEXT("%s: required field is missing."), *FieldPath));
+				bValid = false;
+				continue;
+			}
+			bValid &= ValidateJsonValueShape(*FieldValue, Property, FieldPath, OutErrors);
+		}
+
+		for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : Object->Values)
+		{
+			if (!KnownFields.Contains(Pair.Key))
+			{
+				OutErrors.Add(FString::Printf(
+					TEXT("%s.%s: unknown field."),
+					*Path,
+					*Pair.Key));
+				bValid = false;
+			}
+		}
+		return bValid;
+	}
+
+	bool ValidateJsonValueShape(
+		const TSharedPtr<FJsonValue>& Value,
+		const FProperty* Property,
+		const FString& Path,
+		TArray<FString>& OutErrors)
+	{
+		if (!Value.IsValid() || Value->IsNull())
+		{
+			OutErrors.Add(FString::Printf(TEXT("%s: null is not allowed."), *Path));
+			return false;
+		}
+
+		if (const FArrayProperty* ArrayProperty = CastField<FArrayProperty>(Property))
+		{
+			if (Value->Type != EJson::Array)
+			{
+				OutErrors.Add(FString::Printf(TEXT("%s: expected an array."), *Path));
+				return false;
+			}
+
+			bool bValid = true;
+			const TArray<TSharedPtr<FJsonValue>>& Values = Value->AsArray();
+			for (int32 Index = 0; Index < Values.Num(); ++Index)
+			{
+				bValid &= ValidateJsonValueShape(
+					Values[Index],
+					ArrayProperty->Inner,
+					FString::Printf(TEXT("%s[%d]"), *Path, Index),
+					OutErrors);
+			}
+			return bValid;
+		}
+
+		if (const FStructProperty* StructProperty = CastField<FStructProperty>(Property))
+		{
+			if (Value->Type != EJson::Object)
+			{
+				OutErrors.Add(FString::Printf(TEXT("%s: expected an object."), *Path));
+				return false;
+			}
+			return ValidateJsonObjectShape(Value->AsObject(), StructProperty->Struct, Path, OutErrors);
+		}
+
+		if (const FNumericProperty* NumericProperty = CastField<FNumericProperty>(Property))
+		{
+			if (Value->Type != EJson::Number)
+			{
+				OutErrors.Add(FString::Printf(TEXT("%s: expected a number."), *Path));
+				return false;
+			}
+
+			const double Number = Value->AsNumber();
+			const bool bIntegerInvalid = NumericProperty->IsInteger()
+				&& (FMath::TruncToDouble(Number) != Number
+					|| !NumericProperty->CanHoldValue(static_cast<int64>(Number)));
+			if (!FMath::IsFinite(Number) || bIntegerInvalid)
+			{
+				OutErrors.Add(FString::Printf(TEXT("%s: number is outside the property range."), *Path));
+				return false;
+			}
+			return true;
+		}
+
+		const bool bTypeMatches =
+			(CastField<FBoolProperty>(Property) && Value->Type == EJson::Boolean)
+			|| (CastField<FStrProperty>(Property) && Value->Type == EJson::String);
+		if (!bTypeMatches)
+		{
+			OutErrors.Add(FString::Printf(TEXT("%s: JSON type does not match the property."), *Path));
+		}
+		return bTypeMatches;
+	}
 
 	template <typename T>
 	bool LoadJsonFile(const FString& Directory, const TCHAR* FileName, T& OutValue, TArray<FString>& OutErrors)
@@ -33,9 +158,24 @@ namespace
 			return false;
 		}
 
-		if (!FJsonObjectConverter::JsonObjectStringToUStruct(Json, &OutValue, 0, 0))
+		if (!ValidateJsonObjectShape(ParsedObject, T::StaticStruct(), FileName, OutErrors))
 		{
-			OutErrors.Add(FString::Printf(TEXT("%s: invalid JSON or incompatible fields."), FileName));
+			return false;
+		}
+
+		FText ConversionError;
+		if (!FJsonObjectConverter::JsonObjectToUStruct(
+			ParsedObject.ToSharedRef(),
+			&OutValue,
+			0,
+			0,
+			true,
+			&ConversionError))
+		{
+			OutErrors.Add(FString::Printf(
+				TEXT("%s: incompatible fields: %s"),
+				FileName,
+				*ConversionError.ToString()));
 			return false;
 		}
 		return true;

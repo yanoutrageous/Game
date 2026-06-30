@@ -26,32 +26,56 @@
     {
       "id": "easy", "width": 10, "height": 10, "mineDensity": 0.20, "spawnSafeRadius": 1,
       "monsterRoomRatio": 0.10, "eventRoomRatio": 0.10, "chestRoomRatio": 0.025,
-      "randomExitCount": 3, "bRevealExitsAtStart": false, "fixedSeed": 0
+      "randomExitCount": 3, "bRevealExitsAtStart": false, "fixedSeed": 0,
+      "manualLayout": {
+        "bEnabled": false, "spawn": { "x": 0, "y": 0 },
+        "mines": [], "monsterRooms": [], "chestRooms": [], "eventRooms": [], "exits": []
+      }
     },
     {
       "id": "standard", "width": 10, "height": 10, "mineDensity": 0.20, "spawnSafeRadius": 1,
       "monsterRoomRatio": 0.10, "eventRoomRatio": 0.10, "chestRoomRatio": 0.025,
-      "randomExitCount": 2, "bRevealExitsAtStart": false, "fixedSeed": 0
+      "randomExitCount": 2, "bRevealExitsAtStart": false, "fixedSeed": 0,
+      "manualLayout": {
+        "bEnabled": false, "spawn": { "x": 0, "y": 0 },
+        "mines": [], "monsterRooms": [], "chestRooms": [], "eventRooms": [], "exits": []
+      }
     },
     {
       "id": "hard", "width": 10, "height": 10, "mineDensity": 0.20, "spawnSafeRadius": 1,
       "monsterRoomRatio": 0.15, "eventRoomRatio": 0.10, "chestRoomRatio": 0.025,
-      "randomExitCount": 1, "bRevealExitsAtStart": false, "fixedSeed": 0
+      "randomExitCount": 1, "bRevealExitsAtStart": false, "fixedSeed": 0,
+      "manualLayout": {
+        "bEnabled": false, "spawn": { "x": 0, "y": 0 },
+        "mines": [], "monsterRooms": [], "chestRooms": [], "eventRooms": [], "exits": []
+      }
     },
     {
       "id": "veteran", "width": 13, "height": 13, "mineDensity": 0.20, "spawnSafeRadius": 1,
       "monsterRoomRatio": 0.10, "eventRoomRatio": 0.10, "chestRoomRatio": 0.025,
-      "randomExitCount": 4, "bRevealExitsAtStart": false, "fixedSeed": 0
+      "randomExitCount": 4, "bRevealExitsAtStart": false, "fixedSeed": 0,
+      "manualLayout": {
+        "bEnabled": false, "spawn": { "x": 0, "y": 0 },
+        "mines": [], "monsterRooms": [], "chestRooms": [], "eventRooms": [], "exits": []
+      }
     },
     {
       "id": "elite", "width": 13, "height": 13, "mineDensity": 0.20, "spawnSafeRadius": 1,
       "monsterRoomRatio": 0.15, "eventRoomRatio": 0.10, "chestRoomRatio": 0.025,
-      "randomExitCount": 2, "bRevealExitsAtStart": false, "fixedSeed": 0
+      "randomExitCount": 2, "bRevealExitsAtStart": false, "fixedSeed": 0,
+      "manualLayout": {
+        "bEnabled": false, "spawn": { "x": 0, "y": 0 },
+        "mines": [], "monsterRooms": [], "chestRooms": [], "eventRooms": [], "exits": []
+      }
     },
     {
       "id": "nightmare", "width": 13, "height": 13, "mineDensity": 0.20, "spawnSafeRadius": 1,
       "monsterRoomRatio": 0.18, "eventRoomRatio": 0.10, "chestRoomRatio": 0.025,
-      "randomExitCount": 1, "bRevealExitsAtStart": false, "fixedSeed": 0
+      "randomExitCount": 1, "bRevealExitsAtStart": false, "fixedSeed": 0,
+      "manualLayout": {
+        "bEnabled": false, "spawn": { "x": 0, "y": 0 },
+        "mines": [], "monsterRooms": [], "chestRooms": [], "eventRooms": [], "exits": []
+      }
     }
   ]
 }

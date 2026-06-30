@@ -198,6 +198,9 @@ namespace
 	const FName GTCheck_GameDataDefaultLoads(TEXT("GameDataDefaultLoads"));
 	const FName GTCheck_GameDataMissingDirectoryRejected(TEXT("GameDataMissingDirectoryRejected"));
 	const FName GTCheck_GameDataMalformedJsonRejected(TEXT("GameDataMalformedJsonRejected"));
+	const FName GTCheck_GameDataMisspelledFieldRejected(TEXT("GameDataMisspelledFieldRejected"));
+	const FName GTCheck_GameDataWrongScalarTypeRejected(TEXT("GameDataWrongScalarTypeRejected"));
+	const FName GTCheck_GameDataUnknownFieldRejected(TEXT("GameDataUnknownFieldRejected"));
 	const FName GTCheck_GameDataVersionRejected(TEXT("GameDataVersionRejected"));
 	const FName GTCheck_GameDataDuplicateIdRejected(TEXT("GameDataDuplicateIdRejected"));
 	const FName GTCheck_GameDataNegativeValueRejected(TEXT("GameDataNegativeValueRejected"));
@@ -360,6 +363,39 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		*FPaths::Combine(MalformedDirectory, TEXT("core.json")),
 		FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
 	AddRejectedGameDataCheck(GTCheck_GameDataMalformedJsonRejected, MalformedDirectory, TEXT("Malformed JSON"));
+
+	const FString MisspelledFieldDirectory = MakeGameDataTestDirectory(TEXT("MisspelledField"));
+	ReplaceGameDataText(
+		MisspelledFieldDirectory,
+		TEXT("monsters.json"),
+		TEXT("\"moveSpeed\": 0.18"),
+		TEXT("\"moveSpeeed\": 0.18"));
+	AddRejectedGameDataCheck(
+		GTCheck_GameDataMisspelledFieldRejected,
+		MisspelledFieldDirectory,
+		TEXT("Misspelled field"));
+
+	const FString WrongScalarTypeDirectory = MakeGameDataTestDirectory(TEXT("WrongScalarType"));
+	ReplaceGameDataText(
+		WrongScalarTypeDirectory,
+		TEXT("core.json"),
+		TEXT("\"schemaVersion\": 1"),
+		TEXT("\"schemaVersion\": \"1\""));
+	AddRejectedGameDataCheck(
+		GTCheck_GameDataWrongScalarTypeRejected,
+		WrongScalarTypeDirectory,
+		TEXT("Wrong scalar type"));
+
+	const FString UnknownFieldDirectory = MakeGameDataTestDirectory(TEXT("UnknownField"));
+	ReplaceGameDataText(
+		UnknownFieldDirectory,
+		TEXT("core.json"),
+		TEXT("\"baseHp\": 100"),
+		TEXT("\"baseHp\": 100, \"unknownHp\": 1"));
+	AddRejectedGameDataCheck(
+		GTCheck_GameDataUnknownFieldRejected,
+		UnknownFieldDirectory,
+		TEXT("Unknown field"));
 
 	const FString VersionDirectory = MakeGameDataTestDirectory(TEXT("Version"));
 	ReplaceGameDataText(VersionDirectory, TEXT("core.json"), TEXT("\"schemaVersion\": 1"), TEXT("\"schemaVersion\": 2"));

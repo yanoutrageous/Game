@@ -460,6 +460,7 @@ private:
 	int32 ProtocolHealAmount = 0;
 	int32 ProtocolHealsUsed = 0;
 	bool bLoadoutChestBonusLoot = false;   // 回收磁石: 进宝箱房额外掉
+	int32 ChestBonusLootAmount = 0;
 	TArray<FIntPoint> ChestBonusGrantedCells;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Graytail|Protocol", meta = (AllowPrivateAccess = "true"))

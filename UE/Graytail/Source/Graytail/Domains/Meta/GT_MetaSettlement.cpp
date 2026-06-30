@@ -3,6 +3,7 @@
 #include "Core/GT_RunContext.h"
 #include "Domains/Inventory/GT_InventoryTypes.h"
 #include "Domains/Inventory/GT_ItemCatalog.h"
+#include "Domains/Meta/GT_MetaCatalog.h"
 #include "Domains/Meta/GT_MetaProgressSubsystem.h"
 #include "Domains/Meta/GT_MetaTypes.h"
 
@@ -14,10 +15,21 @@ namespace GT_MetaSettlement
 
 		FGT_ExtractionReward Reward;
 		int32 DirectGold = Inv.PendingGold + Inv.SafeGold;   // 对齐 Lua directGold = pending+safe
-		// S6 公司工牌: 撤离结算金币 +15%。
-		if (Meta.IsEquipped(FName(TEXT("company_badge"))))
+		int32 SettleGoldBonusPercent = 0;
+		for (const FName& EquippedId : Meta.GetEquippedItems())
 		{
-			DirectGold = FMath::RoundToInt(DirectGold * 1.15f);
+			const FGT_EquipDef* Def = GT_MetaCatalog::FindEquip(EquippedId);
+			if (Def && Def->Trigger == EGT_ItemTrigger::SettleGoldBonus)
+			{
+				SettleGoldBonusPercent += Def->TriggerAmount;
+			}
+		}
+		if (SettleGoldBonusPercent > 0)
+		{
+			DirectGold = FMath::RoundToInt(
+				static_cast<double>(DirectGold)
+				* (100.0 + static_cast<double>(SettleGoldBonusPercent))
+				/ 100.0);
 		}
 		Reward.DirectGold = DirectGold;
 		Reward.LoosePartsGold = 0;                            // Lua GetExtractionReward 写死 0(零散零件不折金)

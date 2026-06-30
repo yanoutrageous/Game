@@ -89,7 +89,7 @@ private:
 	// 最近一次撤离失败损失的装备 id(非持久, 仅供结算面板本次显示)。
 	TArray<FName> LastFailureLostEquips;
 
-	static const TCHAR* SaveSlotName() { return TEXT("GraytailMeta"); }
+	static FString SaveSlotName();
 	static constexpr int32 SaveUserIndex = 0;
 
 	// 读档后清洗(对齐 Lua Load 的校验): 已装备项必须确实拥有; loadout 数量夹到库存。

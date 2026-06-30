@@ -93,14 +93,37 @@ namespace
 		default: return FString();
 		}
 	}
+
+	struct FGT_ItemCatalogCache
+	{
+		uint64 Revision = MAX_uint64;
+		TArray<FGT_ItemCatalogEntry> ItemDefs;
+
+		void Refresh()
+		{
+			const uint64 CurrentRevision = GT_GameData::GetRevision();
+			if (Revision == CurrentRevision)
+			{
+				return;
+			}
+			ItemDefs = LoadItemDefs();
+			Revision = CurrentRevision;
+		}
+	};
+
+	FGT_ItemCatalogCache& GetCache()
+	{
+		static FGT_ItemCatalogCache Cache;
+		Cache.Refresh();
+		return Cache;
+	}
 }
 
 namespace GT_ItemCatalog
 {
 	const TArray<FGT_ItemCatalogEntry>& GetAllItemDefs()
 	{
-		static const TArray<FGT_ItemCatalogEntry> ItemDefs = LoadItemDefs();
-		return ItemDefs;
+		return GetCache().ItemDefs;
 	}
 
 	const FGT_ItemCatalogEntry* FindItemDef(FName ItemId)

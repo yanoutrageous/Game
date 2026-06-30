@@ -76,7 +76,7 @@ void UGT_RunContext::InitializeFromSpec(const FGT_MapGenerationSpec& MapSpec)
 	LoadoutMonsterFleeBonus = 0;
 	bLoadoutKillPowerStack = false; KillPowerStackCap = 0; KillPowerStackAmount = 0; KillPowerStacksUsed = 0;
 	bLoadoutProtocolHeal = false; ProtocolHealCap = 0; ProtocolHealAmount = 0; ProtocolHealsUsed = 0;
-	bLoadoutChestBonusLoot = false; ChestBonusGrantedCells.Reset();
+	bLoadoutChestBonusLoot = false; ChestBonusLootAmount = 0; ChestBonusGrantedCells.Reset();
 
 	PlayerActorId = FName(TEXT("Player"));
 
@@ -158,7 +158,7 @@ void UGT_RunContext::ResetRun()
 	LoadoutMonsterFleeBonus = 0;
 	bLoadoutKillPowerStack = false; KillPowerStackCap = 0; KillPowerStackAmount = 0; KillPowerStacksUsed = 0;
 	bLoadoutProtocolHeal = false; ProtocolHealCap = 0; ProtocolHealAmount = 0; ProtocolHealsUsed = 0;
-	bLoadoutChestBonusLoot = false; ChestBonusGrantedCells.Reset();
+	bLoadoutChestBonusLoot = false; ChestBonusLootAmount = 0; ChestBonusGrantedCells.Reset();
 	SpawnCellCoord = FIntPoint::ZeroValue;
 	MapMode = EGT_MapMode::Unknown;
 }
@@ -795,7 +795,7 @@ void UGT_RunContext::ApplyMetaLoadout(const FGT_EquipBonus& Equip, const FGT_Tal
 		case EGT_ItemTrigger::ProtocolHeal:
 			bLoadoutProtocolHeal = true; ProtocolHealCap = Def->TriggerCap; ProtocolHealAmount = Def->TriggerAmount; break;
 		case EGT_ItemTrigger::ChestBonusLoot:
-			bLoadoutChestBonusLoot = true; break;
+			bLoadoutChestBonusLoot = true; ChestBonusLootAmount += Def->TriggerAmount; break;
 		default: break;
 		}
 	}
@@ -848,13 +848,22 @@ bool UGT_RunContext::TryGrantChestMagnetLoot(int32 X, int32 Y)
 	}
 	ChestBonusGrantedCells.Add(Coord);
 
-	// 额外掉 1 件低价值回收物(取低档品质物品, 确定性)。
+	// 按配置追加低档回收物，单个宝箱格只触发一次。
 	const FName ItemId = GT_ItemCatalog::GetQualityItemId(EGT_ItemQuality::Low);
 	if (ItemId.IsNone())
 	{
 		return false;
 	}
-	return RunInventory.AddCarriedItem(ItemId, 1, FName(TEXT("recovered")));
+	bool bGrantedAny = false;
+	for (int32 Index = 0; Index < ChestBonusLootAmount; ++Index)
+	{
+		if (!RunInventory.AddCarriedItem(ItemId, 1, FName(TEXT("recovered"))))
+		{
+			break;
+		}
+		bGrantedAny = true;
+	}
+	return bGrantedAny;
 }
 
 bool UGT_RunContext::MarkExploredForPressure(int32 X, int32 Y)
@@ -1135,7 +1144,11 @@ bool UGT_RunContext::UseConsumableAtPlayer(FName ItemId, FGT_ConsumableOutcome& 
 		int32 PY = 0;
 		TryGetPlayerPosition(PX, PY);
 		const uint32 Hash = static_cast<uint32>(Seed * 1103515245 + PX * 928371 + PY * 364479 + 7919);
-		const bool bGold = static_cast<int32>(Hash % 100u) < LuckyCoin.GoldChancePercent;
+		const uint32 HalfRoll = (Hash >> 1u) % 50u;
+		const int32 StableRoll = (Hash & 1u) == 0u
+			? static_cast<int32>(HalfRoll)
+			: 50 + static_cast<int32>(HalfRoll);
+		const bool bGold = StableRoll < LuckyCoin.GoldChancePercent;
 
 		bool bRevealed = false;
 		if (!bGold)

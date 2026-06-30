@@ -1,17 +1,31 @@
 #include "Domains/Meta/GT_MetaProgressSubsystem.h"
 
 #include "Domains/Meta/GT_MetaCatalog.h"
+#include "Data/GT_GameDataSubsystem.h"
 #include "Save/GT_MetaSaveGame.h"
 #include "Dom/JsonObject.h"
 #include "HAL/FileManager.h"
 #include "JsonObjectConverter.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/FileHelper.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "Misc/Paths.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogGraytailMeta, Log, All);
+
+FString UGT_MetaProgressSubsystem::SaveSlotName()
+{
+	FString Override;
+	if (FParse::Value(FCommandLine::Get(), TEXT("GraytailSaveSlot="), Override)
+		&& !Override.IsEmpty())
+	{
+		return Override;
+	}
+	return TEXT("GraytailMeta");
+}
 
 // ============================================================================
 // 生命周期 / 存读档
@@ -98,11 +112,15 @@ void UGT_MetaProgressSubsystem::Load()
 void UGT_MetaProgressSubsystem::SanitizeAfterLoad()
 {
 	State.Gold = ClampNonNegative(State.Gold);
+	if (!GT_GameData::IsReady())
+	{
+		return;
+	}
 
 	// 已装备项必须确实拥有(对齐 Lua 校验)。
 	State.EquippedItems.RemoveAll([this](const FName& Id)
 	{
-		return !State.OwnedItems.Contains(Id);
+		return !State.OwnedItems.Contains(Id) || !GT_MetaCatalog::FindEquip(Id);
 	});
 	// 上限保护。
 	if (State.EquippedItems.Num() > GT_MetaCatalog::GetMaxEquipped())

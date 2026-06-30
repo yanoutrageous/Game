@@ -11,12 +11,17 @@
 #include "Debug/GT_DebugTypes.h"
 #include "Data/GT_GameDataSubsystem.h"
 #include "Dom/JsonObject.h"
+#include "Domains/Combat/GT_MonsterCatalog.h"
 #include "Domains/Events/GT_EventRules.h"
+#include "Domains/Inventory/GT_ItemCatalog.h"
 #include "Domains/Inventory/GT_LootRules.h"
 #include "Domains/Meta/GT_MetaCatalog.h"
 #include "Domains/Meta/GT_MetaProgressSubsystem.h"
+#include "Domains/Meta/GT_MetaSettlement.h"
 #include "Engine/Engine.h"
 #include "HAL/FileManager.h"
+#include "Kismet/GameplayStatics.h"
+#include "Save/GT_MetaSaveGame.h"
 #include "UI/ViewModels/GT_MiniMapViewModel.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Guid.h"
@@ -198,6 +203,9 @@ namespace
 	const FName GTCheck_GameDataDefaultLoads(TEXT("GameDataDefaultLoads"));
 	const FName GTCheck_GameDataMissingDirectoryRejected(TEXT("GameDataMissingDirectoryRejected"));
 	const FName GTCheck_GameDataMalformedJsonRejected(TEXT("GameDataMalformedJsonRejected"));
+	const FName GTCheck_GameDataMisspelledFieldRejected(TEXT("GameDataMisspelledFieldRejected"));
+	const FName GTCheck_GameDataWrongScalarTypeRejected(TEXT("GameDataWrongScalarTypeRejected"));
+	const FName GTCheck_GameDataUnknownFieldRejected(TEXT("GameDataUnknownFieldRejected"));
 	const FName GTCheck_GameDataVersionRejected(TEXT("GameDataVersionRejected"));
 	const FName GTCheck_GameDataDuplicateIdRejected(TEXT("GameDataDuplicateIdRejected"));
 	const FName GTCheck_GameDataNegativeValueRejected(TEXT("GameDataNegativeValueRejected"));
@@ -206,11 +214,27 @@ namespace
 	const FName GTCheck_GameDataMissingRequiredIdRejected(TEXT("GameDataMissingRequiredIdRejected"));
 	const FName GTCheck_GameDataUnknownEventRejected(TEXT("GameDataUnknownEventRejected"));
 	const FName GTCheck_GameDataUnknownTriggerRejected(TEXT("GameDataUnknownTriggerRejected"));
+	const FName GTCheck_GameDataProtocolOrderRejected(TEXT("GameDataProtocolOrderRejected"));
+	const FName GTCheck_GameDataInvalidManualLayoutRejected(TEXT("GameDataInvalidManualLayoutRejected"));
+	const FName GTCheck_GameDataNoRandomExitRejected(TEXT("GameDataNoRandomExitRejected"));
+	const FName GTCheck_GameDataAssetlessItemRejected(TEXT("GameDataAssetlessItemRejected"));
+	const FName GTCheck_GameDataMissingQualityPoolRejected(TEXT("GameDataMissingQualityPoolRejected"));
+	const FName GTCheck_GameDataNegativeMetaEffectRejected(TEXT("GameDataNegativeMetaEffectRejected"));
+	const FName GTCheck_GameDataMineFloorRejected(TEXT("GameDataMineFloorRejected"));
+	const FName GTCheck_GameDataSlimelingSpawnRejected(TEXT("GameDataSlimelingSpawnRejected"));
+	const FName GTCheck_GameDataMissingPersistentMetaIdRejected(TEXT("GameDataMissingPersistentMetaIdRejected"));
 	const FName GTCheck_GameDataExternalValueReloaded(TEXT("GameDataExternalValueReloaded"));
 	const FName GTCheck_GameDataLootFacadeReloaded(TEXT("GameDataLootFacadeReloaded"));
 	const FName GTCheck_GameDataEventFacadeReloaded(TEXT("GameDataEventFacadeReloaded"));
 	const FName GTCheck_GameDataMetaFacadeReloaded(TEXT("GameDataMetaFacadeReloaded"));
-	const FName GTCheck_GameDataInvalidBlocksRun(TEXT("GameDataInvalidBlocksRun"));
+	const FName GTCheck_GameDataItemFacadeReloaded(TEXT("GameDataItemFacadeReloaded"));
+	const FName GTCheck_GameDataMonsterFacadeReloaded(TEXT("GameDataMonsterFacadeReloaded"));
+	const FName GTCheck_GameDataInvalidReloadKeepsSnapshot(TEXT("GameDataInvalidReloadKeepsSnapshot"));
+	const FName GTCheck_LuckyCoinPreservesLegacySeed(TEXT("LuckyCoinPreservesLegacySeed"));
+	const FName GTCheck_ConfiguredSettleGoldBonusApplied(TEXT("ConfiguredSettleGoldBonusApplied"));
+	const FName GTCheck_ConfiguredChestBonusApplied(TEXT("ConfiguredChestBonusApplied"));
+	const FName GTCheck_SmokeUsesIsolatedSaveSlot(TEXT("SmokeUsesIsolatedSaveSlot"));
+	const FName GTCheck_MetaSaveRemovesOrphanedEquip(TEXT("MetaSaveRemovesOrphanedEquip"));
 	const FName GTCheck_MetaSaveDebugMirrorWritten(TEXT("MetaSaveDebugMirrorWritten"));
 	const FName GTCheck_MetaSaveDebugMirrorMatches(TEXT("MetaSaveDebugMirrorMatches"));
 	const FName GTCheck_MetaSaveIgnoresDebugMirror(TEXT("MetaSaveIgnoresDebugMirror"));
@@ -360,6 +384,39 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
 	AddRejectedGameDataCheck(GTCheck_GameDataMalformedJsonRejected, MalformedDirectory, TEXT("Malformed JSON"));
 
+	const FString MisspelledFieldDirectory = MakeGameDataTestDirectory(TEXT("MisspelledField"));
+	ReplaceGameDataText(
+		MisspelledFieldDirectory,
+		TEXT("monsters.json"),
+		TEXT("\"moveSpeed\": 0.18"),
+		TEXT("\"moveSpeeed\": 0.18"));
+	AddRejectedGameDataCheck(
+		GTCheck_GameDataMisspelledFieldRejected,
+		MisspelledFieldDirectory,
+		TEXT("Misspelled field"));
+
+	const FString WrongScalarTypeDirectory = MakeGameDataTestDirectory(TEXT("WrongScalarType"));
+	ReplaceGameDataText(
+		WrongScalarTypeDirectory,
+		TEXT("core.json"),
+		TEXT("\"schemaVersion\": 1"),
+		TEXT("\"schemaVersion\": \"1\""));
+	AddRejectedGameDataCheck(
+		GTCheck_GameDataWrongScalarTypeRejected,
+		WrongScalarTypeDirectory,
+		TEXT("Wrong scalar type"));
+
+	const FString UnknownFieldDirectory = MakeGameDataTestDirectory(TEXT("UnknownField"));
+	ReplaceGameDataText(
+		UnknownFieldDirectory,
+		TEXT("core.json"),
+		TEXT("\"baseHp\": 100"),
+		TEXT("\"baseHp\": 100, \"unknownHp\": 1"));
+	AddRejectedGameDataCheck(
+		GTCheck_GameDataUnknownFieldRejected,
+		UnknownFieldDirectory,
+		TEXT("Unknown field"));
+
 	const FString VersionDirectory = MakeGameDataTestDirectory(TEXT("Version"));
 	ReplaceGameDataText(VersionDirectory, TEXT("core.json"), TEXT("\"schemaVersion\": 1"), TEXT("\"schemaVersion\": 2"));
 	AddRejectedGameDataCheck(GTCheck_GameDataVersionRejected, VersionDirectory, TEXT("Unsupported schemaVersion"));
@@ -417,6 +474,110 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		UnknownTriggerDirectory,
 		TEXT("Unknown trigger"));
 
+	const FString ProtocolOrderDirectory = MakeGameDataTestDirectory(TEXT("ProtocolOrder"));
+	ReplaceGameDataText(
+		ProtocolOrderDirectory,
+		TEXT("core.json"),
+		TEXT("{ \"pressure\": 80, \"level\": 1 }"),
+		TEXT("{ \"pressure\": 0, \"level\": 1 }"));
+	AddRejectedGameDataCheck(
+		GTCheck_GameDataProtocolOrderRejected,
+		ProtocolOrderDirectory,
+		TEXT("Misordered protocol thresholds"));
+
+	const FString InvalidManualLayoutDirectory = MakeGameDataTestDirectory(TEXT("InvalidManualLayout"));
+	ReplaceGameDataText(
+		InvalidManualLayoutDirectory,
+		TEXT("difficulties.json"),
+		TEXT("\"spawn\": { \"x\": 0, \"y\": 0 }"),
+		TEXT("\"spawn\": { \"x\": 99, \"y\": 99 }"));
+	AddRejectedGameDataCheck(
+		GTCheck_GameDataInvalidManualLayoutRejected,
+		InvalidManualLayoutDirectory,
+		TEXT("Out-of-bounds manual layout"));
+
+	const FString NoRandomExitDirectory = MakeGameDataTestDirectory(TEXT("NoRandomExit"));
+	ReplaceGameDataText(
+		NoRandomExitDirectory,
+		TEXT("difficulties.json"),
+		TEXT("\"randomExitCount\": 3"),
+		TEXT("\"randomExitCount\": 0"));
+	AddRejectedGameDataCheck(
+		GTCheck_GameDataNoRandomExitRejected,
+		NoRandomExitDirectory,
+		TEXT("Random map without exits"));
+
+	const FString AssetlessItemDirectory = MakeGameDataTestDirectory(TEXT("AssetlessItem"));
+	ReplaceGameDataText(
+		AssetlessItemDirectory,
+		TEXT("items.json"),
+		TEXT("\"id\": \"broken_copper_wire\""),
+		TEXT("\"id\": \"missing_asset\""));
+	ReplaceGameDataText(
+		AssetlessItemDirectory,
+		TEXT("items.json"),
+		TEXT("\"broken_copper_wire\", \"dim_capacitor\""),
+		TEXT("\"missing_asset\", \"dim_capacitor\""));
+	AddRejectedGameDataCheck(
+		GTCheck_GameDataAssetlessItemRejected,
+		AssetlessItemDirectory,
+		TEXT("Item without runtime asset"));
+
+	const FString MissingQualityPoolDirectory = MakeGameDataTestDirectory(TEXT("MissingQualityPool"));
+	ReplaceGameDataText(
+		MissingQualityPoolDirectory,
+		TEXT("items.json"),
+		TEXT("{ \"quality\": \"rare\", \"itemIds\": [\"static_lens\", \"blackbox_tag\", \"data_disk\"] },"),
+		TEXT(""));
+	AddRejectedGameDataCheck(
+		GTCheck_GameDataMissingQualityPoolRejected,
+		MissingQualityPoolDirectory,
+		TEXT("Missing quality pool"));
+
+	const FString NegativeMetaEffectDirectory = MakeGameDataTestDirectory(TEXT("NegativeMetaEffect"));
+	ReplaceGameDataText(
+		NegativeMetaEffectDirectory,
+		TEXT("meta_catalog.json"),
+		TEXT("\"bonusHp\": 20"),
+		TEXT("\"bonusHp\": -101"));
+	AddRejectedGameDataCheck(
+		GTCheck_GameDataNegativeMetaEffectRejected,
+		NegativeMetaEffectDirectory,
+		TEXT("Negative meta effect"));
+
+	const FString MineFloorDirectory = MakeGameDataTestDirectory(TEXT("MineFloor"));
+	ReplaceGameDataText(
+		MineFloorDirectory,
+		TEXT("core.json"),
+		TEXT("\"mineDamageFloor\": 5"),
+		TEXT("\"mineDamageFloor\": 31"));
+	AddRejectedGameDataCheck(
+		GTCheck_GameDataMineFloorRejected,
+		MineFloorDirectory,
+		TEXT("Mine damage floor above base damage"));
+
+	const FString SlimelingSpawnDirectory = MakeGameDataTestDirectory(TEXT("SlimelingSpawn"));
+	ReplaceGameDataText(
+		SlimelingSpawnDirectory,
+		TEXT("monsters.json"),
+		TEXT("\"bChaseWhenFar\": false, \"bDashAwayOnHit\": false, \"spawnWeight\": 0"),
+		TEXT("\"bChaseWhenFar\": false, \"bDashAwayOnHit\": false, \"spawnWeight\": 1"));
+	AddRejectedGameDataCheck(
+		GTCheck_GameDataSlimelingSpawnRejected,
+		SlimelingSpawnDirectory,
+		TEXT("Slimeling direct spawn weight"));
+
+	const FString MissingPersistentMetaIdDirectory = MakeGameDataTestDirectory(TEXT("MissingPersistentMetaId"));
+	ReplaceGameDataText(
+		MissingPersistentMetaIdDirectory,
+		TEXT("meta_catalog.json"),
+		TEXT("\"id\": \"armor\""),
+		TEXT("\"id\": \"renamed_armor\""));
+	AddRejectedGameDataCheck(
+		GTCheck_GameDataMissingPersistentMetaIdRejected,
+		MissingPersistentMetaIdDirectory,
+		TEXT("Missing persistent meta id"));
+
 	const FString ExternalValueDirectory = MakeGameDataTestDirectory(TEXT("ExternalValue"));
 	const bool bExternalValueWritten = ReplaceGameDataText(
 		ExternalValueDirectory,
@@ -441,6 +602,8 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		? GEngine->GetEngineSubsystem<UGT_GameDataSubsystem>()
 		: nullptr;
 
+	const int32 DefaultWireValue = GT_ItemCatalog::GetItemValue(FName(TEXT("broken_copper_wire")));
+	const int32 DefaultSlimeHp = GT_MonsterCatalog::GetArchetype(EGT_MonsterType::Slime).HpBase;
 	const FString FacadeDirectory = MakeGameDataTestDirectory(TEXT("Facade"));
 	const bool bFacadeValuesWritten =
 		ReplaceGameDataText(FacadeDirectory, TEXT("loot_events.json"), TEXT("\"baseMin\": 2"), TEXT("\"baseMin\": 37"))
@@ -449,7 +612,9 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		&& ReplaceGameDataText(FacadeDirectory, TEXT("loot_events.json"), TEXT("\"baseSalePercent\": 75"), TEXT("\"baseSalePercent\": 50"))
 		&& ReplaceGameDataText(FacadeDirectory, TEXT("loot_events.json"), TEXT("\"goldDropPercent\": 10"), TEXT("\"goldDropPercent\": 11"))
 		&& ReplaceGameDataText(FacadeDirectory, TEXT("meta_catalog.json"), TEXT("\"maxEquipped\": 2"), TEXT("\"maxEquipped\": 3"))
-		&& ReplaceGameDataText(FacadeDirectory, TEXT("meta_catalog.json"), TEXT("\"id\": \"armor\", \"price\": 110"), TEXT("\"id\": \"armor\", \"price\": 111"));
+		&& ReplaceGameDataText(FacadeDirectory, TEXT("meta_catalog.json"), TEXT("\"id\": \"armor\", \"price\": 110"), TEXT("\"id\": \"armor\", \"price\": 111"))
+		&& ReplaceGameDataText(FacadeDirectory, TEXT("items.json"), TEXT("\"id\": \"broken_copper_wire\", \"value\": 8"), TEXT("\"id\": \"broken_copper_wire\", \"value\": 9"))
+		&& ReplaceGameDataText(FacadeDirectory, TEXT("monsters.json"), TEXT("\"id\": \"slime\", \"hpBase\": 24"), TEXT("\"id\": \"slime\", \"hpBase\": 25"));
 	const bool bFacadeDataLoaded = GameDataSubsystem
 		&& bFacadeValuesWritten
 		&& GameDataSubsystem->ReloadFromDirectory(FacadeDirectory, false);
@@ -485,40 +650,262 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 			FacadeArmor ? FacadeArmor->Price : INDEX_NONE,
 			GT_MetaCatalog::GetMaxEquipped()));
 
-	const bool bInvalidLoaded = GameDataSubsystem
-		&& !GameDataSubsystem->ReloadFromDirectory(MalformedDirectory, false);
-	UGT_RunContext* InvalidConfigRun = bInvalidLoaded && RunSubsystem
-		? RunSubsystem->StartNewRun(7777, 10, 10)
-		: nullptr;
-	const bool bInvalidBlocksRun = bInvalidLoaded && InvalidConfigRun == nullptr;
-	if (RunSubsystem)
-	{
-		RunSubsystem->EndCurrentRun();
-	}
-	const bool bDefaultReloaded = GameDataSubsystem
-		&& GameDataSubsystem->ReloadFromDirectory(UGT_GameDataSubsystem::GetDefaultDataDirectory(), false);
 	AddCheck(
 		OutResults,
-		GTCheck_GameDataInvalidBlocksRun,
-		bInvalidBlocksRun && bDefaultReloaded,
+		GTCheck_GameDataItemFacadeReloaded,
+		bFacadeDataLoaded
+			&& DefaultWireValue == 8
+			&& GT_ItemCatalog::GetItemValue(FName(TEXT("broken_copper_wire"))) == 9,
 		FString::Printf(
-			TEXT("Invalid loaded=%s run=%s default reloaded=%s."),
-			bInvalidLoaded ? TEXT("true") : TEXT("false"),
-			InvalidConfigRun ? TEXT("created") : TEXT("null"),
-			bDefaultReloaded ? TEXT("true") : TEXT("false")));
+			TEXT("Wire value default=%d reloaded=%d."),
+			DefaultWireValue,
+			GT_ItemCatalog::GetItemValue(FName(TEXT("broken_copper_wire")))));
+	AddCheck(
+		OutResults,
+		GTCheck_GameDataMonsterFacadeReloaded,
+		bFacadeDataLoaded
+			&& DefaultSlimeHp == 24
+			&& GT_MonsterCatalog::GetArchetype(EGT_MonsterType::Slime).HpBase == 25,
+		FString::Printf(
+			TEXT("Slime HP default=%d reloaded=%d."),
+			DefaultSlimeHp,
+			GT_MonsterCatalog::GetArchetype(EGT_MonsterType::Slime).HpBase));
+
+	const uint64 RevisionBeforeInvalidReload = GameDataSubsystem
+		? GameDataSubsystem->GetRevision()
+		: 0;
+	const bool bInvalidRejected = GameDataSubsystem
+		&& !GameDataSubsystem->ReloadFromDirectory(MalformedDirectory, false);
+	const FGT_GameDataSnapshot* SnapshotAfterInvalidReload = GameDataSubsystem
+		? GameDataSubsystem->GetSnapshot()
+		: nullptr;
+	const bool bInvalidReloadKeepsSnapshot = bInvalidRejected
+		&& GameDataSubsystem->IsReady()
+		&& GameDataSubsystem->GetRevision() == RevisionBeforeInvalidReload
+		&& SnapshotAfterInvalidReload
+		&& SnapshotAfterInvalidReload->Core.Combat.MineDamage == 30;
+	AddCheck(
+		OutResults,
+		GTCheck_GameDataInvalidReloadKeepsSnapshot,
+		bInvalidReloadKeepsSnapshot,
+		FString::Printf(
+			TEXT("Rejected=%s ready=%s revision=%llu->%llu snapshot=%s."),
+			bInvalidRejected ? TEXT("true") : TEXT("false"),
+			GameDataSubsystem && GameDataSubsystem->IsReady() ? TEXT("true") : TEXT("false"),
+			RevisionBeforeInvalidReload,
+			GameDataSubsystem ? GameDataSubsystem->GetRevision() : 0,
+			SnapshotAfterInvalidReload ? TEXT("valid") : TEXT("null")));
+	const bool bDefaultReloaded = GameDataSubsystem
+		&& GameDataSubsystem->ReloadFromDirectory(UGT_GameDataSubsystem::GetDefaultDataDirectory(), false);
+	if (!bDefaultReloaded)
+	{
+		AddCheck(
+			OutResults,
+			FName(TEXT("GameDataDefaultRestored")),
+			false,
+			TEXT("Default game data could not be restored after reload tests."));
+	}
 
 	UGT_MetaProgressSubsystem* MetaProgress = DebugSubsystem && DebugSubsystem->GetGameInstance()
 		? DebugSubsystem->GetGameInstance()->GetSubsystem<UGT_MetaProgressSubsystem>()
 		: nullptr;
+
+	UGT_RunContext* LuckyCoinRun = RunSubsystem
+		? RunSubsystem->StartNewRun(1, 10, 10)
+		: nullptr;
+	FGT_ConsumableOutcome LuckyCoinOutcome;
+	if (LuckyCoinRun)
+	{
+		LuckyCoinRun->CheatGiveItem(FName(TEXT("lucky_coin")), 1);
+		LuckyCoinRun->UseConsumableAtPlayer(FName(TEXT("lucky_coin")), LuckyCoinOutcome);
+	}
+	const bool bLuckyCoinPreservesLegacySeed = LuckyCoinRun
+		&& LuckyCoinOutcome.Status == FName(TEXT("lucky_gold"))
+		&& LuckyCoinRun->GetRunInventory().SafeGold == 30;
+	AddCheck(
+		OutResults,
+		GTCheck_LuckyCoinPreservesLegacySeed,
+		bLuckyCoinPreservesLegacySeed,
+		FString::Printf(
+			TEXT("Lucky coin status=%s safeGold=%d."),
+			*LuckyCoinOutcome.Status.ToString(),
+			LuckyCoinRun ? LuckyCoinRun->GetRunInventory().SafeGold : INDEX_NONE));
+	if (RunSubsystem)
+	{
+		RunSubsystem->EndCurrentRun();
+	}
+
+	const FString TriggerDirectory = MakeGameDataTestDirectory(TEXT("TriggerValues"));
+	const bool bTriggerValuesWritten =
+		ReplaceGameDataText(
+			TriggerDirectory,
+			TEXT("meta_catalog.json"),
+			TEXT("\"trigger\": \"settleGoldBonus\", \"triggerCap\": 0, \"triggerAmount\": 15"),
+			TEXT("\"trigger\": \"settleGoldBonus\", \"triggerCap\": 0, \"triggerAmount\": 20"))
+		&& ReplaceGameDataText(
+			TriggerDirectory,
+			TEXT("meta_catalog.json"),
+			TEXT("\"trigger\": \"chestBonusLoot\", \"triggerCap\": 0, \"triggerAmount\": 1"),
+			TEXT("\"trigger\": \"chestBonusLoot\", \"triggerCap\": 0, \"triggerAmount\": 2"));
+	const bool bTriggerDataLoaded = GameDataSubsystem
+		&& bTriggerValuesWritten
+		&& GameDataSubsystem->ReloadFromDirectory(TriggerDirectory, false);
+
+	if (MetaProgress)
+	{
+		MetaProgress->GMReset();
+		MetaProgress->GMGrantItem(FName(TEXT("company_badge")));
+		FName EquipError;
+		MetaProgress->ToggleEquip(FName(TEXT("company_badge")), EquipError);
+	}
+	UGT_RunContext* SettlementRun = bTriggerDataLoaded && RunSubsystem
+		? RunSubsystem->StartNewRun(1001, 10, 10)
+		: nullptr;
+	if (SettlementRun)
+	{
+		SettlementRun->CheatAddPendingGold(100);
+		GT_MetaSettlement::SettleExtraction(*SettlementRun, *MetaProgress);
+	}
+	AddCheck(
+		OutResults,
+		GTCheck_ConfiguredSettleGoldBonusApplied,
+		SettlementRun && MetaProgress && MetaProgress->GetGold() == 120,
+		FString::Printf(
+			TEXT("Configured settlement gold=%d."),
+			MetaProgress ? MetaProgress->GetGold() : INDEX_NONE));
+	if (RunSubsystem)
+	{
+		RunSubsystem->EndCurrentRun();
+	}
+
+	if (MetaProgress)
+	{
+		MetaProgress->GMReset();
+	}
+	UGT_RunContext* ChestBonusRun = bTriggerDataLoaded && RunSubsystem
+		? RunSubsystem->StartNewRunStandard(1002, EGT_Difficulty::Easy)
+		: nullptr;
+	if (ChestBonusRun)
+	{
+		ChestBonusRun->ApplyMetaLoadout(
+			FGT_EquipBonus(),
+			FGT_TalentEffects(),
+			TMap<FName, int32>(),
+			{ FName(TEXT("salvage_magnet")) });
+	}
+	FIntPoint ChestCoord(INDEX_NONE, INDEX_NONE);
+	if (ChestBonusRun)
+	{
+		for (int32 Y = 0; Y < 10 && ChestCoord.X == INDEX_NONE; ++Y)
+		{
+			for (int32 X = 0; X < 10; ++X)
+			{
+				FGT_TruthCell Cell;
+				if (ChestBonusRun->GetTruthCellSnapshot(X, Y, Cell)
+					&& Cell.RoomBaseType == EGT_RoomBaseType::Chest)
+				{
+					ChestCoord = FIntPoint(X, Y);
+					break;
+				}
+			}
+		}
+	}
+	const int32 ChestItemsBefore = ChestBonusRun
+		? ChestBonusRun->GetRunInventory().GetCarriedItemCount()
+		: INDEX_NONE;
+	const bool bChestBonusGranted = ChestBonusRun
+		&& ChestCoord.X != INDEX_NONE
+		&& ChestBonusRun->TryGrantChestMagnetLoot(ChestCoord.X, ChestCoord.Y);
+	const int32 ChestItemsAfter = ChestBonusRun
+		? ChestBonusRun->GetRunInventory().GetCarriedItemCount()
+		: INDEX_NONE;
+	AddCheck(
+		OutResults,
+		GTCheck_ConfiguredChestBonusApplied,
+		bChestBonusGranted && ChestItemsAfter - ChestItemsBefore == 2,
+		FString::Printf(
+			TEXT("Chest bonus granted=%s item delta=%d."),
+			bChestBonusGranted ? TEXT("true") : TEXT("false"),
+			ChestItemsAfter - ChestItemsBefore));
+	if (RunSubsystem)
+	{
+		RunSubsystem->EndCurrentRun();
+	}
+	if (MetaProgress)
+	{
+		MetaProgress->GMReset();
+	}
+	const bool bDefaultRestoredAfterTriggerTests = GameDataSubsystem
+		&& GameDataSubsystem->ReloadFromDirectory(UGT_GameDataSubsystem::GetDefaultDataDirectory(), false);
+	if (!bDefaultRestoredAfterTriggerTests)
+	{
+		AddCheck(
+			OutResults,
+			FName(TEXT("GameDataDefaultRestoredAfterTriggerTests")),
+			false,
+			TEXT("Default game data could not be restored after trigger tests."));
+	}
+
+	FString SmokeSaveSlot;
+	const bool bUsesIsolatedSaveSlot = FParse::Value(
+		FCommandLine::Get(),
+		TEXT("GraytailSaveSlot="),
+		SmokeSaveSlot)
+		&& SmokeSaveSlot.StartsWith(TEXT("GraytailMetaSmoke_"));
+	AddCheck(
+		OutResults,
+		GTCheck_SmokeUsesIsolatedSaveSlot,
+		bUsesIsolatedSaveSlot,
+		FString::Printf(TEXT("Active smoke save slot=%s."), *SmokeSaveSlot));
+
+	UGT_MetaSaveGame* OrphanedEquipSave = Cast<UGT_MetaSaveGame>(
+		UGameplayStatics::CreateSaveGameObject(UGT_MetaSaveGame::StaticClass()));
+	const FName OrphanedEquipId(TEXT("removed_equipment"));
+	bool bOrphanedSaveWritten = false;
+	if (OrphanedEquipSave && bUsesIsolatedSaveSlot)
+	{
+		OrphanedEquipSave->State.OwnedItems.Add(OrphanedEquipId);
+		OrphanedEquipSave->State.EquippedItems.Add(OrphanedEquipId);
+		bOrphanedSaveWritten = UGameplayStatics::SaveGameToSlot(
+			OrphanedEquipSave,
+			SmokeSaveSlot,
+			0);
+	}
+	if (MetaProgress && bOrphanedSaveWritten)
+	{
+		MetaProgress->Load();
+	}
+	const bool bOrphanedEquipRemoved = MetaProgress
+		&& bOrphanedSaveWritten
+		&& MetaProgress->GetState().OwnedItems.Contains(OrphanedEquipId)
+		&& !MetaProgress->GetState().EquippedItems.Contains(OrphanedEquipId);
+	AddCheck(
+		OutResults,
+		GTCheck_MetaSaveRemovesOrphanedEquip,
+		bOrphanedEquipRemoved,
+		FString::Printf(
+			TEXT("Orphan owned=%s equipped=%s."),
+			MetaProgress && MetaProgress->GetState().OwnedItems.Contains(OrphanedEquipId)
+				? TEXT("true")
+				: TEXT("false"),
+			MetaProgress && MetaProgress->GetState().EquippedItems.Contains(OrphanedEquipId)
+				? TEXT("true")
+				: TEXT("false")));
+	if (MetaProgress)
+	{
+		MetaProgress->GMReset();
+	}
+
 	const FString DebugMirrorPath = FPaths::Combine(
 		FPaths::ProjectSavedDir(),
 		TEXT("SaveGames/GraytailMeta.debug.json"));
-	if (MetaProgress)
+	if (MetaProgress && bUsesIsolatedSaveSlot)
 	{
 		MetaProgress->Save();
 	}
 	FString DebugMirrorJson;
 	const bool bMirrorWritten = MetaProgress
+		&& bUsesIsolatedSaveSlot
 		&& FFileHelper::LoadFileToString(DebugMirrorJson, *DebugMirrorPath);
 	AddCheck(
 		OutResults,
@@ -551,11 +938,12 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		TEXT("{\"saveVersion\":999,\"state\":{\"gold\":2147480000}}"),
 		*DebugMirrorPath,
 		FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
-	if (MetaProgress)
+	if (MetaProgress && bUsesIsolatedSaveSlot)
 	{
 		MetaProgress->Load();
 	}
 	const bool bMirrorIgnored = MetaProgress
+		&& bUsesIsolatedSaveSlot
 		&& bMirrorCorrupted
 		&& MetaProgress->GetGold() == CanonicalGold;
 	AddCheck(
@@ -566,7 +954,7 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 			TEXT("Canonical gold=%d loaded gold=%d."),
 			CanonicalGold,
 			MetaProgress ? MetaProgress->GetGold() : INDEX_NONE));
-	if (MetaProgress)
+	if (MetaProgress && bUsesIsolatedSaveSlot)
 	{
 		MetaProgress->Save();
 	}

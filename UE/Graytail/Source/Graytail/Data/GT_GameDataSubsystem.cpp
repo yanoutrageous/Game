@@ -7,12 +7,137 @@
 #include "Misc/Paths.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "UObject/UnrealType.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogGraytailGameData, Log, All);
 
 namespace
 {
 	constexpr int32 SupportedSchemaVersion = 1;
+
+	bool ValidateJsonValueShape(
+		const TSharedPtr<FJsonValue>& Value,
+		const FProperty* Property,
+		const FString& Path,
+		TArray<FString>& OutErrors);
+
+	bool ValidateJsonObjectShape(
+		const TSharedPtr<FJsonObject>& Object,
+		const UStruct* StructType,
+		const FString& Path,
+		TArray<FString>& OutErrors)
+	{
+		if (!Object.IsValid())
+		{
+			OutErrors.Add(FString::Printf(TEXT("%s: expected an object."), *Path));
+			return false;
+		}
+
+		bool bValid = true;
+		TSet<FString> KnownFields;
+		for (TFieldIterator<FProperty> It(StructType); It; ++It)
+		{
+			const FProperty* Property = *It;
+			const FString FieldName = StructType->GetAuthoredNameForField(Property);
+			const FString FieldPath = Path + TEXT(".") + FieldName;
+			KnownFields.Add(FieldName);
+
+			const TSharedPtr<FJsonValue>* FieldValue = Object->Values.Find(FieldName);
+			if (!FieldValue)
+			{
+				OutErrors.Add(FString::Printf(TEXT("%s: required field is missing."), *FieldPath));
+				bValid = false;
+				continue;
+			}
+			bValid &= ValidateJsonValueShape(*FieldValue, Property, FieldPath, OutErrors);
+		}
+
+		for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : Object->Values)
+		{
+			if (!KnownFields.Contains(Pair.Key))
+			{
+				OutErrors.Add(FString::Printf(
+					TEXT("%s.%s: unknown field."),
+					*Path,
+					*Pair.Key));
+				bValid = false;
+			}
+		}
+		return bValid;
+	}
+
+	bool ValidateJsonValueShape(
+		const TSharedPtr<FJsonValue>& Value,
+		const FProperty* Property,
+		const FString& Path,
+		TArray<FString>& OutErrors)
+	{
+		if (!Value.IsValid() || Value->IsNull())
+		{
+			OutErrors.Add(FString::Printf(TEXT("%s: null is not allowed."), *Path));
+			return false;
+		}
+
+		if (const FArrayProperty* ArrayProperty = CastField<FArrayProperty>(Property))
+		{
+			if (Value->Type != EJson::Array)
+			{
+				OutErrors.Add(FString::Printf(TEXT("%s: expected an array."), *Path));
+				return false;
+			}
+
+			bool bValid = true;
+			const TArray<TSharedPtr<FJsonValue>>& Values = Value->AsArray();
+			for (int32 Index = 0; Index < Values.Num(); ++Index)
+			{
+				bValid &= ValidateJsonValueShape(
+					Values[Index],
+					ArrayProperty->Inner,
+					FString::Printf(TEXT("%s[%d]"), *Path, Index),
+					OutErrors);
+			}
+			return bValid;
+		}
+
+		if (const FStructProperty* StructProperty = CastField<FStructProperty>(Property))
+		{
+			if (Value->Type != EJson::Object)
+			{
+				OutErrors.Add(FString::Printf(TEXT("%s: expected an object."), *Path));
+				return false;
+			}
+			return ValidateJsonObjectShape(Value->AsObject(), StructProperty->Struct, Path, OutErrors);
+		}
+
+		if (const FNumericProperty* NumericProperty = CastField<FNumericProperty>(Property))
+		{
+			if (Value->Type != EJson::Number)
+			{
+				OutErrors.Add(FString::Printf(TEXT("%s: expected a number."), *Path));
+				return false;
+			}
+
+			const double Number = Value->AsNumber();
+			const bool bIntegerInvalid = NumericProperty->IsInteger()
+				&& (FMath::TruncToDouble(Number) != Number
+					|| !NumericProperty->CanHoldValue(static_cast<int64>(Number)));
+			if (!FMath::IsFinite(Number) || bIntegerInvalid)
+			{
+				OutErrors.Add(FString::Printf(TEXT("%s: number is outside the property range."), *Path));
+				return false;
+			}
+			return true;
+		}
+
+		const bool bTypeMatches =
+			(CastField<FBoolProperty>(Property) && Value->Type == EJson::Boolean)
+			|| (CastField<FStrProperty>(Property) && Value->Type == EJson::String);
+		if (!bTypeMatches)
+		{
+			OutErrors.Add(FString::Printf(TEXT("%s: JSON type does not match the property."), *Path));
+		}
+		return bTypeMatches;
+	}
 
 	template <typename T>
 	bool LoadJsonFile(const FString& Directory, const TCHAR* FileName, T& OutValue, TArray<FString>& OutErrors)
@@ -33,9 +158,24 @@ namespace
 			return false;
 		}
 
-		if (!FJsonObjectConverter::JsonObjectStringToUStruct(Json, &OutValue, 0, 0))
+		if (!ValidateJsonObjectShape(ParsedObject, T::StaticStruct(), FileName, OutErrors))
 		{
-			OutErrors.Add(FString::Printf(TEXT("%s: invalid JSON or incompatible fields."), FileName));
+			return false;
+		}
+
+		FText ConversionError;
+		if (!FJsonObjectConverter::JsonObjectToUStruct(
+			ParsedObject.ToSharedRef(),
+			&OutValue,
+			0,
+			0,
+			true,
+			&ConversionError))
+		{
+			OutErrors.Add(FString::Printf(
+				TEXT("%s: incompatible fields: %s"),
+				FileName,
+				*ConversionError.ToString()));
 			return false;
 		}
 		return true;
@@ -134,6 +274,127 @@ namespace
 		}
 	}
 
+	void RequireExactIds(
+		const FString& Domain,
+		const TSet<FString>& Seen,
+		std::initializer_list<const TCHAR*> RequiredIds,
+		TArray<FString>& OutErrors)
+	{
+		TSet<FString> Allowed;
+		for (const TCHAR* RequiredId : RequiredIds)
+		{
+			Allowed.Add(RequiredId);
+		}
+		RequireIds(Domain, Seen, RequiredIds, OutErrors);
+		for (const FString& Id : Seen)
+		{
+			if (!Allowed.Contains(Id))
+			{
+				OutErrors.Add(FString::Printf(TEXT("%s: unsupported id '%s'."), *Domain, *Id));
+			}
+		}
+	}
+
+	void ValidateManualLayout(
+		const FGT_DifficultyBalanceRow& Row,
+		TArray<FString>& OutErrors)
+	{
+		if (!Row.ManualLayout.bEnabled)
+		{
+			return;
+		}
+
+		TSet<int32> Occupied;
+		auto AddCoord = [&Row, &Occupied, &OutErrors](
+			const FString& Category,
+			const FGT_DataCoord& Coord)
+		{
+			if (Coord.X < 0 || Coord.X >= Row.Width || Coord.Y < 0 || Coord.Y >= Row.Height)
+			{
+				OutErrors.Add(FString::Printf(
+					TEXT("difficulties.json: '%s' %s coordinate (%d,%d) is out of bounds."),
+					*Row.Id,
+					*Category,
+					Coord.X,
+					Coord.Y));
+				return;
+			}
+
+			const int32 Index = Coord.Y * Row.Width + Coord.X;
+			if (Occupied.Contains(Index))
+			{
+				OutErrors.Add(FString::Printf(
+					TEXT("difficulties.json: '%s' has overlapping content at (%d,%d)."),
+					*Row.Id,
+					Coord.X,
+					Coord.Y));
+				return;
+			}
+			Occupied.Add(Index);
+		};
+
+		AddCoord(TEXT("spawn"), Row.ManualLayout.Spawn);
+		auto AddCoords = [&AddCoord](
+			const FString& Category,
+			const TArray<FGT_DataCoord>& Coords)
+		{
+			for (const FGT_DataCoord& Coord : Coords)
+			{
+				AddCoord(Category, Coord);
+			}
+		};
+		AddCoords(TEXT("mine"), Row.ManualLayout.Mines);
+		AddCoords(TEXT("monster room"), Row.ManualLayout.MonsterRooms);
+		AddCoords(TEXT("chest room"), Row.ManualLayout.ChestRooms);
+		AddCoords(TEXT("event room"), Row.ManualLayout.EventRooms);
+		AddCoords(TEXT("exit"), Row.ManualLayout.Exits);
+
+		if (Row.ManualLayout.Exits.IsEmpty())
+		{
+			OutErrors.Add(FString::Printf(
+				TEXT("difficulties.json: '%s' manual layout must contain an exit."),
+				*Row.Id));
+		}
+	}
+
+	void ValidateRandomLayoutCapacity(
+		const FGT_DifficultyBalanceRow& Row,
+		TArray<FString>& OutErrors)
+	{
+		if (Row.ManualLayout.bEnabled)
+		{
+			return;
+		}
+		if (Row.RandomExitCount <= 0)
+		{
+			OutErrors.Add(FString::Printf(
+				TEXT("difficulties.json: '%s' random layout must contain an exit."),
+				*Row.Id));
+			return;
+		}
+
+		const int32 TotalCells = Row.Width * Row.Height;
+		const int32 SafeDiameter = Row.SpawnSafeRadius * 2 + 1;
+		const int32 MaxSafeCells =
+			FMath::Min(Row.Width, SafeDiameter) * FMath::Min(Row.Height, SafeDiameter);
+		const int32 MinCandidates = TotalCells - MaxSafeCells;
+		const int32 MineCount = FMath::RoundToInt(TotalCells * Row.MineDensity);
+		const int32 MonsterCount = FMath::Max(2, FMath::RoundToInt(TotalCells * Row.MonsterRoomRatio));
+		const int32 ChestCount = FMath::Clamp(
+			FMath::RoundToInt(TotalCells * Row.ChestRoomRatio),
+			2,
+			5);
+		const int32 EventCount = FMath::Max(1, FMath::RoundToInt(TotalCells * Row.EventRoomRatio));
+		const int32 RequiredCandidates =
+			MineCount + MonsterCount + ChestCount + EventCount + Row.RandomExitCount;
+		if (RequiredCandidates > MinCandidates)
+		{
+			OutErrors.Add(FString::Printf(
+				TEXT("difficulties.json: '%s' cannot guarantee room and exit placement."),
+				*Row.Id));
+		}
+	}
+
 	void ValidateDropTable(const FString& Domain, const TArray<FGT_DropThresholdConfig>& Table, TArray<FString>& OutErrors)
 	{
 		if (Table.IsEmpty())
@@ -176,6 +437,7 @@ namespace
 		}
 		if (File.Combat.MineDamage <= 0
 			|| File.Combat.MineDamageFloor <= 0
+			|| File.Combat.MineDamageFloor > File.Combat.MineDamage
 			|| File.Combat.EnemyPowerMin <= 0
 			|| File.Combat.EnemyPowerMax < File.Combat.EnemyPowerMin
 			|| File.Combat.MonsterGoldMin < 0
@@ -197,18 +459,29 @@ namespace
 		}
 
 		TSet<int32> Levels;
-		for (const FGT_ProtocolThresholdConfig& Threshold : File.Protocol.Thresholds)
+		int32 PreviousPressure = File.Protocol.MaxPressure + 1;
+		for (int32 Index = 0; Index < File.Protocol.Thresholds.Num(); ++Index)
 		{
+			const FGT_ProtocolThresholdConfig& Threshold = File.Protocol.Thresholds[Index];
 			if (Threshold.Pressure < 0
 				|| Threshold.Pressure > File.Protocol.MaxPressure
 				|| Threshold.Level < 1
 				|| Threshold.Level > 5
+				|| Threshold.Level != Index + 1
+				|| Threshold.Pressure >= PreviousPressure
 				|| Levels.Contains(Threshold.Level))
 			{
 				OutErrors.Add(TEXT("core.json: protocol thresholds are invalid or contain duplicate levels."));
 				break;
 			}
 			Levels.Add(Threshold.Level);
+			PreviousPressure = Threshold.Pressure;
+		}
+		if (File.Protocol.Thresholds.Num() != 5
+			|| File.Protocol.Thresholds.IsEmpty()
+			|| File.Protocol.Thresholds.Last().Pressure != 0)
+		{
+			OutErrors.Add(TEXT("core.json: protocol thresholds must define levels 1-5 in descending pressure order and end at zero."));
 		}
 	}
 
@@ -230,6 +503,8 @@ namespace
 			{
 				OutErrors.Add(FString::Printf(TEXT("difficulties.json: '%s' has an invalid range."), *Row.Id));
 			}
+			ValidateManualLayout(Row, OutErrors);
+			ValidateRandomLayoutCapacity(Row, OutErrors);
 		}
 
 		RequireIds(
@@ -279,6 +554,10 @@ namespace
 			{
 				OutErrors.Add(FString::Printf(TEXT("monsters.json: '%s' has an invalid range."), *Row.Id));
 			}
+			if (Row.Id == TEXT("slimeling") && Row.SpawnWeight != 0)
+			{
+				OutErrors.Add(TEXT("monsters.json: slimeling is split-only and must have spawnWeight 0."));
+			}
 			SpawnWeightTotal += Row.SpawnWeight;
 		}
 		if (SpawnWeightTotal <= 0)
@@ -304,6 +583,18 @@ namespace
 				OutErrors.Add(FString::Printf(TEXT("items.json: '%s' has invalid value or quality."), *Row.Id));
 			}
 		}
+		RequireExactIds(
+			TEXT("items.json items"),
+			ItemIds,
+			{
+				TEXT("broken_copper_wire"), TEXT("dim_capacitor"), TEXT("old_gear"),
+				TEXT("broken_terminal"), TEXT("dead_battery"), TEXT("old_gauge"),
+				TEXT("damaged_circuit"), TEXT("static_lens"), TEXT("blackbox_tag"),
+				TEXT("data_disk"), TEXT("whisper_wick"), TEXT("fluorescent_shard"),
+				TEXT("sealed_core_shard"), TEXT("anomaly_core_shard"),
+				TEXT("emergency_bandage"), TEXT("lucky_coin")
+			},
+			OutErrors);
 
 		TSet<FString> PoolQualities;
 		for (const FGT_ItemDropPoolConfig& Pool : File.DropPools)
@@ -324,6 +615,11 @@ namespace
 				}
 			}
 		}
+		RequireExactIds(
+			TEXT("items.json dropPools"),
+			PoolQualities,
+			{ TEXT("low"), TEXT("common"), TEXT("rare"), TEXT("precious"), TEXT("abnormal") },
+			OutErrors);
 	}
 
 	void ValidateLootEvents(const FGT_LootEventsBalanceFile& File, TArray<FString>& OutErrors)
@@ -445,15 +741,71 @@ namespace
 		ValidateCatalogRows(TEXT("meta_catalog.json equipment"), File.Equipment, EquipIds, OutErrors);
 		ValidateCatalogRows(TEXT("meta_catalog.json talents"), File.Talents, TalentIds, OutErrors);
 		ValidateCatalogRows(TEXT("meta_catalog.json consumables"), File.Consumables, ConsumableIds, OutErrors);
+		RequireExactIds(
+			TEXT("meta_catalog.json equipment"),
+			EquipIds,
+			{
+				TEXT("armor"), TEXT("whetstone"), TEXT("medkit"), TEXT("insulated_gloves"),
+				TEXT("compass"), TEXT("backpack"), TEXT("anomaly_fang"),
+				TEXT("lockdown_crystal"), TEXT("company_badge"), TEXT("salvage_magnet")
+			},
+			OutErrors);
+		RequireExactIds(
+			TEXT("meta_catalog.json talents"),
+			TalentIds,
+			{
+				TEXT("talent_map"), TEXT("talent_mine"), TEXT("talent_monster"),
+				TEXT("talent_extract"), TEXT("talent_event")
+			},
+			OutErrors);
+		RequireExactIds(
+			TEXT("meta_catalog.json consumables"),
+			ConsumableIds,
+			{ TEXT("emergency_bandage"), TEXT("lucky_coin") },
+			OutErrors);
 
 		for (const FGT_EquipBalanceRow& Equipment : File.Equipment)
 		{
-			if (!IsKnownEquipmentTrigger(Equipment.Trigger))
+			const bool bInvalidRange =
+				Equipment.BonusHp < 0
+				|| Equipment.BonusPower < 0
+				|| Equipment.MineDamageReduce < 0
+				|| !IsPercent(Equipment.SearchBonus)
+				|| Equipment.TriggerCap < 0
+				|| Equipment.TriggerAmount < 0;
+			const bool bInvalidTriggerValues =
+				(Equipment.Trigger == TEXT("none")
+					&& (Equipment.TriggerCap != 0 || Equipment.TriggerAmount != 0))
+				|| ((Equipment.Trigger == TEXT("killPowerStack")
+						|| Equipment.Trigger == TEXT("protocolHeal"))
+					&& (Equipment.TriggerCap <= 0 || Equipment.TriggerAmount <= 0))
+				|| (Equipment.Trigger == TEXT("settleGoldBonus")
+					&& (Equipment.TriggerCap != 0
+						|| Equipment.TriggerAmount <= 0
+						|| !IsPercent(Equipment.TriggerAmount)))
+				|| (Equipment.Trigger == TEXT("chestBonusLoot")
+					&& (Equipment.TriggerCap != 0 || Equipment.TriggerAmount <= 0));
+			if (!IsKnownEquipmentTrigger(Equipment.Trigger)
+				|| bInvalidRange
+				|| bInvalidTriggerValues)
 			{
 				OutErrors.Add(FString::Printf(
-					TEXT("meta_catalog.json: equipment '%s' has unknown trigger '%s'."),
+					TEXT("meta_catalog.json: equipment '%s' has invalid effects or trigger '%s'."),
 					*Equipment.Id,
 					*Equipment.Trigger));
+			}
+		}
+
+		for (const FGT_TalentBalanceRow& Talent : File.Talents)
+		{
+			if (Talent.MineDamageReduce < 0
+				|| Talent.MonsterFleeBonus < 0
+				|| !IsPercent(Talent.FailureGoldBonus)
+				|| !IsPercent(Talent.TradePrice))
+			{
+				OutErrors.Add(FString::Printf(
+					TEXT("meta_catalog.json: talent '%s' has invalid effects."),
+					*Talent.Id));
 			}
 		}
 
@@ -516,10 +868,12 @@ bool UGT_GameDataSubsystem::ReloadFromDirectory(const FString& Directory, bool b
 {
 	FGT_GameDataSnapshot Candidate;
 	TArray<FString> CandidateErrors;
-	bReady = FGT_GameDataLoader::LoadFromDirectory(Directory, Candidate, CandidateErrors);
-	if (bReady)
+	const bool bCandidateReady =
+		FGT_GameDataLoader::LoadFromDirectory(Directory, Candidate, CandidateErrors);
+	if (bCandidateReady)
 	{
 		Snapshot = MoveTemp(Candidate);
+		bReady = true;
 		Errors.Reset();
 		++Revision;
 		UE_LOG(LogGraytailGameData, Display, TEXT("Loaded balance data from %s."), *Directory);
@@ -535,7 +889,7 @@ bool UGT_GameDataSubsystem::ReloadFromDirectory(const FString& Directory, bool b
 			}
 		}
 	}
-	return bReady;
+	return bCandidateReady;
 }
 
 bool UGT_GameDataSubsystem::IsReady() const

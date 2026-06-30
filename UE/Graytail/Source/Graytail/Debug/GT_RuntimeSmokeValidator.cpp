@@ -17,6 +17,7 @@
 #include "Domains/Inventory/GT_LootRules.h"
 #include "Domains/Meta/GT_MetaCatalog.h"
 #include "Domains/Meta/GT_MetaProgressSubsystem.h"
+#include "Domains/Meta/GT_MetaSettlement.h"
 #include "Engine/Engine.h"
 #include "HAL/FileManager.h"
 #include "UI/ViewModels/GT_MiniMapViewModel.h"
@@ -227,6 +228,9 @@ namespace
 	const FName GTCheck_GameDataItemFacadeReloaded(TEXT("GameDataItemFacadeReloaded"));
 	const FName GTCheck_GameDataMonsterFacadeReloaded(TEXT("GameDataMonsterFacadeReloaded"));
 	const FName GTCheck_GameDataInvalidReloadKeepsSnapshot(TEXT("GameDataInvalidReloadKeepsSnapshot"));
+	const FName GTCheck_LuckyCoinPreservesLegacySeed(TEXT("LuckyCoinPreservesLegacySeed"));
+	const FName GTCheck_ConfiguredSettleGoldBonusApplied(TEXT("ConfiguredSettleGoldBonusApplied"));
+	const FName GTCheck_ConfiguredChestBonusApplied(TEXT("ConfiguredChestBonusApplied"));
 	const FName GTCheck_SmokeUsesIsolatedSaveSlot(TEXT("SmokeUsesIsolatedSaveSlot"));
 	const FName GTCheck_MetaSaveDebugMirrorWritten(TEXT("MetaSaveDebugMirrorWritten"));
 	const FName GTCheck_MetaSaveDebugMirrorMatches(TEXT("MetaSaveDebugMirrorMatches"));
@@ -702,6 +706,143 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 	UGT_MetaProgressSubsystem* MetaProgress = DebugSubsystem && DebugSubsystem->GetGameInstance()
 		? DebugSubsystem->GetGameInstance()->GetSubsystem<UGT_MetaProgressSubsystem>()
 		: nullptr;
+
+	UGT_RunContext* LuckyCoinRun = RunSubsystem
+		? RunSubsystem->StartNewRun(1, 10, 10)
+		: nullptr;
+	FGT_ConsumableOutcome LuckyCoinOutcome;
+	if (LuckyCoinRun)
+	{
+		LuckyCoinRun->CheatGiveItem(FName(TEXT("lucky_coin")), 1);
+		LuckyCoinRun->UseConsumableAtPlayer(FName(TEXT("lucky_coin")), LuckyCoinOutcome);
+	}
+	const bool bLuckyCoinPreservesLegacySeed = LuckyCoinRun
+		&& LuckyCoinOutcome.Status == FName(TEXT("lucky_gold"))
+		&& LuckyCoinRun->GetRunInventory().SafeGold == 30;
+	AddCheck(
+		OutResults,
+		GTCheck_LuckyCoinPreservesLegacySeed,
+		bLuckyCoinPreservesLegacySeed,
+		FString::Printf(
+			TEXT("Lucky coin status=%s safeGold=%d."),
+			*LuckyCoinOutcome.Status.ToString(),
+			LuckyCoinRun ? LuckyCoinRun->GetRunInventory().SafeGold : INDEX_NONE));
+	if (RunSubsystem)
+	{
+		RunSubsystem->EndCurrentRun();
+	}
+
+	const FString TriggerDirectory = MakeGameDataTestDirectory(TEXT("TriggerValues"));
+	const bool bTriggerValuesWritten =
+		ReplaceGameDataText(
+			TriggerDirectory,
+			TEXT("meta_catalog.json"),
+			TEXT("\"trigger\": \"settleGoldBonus\", \"triggerCap\": 0, \"triggerAmount\": 15"),
+			TEXT("\"trigger\": \"settleGoldBonus\", \"triggerCap\": 0, \"triggerAmount\": 20"))
+		&& ReplaceGameDataText(
+			TriggerDirectory,
+			TEXT("meta_catalog.json"),
+			TEXT("\"trigger\": \"chestBonusLoot\", \"triggerCap\": 0, \"triggerAmount\": 1"),
+			TEXT("\"trigger\": \"chestBonusLoot\", \"triggerCap\": 0, \"triggerAmount\": 2"));
+	const bool bTriggerDataLoaded = GameDataSubsystem
+		&& bTriggerValuesWritten
+		&& GameDataSubsystem->ReloadFromDirectory(TriggerDirectory, false);
+
+	if (MetaProgress)
+	{
+		MetaProgress->GMReset();
+		MetaProgress->GMGrantItem(FName(TEXT("company_badge")));
+		FName EquipError;
+		MetaProgress->ToggleEquip(FName(TEXT("company_badge")), EquipError);
+	}
+	UGT_RunContext* SettlementRun = bTriggerDataLoaded && RunSubsystem
+		? RunSubsystem->StartNewRun(1001, 10, 10)
+		: nullptr;
+	if (SettlementRun)
+	{
+		SettlementRun->CheatAddPendingGold(100);
+		GT_MetaSettlement::SettleExtraction(*SettlementRun, *MetaProgress);
+	}
+	AddCheck(
+		OutResults,
+		GTCheck_ConfiguredSettleGoldBonusApplied,
+		SettlementRun && MetaProgress && MetaProgress->GetGold() == 120,
+		FString::Printf(
+			TEXT("Configured settlement gold=%d."),
+			MetaProgress ? MetaProgress->GetGold() : INDEX_NONE));
+	if (RunSubsystem)
+	{
+		RunSubsystem->EndCurrentRun();
+	}
+
+	if (MetaProgress)
+	{
+		MetaProgress->GMReset();
+	}
+	UGT_RunContext* ChestBonusRun = bTriggerDataLoaded && RunSubsystem
+		? RunSubsystem->StartNewRunStandard(1002, EGT_Difficulty::Easy)
+		: nullptr;
+	if (ChestBonusRun)
+	{
+		ChestBonusRun->ApplyMetaLoadout(
+			FGT_EquipBonus(),
+			FGT_TalentEffects(),
+			TMap<FName, int32>(),
+			{ FName(TEXT("salvage_magnet")) });
+	}
+	FIntPoint ChestCoord(INDEX_NONE, INDEX_NONE);
+	if (ChestBonusRun)
+	{
+		for (int32 Y = 0; Y < 10 && ChestCoord.X == INDEX_NONE; ++Y)
+		{
+			for (int32 X = 0; X < 10; ++X)
+			{
+				FGT_TruthCell Cell;
+				if (ChestBonusRun->GetTruthCellSnapshot(X, Y, Cell)
+					&& Cell.RoomBaseType == EGT_RoomBaseType::Chest)
+				{
+					ChestCoord = FIntPoint(X, Y);
+					break;
+				}
+			}
+		}
+	}
+	const int32 ChestItemsBefore = ChestBonusRun
+		? ChestBonusRun->GetRunInventory().GetCarriedItemCount()
+		: INDEX_NONE;
+	const bool bChestBonusGranted = ChestBonusRun
+		&& ChestCoord.X != INDEX_NONE
+		&& ChestBonusRun->TryGrantChestMagnetLoot(ChestCoord.X, ChestCoord.Y);
+	const int32 ChestItemsAfter = ChestBonusRun
+		? ChestBonusRun->GetRunInventory().GetCarriedItemCount()
+		: INDEX_NONE;
+	AddCheck(
+		OutResults,
+		GTCheck_ConfiguredChestBonusApplied,
+		bChestBonusGranted && ChestItemsAfter - ChestItemsBefore == 2,
+		FString::Printf(
+			TEXT("Chest bonus granted=%s item delta=%d."),
+			bChestBonusGranted ? TEXT("true") : TEXT("false"),
+			ChestItemsAfter - ChestItemsBefore));
+	if (RunSubsystem)
+	{
+		RunSubsystem->EndCurrentRun();
+	}
+	if (MetaProgress)
+	{
+		MetaProgress->GMReset();
+	}
+	const bool bDefaultRestoredAfterTriggerTests = GameDataSubsystem
+		&& GameDataSubsystem->ReloadFromDirectory(UGT_GameDataSubsystem::GetDefaultDataDirectory(), false);
+	if (!bDefaultRestoredAfterTriggerTests)
+	{
+		AddCheck(
+			OutResults,
+			FName(TEXT("GameDataDefaultRestoredAfterTriggerTests")),
+			false,
+			TEXT("Default game data could not be restored after trigger tests."));
+	}
+
 	FString SmokeSaveSlot;
 	const bool bUsesIsolatedSaveSlot = FParse::Value(
 		FCommandLine::Get(),

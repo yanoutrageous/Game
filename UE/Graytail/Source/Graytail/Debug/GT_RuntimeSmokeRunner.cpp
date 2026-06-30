@@ -5,6 +5,8 @@
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
+#include "Kismet/GameplayStatics.h"
+#include "Misc/CommandLine.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogGraytailRuntimeSmoke, Log, All);
 
@@ -23,6 +25,14 @@ void ShutdownSmokeGameInstance(UGameInstance* GameInstance)
 	}
 
 	GameInstance->Shutdown();
+}
+
+void DeleteSmokeSaveSlot(const FString& SlotName)
+{
+	if (UGameplayStatics::DoesSaveGameExist(SlotName, 0))
+	{
+		UGameplayStatics::DeleteGameInSlot(SlotName, 0);
+	}
 }
 }
 
@@ -44,10 +54,16 @@ int32 UGT_RuntimeSmokeRunnerCommandlet::Main(const FString& Params)
 		return 1;
 	}
 
+	const FString SmokeSaveSlot = FString::Printf(
+		TEXT("GraytailMetaSmoke_%s"),
+		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
+	FCommandLine::Append(*FString::Printf(TEXT(" -GraytailSaveSlot=%s"), *SmokeSaveSlot));
+
 	UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
 	if (!GameInstance)
 	{
 		UE_LOG(LogGraytailRuntimeSmoke, Error, TEXT("GRAYTAIL_SMOKE|Check=GameInstanceCreated|Result=Fail|Message=Failed to create transient GameInstance."));
+		DeleteSmokeSaveSlot(SmokeSaveSlot);
 		return 1;
 	}
 
@@ -58,6 +74,7 @@ int32 UGT_RuntimeSmokeRunnerCommandlet::Main(const FString& Params)
 	{
 		UE_LOG(LogGraytailRuntimeSmoke, Error, TEXT("GRAYTAIL_SMOKE|Check=DebugSubsystemValid|Result=Fail|Message=DebugSubsystem is not valid."));
 		ShutdownSmokeGameInstance(GameInstance);
+		DeleteSmokeSaveSlot(SmokeSaveSlot);
 		return 1;
 	}
 
@@ -96,5 +113,6 @@ int32 UGT_RuntimeSmokeRunnerCommandlet::Main(const FString& Params)
 		Results.Num());
 
 	ShutdownSmokeGameInstance(GameInstance);
+	DeleteSmokeSaveSlot(SmokeSaveSlot);
 	return bPassed ? 0 : 1;
 }

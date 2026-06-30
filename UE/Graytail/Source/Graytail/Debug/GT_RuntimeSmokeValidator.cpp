@@ -211,6 +211,7 @@ namespace
 	const FName GTCheck_GameDataEventFacadeReloaded(TEXT("GameDataEventFacadeReloaded"));
 	const FName GTCheck_GameDataMetaFacadeReloaded(TEXT("GameDataMetaFacadeReloaded"));
 	const FName GTCheck_GameDataInvalidBlocksRun(TEXT("GameDataInvalidBlocksRun"));
+	const FName GTCheck_SmokeUsesIsolatedSaveSlot(TEXT("SmokeUsesIsolatedSaveSlot"));
 	const FName GTCheck_MetaSaveDebugMirrorWritten(TEXT("MetaSaveDebugMirrorWritten"));
 	const FName GTCheck_MetaSaveDebugMirrorMatches(TEXT("MetaSaveDebugMirrorMatches"));
 	const FName GTCheck_MetaSaveIgnoresDebugMirror(TEXT("MetaSaveIgnoresDebugMirror"));
@@ -510,15 +511,27 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 	UGT_MetaProgressSubsystem* MetaProgress = DebugSubsystem && DebugSubsystem->GetGameInstance()
 		? DebugSubsystem->GetGameInstance()->GetSubsystem<UGT_MetaProgressSubsystem>()
 		: nullptr;
+	FString SmokeSaveSlot;
+	const bool bUsesIsolatedSaveSlot = FParse::Value(
+		FCommandLine::Get(),
+		TEXT("GraytailSaveSlot="),
+		SmokeSaveSlot)
+		&& SmokeSaveSlot.StartsWith(TEXT("GraytailMetaSmoke_"));
+	AddCheck(
+		OutResults,
+		GTCheck_SmokeUsesIsolatedSaveSlot,
+		bUsesIsolatedSaveSlot,
+		FString::Printf(TEXT("Active smoke save slot=%s."), *SmokeSaveSlot));
 	const FString DebugMirrorPath = FPaths::Combine(
 		FPaths::ProjectSavedDir(),
 		TEXT("SaveGames/GraytailMeta.debug.json"));
-	if (MetaProgress)
+	if (MetaProgress && bUsesIsolatedSaveSlot)
 	{
 		MetaProgress->Save();
 	}
 	FString DebugMirrorJson;
 	const bool bMirrorWritten = MetaProgress
+		&& bUsesIsolatedSaveSlot
 		&& FFileHelper::LoadFileToString(DebugMirrorJson, *DebugMirrorPath);
 	AddCheck(
 		OutResults,
@@ -551,11 +564,12 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		TEXT("{\"saveVersion\":999,\"state\":{\"gold\":2147480000}}"),
 		*DebugMirrorPath,
 		FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
-	if (MetaProgress)
+	if (MetaProgress && bUsesIsolatedSaveSlot)
 	{
 		MetaProgress->Load();
 	}
 	const bool bMirrorIgnored = MetaProgress
+		&& bUsesIsolatedSaveSlot
 		&& bMirrorCorrupted
 		&& MetaProgress->GetGold() == CanonicalGold;
 	AddCheck(
@@ -566,7 +580,7 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 			TEXT("Canonical gold=%d loaded gold=%d."),
 			CanonicalGold,
 			MetaProgress ? MetaProgress->GetGold() : INDEX_NONE));
-	if (MetaProgress)
+	if (MetaProgress && bUsesIsolatedSaveSlot)
 	{
 		MetaProgress->Save();
 	}

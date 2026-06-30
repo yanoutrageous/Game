@@ -7,11 +7,24 @@
 #include "JsonObjectConverter.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/FileHelper.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "Misc/Paths.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogGraytailMeta, Log, All);
+
+FString UGT_MetaProgressSubsystem::SaveSlotName()
+{
+	FString Override;
+	if (FParse::Value(FCommandLine::Get(), TEXT("GraytailSaveSlot="), Override)
+		&& !Override.IsEmpty())
+	{
+		return Override;
+	}
+	return TEXT("GraytailMeta");
+}
 
 // ============================================================================
 // 生命周期 / 存读档

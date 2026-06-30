@@ -240,12 +240,12 @@ git commit -m "fix: keep game data snapshots consistent"
 ### Task 4: Isolate Smoke Save State
 
 **Files:**
-- Modify: `UE/Graytail/Source/Graytail/Domains/Meta/GT_MetaProgressSubsystem.h`
 - Modify: `UE/Graytail/Source/Graytail/Domains/Meta/GT_MetaProgressSubsystem.cpp`
+- Modify: `UE/Graytail/Source/Graytail/Debug/GT_RuntimeSmokeRunner.cpp`
 - Modify: `UE/Graytail/Source/Graytail/Debug/GT_RuntimeSmokeValidator.cpp`
 
 **Interfaces:**
-- Produces: non-Shipping test-only save-slot override.
+- Produces: command-line save-slot override for isolated QA and commandlet runs.
 - Produces: smoke always deletes its temporary SaveGame slot.
 
 - [ ] **Step 1: Add a save isolation assertion**
@@ -257,20 +257,20 @@ before mirror tests. After the tests, assert those values are unchanged.
 
 Expected: canonical slot timestamp changes at the two current `Save()` calls.
 
-- [ ] **Step 3: Add a scoped test slot**
+- [ ] **Step 3: Add a scoped command-line slot**
 
-Add non-Shipping methods:
+Resolve the active slot inside the save subsystem:
 
 ```cpp
-void SetSaveSlotOverrideForTesting(const FString& SlotName);
-void ClearSaveSlotOverrideForTesting();
-FString GetActiveSaveSlotName() const;
+FString ActiveSlot = TEXT("GraytailMeta");
+FParse::Value(FCommandLine::Get(), TEXT("GraytailSaveSlot="), ActiveSlot);
 ```
 
 All `DoesSaveGameExist`, `LoadGameFromSlot`, and `SaveGameToSlot` calls use
-`GetActiveSaveSlotName()`. Smoke assigns
-`GraytailMetaSmoke_<guid>`, exercises save/load/mirror behaviour, deletes that
-slot on every exit path, then clears the override.
+this resolved slot. Before creating the standalone GameInstance,
+`GT_RuntimeSmokeRunner` appends a unique
+`-GraytailSaveSlot=GraytailMetaSmoke_<guid>` argument. It exercises
+save/load/mirror behaviour and deletes that slot on every exit path.
 
 - [ ] **Step 4: Build and rerun smoke**
 
@@ -279,8 +279,8 @@ Expected: mirror tests pass and canonical save metadata remains unchanged.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add UE/Graytail/Source/Graytail/Domains/Meta/GT_MetaProgressSubsystem.h `
-        UE/Graytail/Source/Graytail/Domains/Meta/GT_MetaProgressSubsystem.cpp `
+git add UE/Graytail/Source/Graytail/Domains/Meta/GT_MetaProgressSubsystem.cpp `
+        UE/Graytail/Source/Graytail/Debug/GT_RuntimeSmokeRunner.cpp `
         UE/Graytail/Source/Graytail/Debug/GT_RuntimeSmokeValidator.cpp
 git commit -m "test: isolate runtime smoke save data"
 ```

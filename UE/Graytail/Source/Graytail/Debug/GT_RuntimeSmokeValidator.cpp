@@ -20,6 +20,8 @@
 #include "Domains/Meta/GT_MetaSettlement.h"
 #include "Engine/Engine.h"
 #include "HAL/FileManager.h"
+#include "Kismet/GameplayStatics.h"
+#include "Save/GT_MetaSaveGame.h"
 #include "UI/ViewModels/GT_MiniMapViewModel.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Guid.h"
@@ -232,6 +234,7 @@ namespace
 	const FName GTCheck_ConfiguredSettleGoldBonusApplied(TEXT("ConfiguredSettleGoldBonusApplied"));
 	const FName GTCheck_ConfiguredChestBonusApplied(TEXT("ConfiguredChestBonusApplied"));
 	const FName GTCheck_SmokeUsesIsolatedSaveSlot(TEXT("SmokeUsesIsolatedSaveSlot"));
+	const FName GTCheck_MetaSaveRemovesOrphanedEquip(TEXT("MetaSaveRemovesOrphanedEquip"));
 	const FName GTCheck_MetaSaveDebugMirrorWritten(TEXT("MetaSaveDebugMirrorWritten"));
 	const FName GTCheck_MetaSaveDebugMirrorMatches(TEXT("MetaSaveDebugMirrorMatches"));
 	const FName GTCheck_MetaSaveIgnoresDebugMirror(TEXT("MetaSaveIgnoresDebugMirror"));
@@ -854,6 +857,45 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		GTCheck_SmokeUsesIsolatedSaveSlot,
 		bUsesIsolatedSaveSlot,
 		FString::Printf(TEXT("Active smoke save slot=%s."), *SmokeSaveSlot));
+
+	UGT_MetaSaveGame* OrphanedEquipSave = Cast<UGT_MetaSaveGame>(
+		UGameplayStatics::CreateSaveGameObject(UGT_MetaSaveGame::StaticClass()));
+	const FName OrphanedEquipId(TEXT("removed_equipment"));
+	bool bOrphanedSaveWritten = false;
+	if (OrphanedEquipSave && bUsesIsolatedSaveSlot)
+	{
+		OrphanedEquipSave->State.OwnedItems.Add(OrphanedEquipId);
+		OrphanedEquipSave->State.EquippedItems.Add(OrphanedEquipId);
+		bOrphanedSaveWritten = UGameplayStatics::SaveGameToSlot(
+			OrphanedEquipSave,
+			SmokeSaveSlot,
+			0);
+	}
+	if (MetaProgress && bOrphanedSaveWritten)
+	{
+		MetaProgress->Load();
+	}
+	const bool bOrphanedEquipRemoved = MetaProgress
+		&& bOrphanedSaveWritten
+		&& MetaProgress->GetState().OwnedItems.Contains(OrphanedEquipId)
+		&& !MetaProgress->GetState().EquippedItems.Contains(OrphanedEquipId);
+	AddCheck(
+		OutResults,
+		GTCheck_MetaSaveRemovesOrphanedEquip,
+		bOrphanedEquipRemoved,
+		FString::Printf(
+			TEXT("Orphan owned=%s equipped=%s."),
+			MetaProgress && MetaProgress->GetState().OwnedItems.Contains(OrphanedEquipId)
+				? TEXT("true")
+				: TEXT("false"),
+			MetaProgress && MetaProgress->GetState().EquippedItems.Contains(OrphanedEquipId)
+				? TEXT("true")
+				: TEXT("false")));
+	if (MetaProgress)
+	{
+		MetaProgress->GMReset();
+	}
+
 	const FString DebugMirrorPath = FPaths::Combine(
 		FPaths::ProjectSavedDir(),
 		TEXT("SaveGames/GraytailMeta.debug.json"));

@@ -120,7 +120,7 @@ void UGT_MetaProgressSubsystem::SanitizeAfterLoad()
 	// 已装备项必须确实拥有(对齐 Lua 校验)。
 	State.EquippedItems.RemoveAll([this](const FName& Id)
 	{
-		return !State.OwnedItems.Contains(Id);
+		return !State.OwnedItems.Contains(Id) || !GT_MetaCatalog::FindEquip(Id);
 	});
 	// 上限保护。
 	if (State.EquippedItems.Num() > GT_MetaCatalog::GetMaxEquipped())

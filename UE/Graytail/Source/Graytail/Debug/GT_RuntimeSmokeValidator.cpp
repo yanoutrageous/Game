@@ -26,6 +26,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Save/GT_MetaSaveGame.h"
 #include "UI/GT_RoomViewWidget.h"
+#include "UI/GT_SettingsWidget.h"
 #include "UI/ViewModels/GT_BagSummaryViewModel.h"
 #include "UI/ViewModels/GT_MiniMapViewModel.h"
 #include "Misc/FileHelper.h"
@@ -250,6 +251,7 @@ namespace
 	const FName GTCheck_BagSummaryShowsFourRows(TEXT("BagSummaryShowsFourRows"));
 	const FName GTCheck_BagSummarySortsHighestRarityFirst(TEXT("BagSummarySortsHighestRarityFirst"));
 	const FName GTCheck_RoomSimulationPauseIsExplicit(TEXT("RoomSimulationPauseIsExplicit"));
+	const FName GTCheck_SettingsQuitDispatchesRequest(TEXT("SettingsQuitDispatchesRequest"));
 
 	const TCHAR* GTGameDataFileNames[] = {
 		TEXT("core.json"),
@@ -458,6 +460,19 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		GTCheck_RoomSimulationPauseIsExplicit,
 		bPaused && !PauseProbe->IsSimulationPaused(),
 		TEXT("Room simulation pause must not depend on keyboard focus."));
+
+	UGT_SettingsWidget* SettingsProbe = NewObject<UGT_SettingsWidget>(this);
+	int32 QuitRequestCount = 0;
+	SettingsProbe->OnQuitRequested.BindLambda([&QuitRequestCount]()
+	{
+		++QuitRequestCount;
+	});
+	SettingsProbe->RequestQuit();
+	AddCheck(
+		OutResults,
+		GTCheck_SettingsQuitDispatchesRequest,
+		QuitRequestCount == 1,
+		FString::Printf(TEXT("Settings quit requests=%d."), QuitRequestCount));
 
 	FGT_GameDataSnapshot MissingGameData;
 	TArray<FString> MissingGameDataErrors;

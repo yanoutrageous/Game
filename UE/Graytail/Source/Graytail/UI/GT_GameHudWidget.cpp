@@ -663,6 +663,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	if (SettingsPanel)
 	{
 		SettingsPanel->OnBackRequested.BindUObject(this, &UGT_GameHudWidget::HandleSettingsBack);
+		SettingsPanel->OnQuitRequested.BindUObject(this, &UGT_GameHudWidget::HandleSettingsQuitGame);
 		SettingsPanel->SetVisibility(ESlateVisibility::Collapsed);
 		if (UOverlaySlot* SettingsSlot = Screen->AddChildToOverlay(SettingsPanel))
 		{
@@ -1932,6 +1933,11 @@ void UGT_GameHudWidget::HandleSettingsBack()
 {
 	if (SettingsPanel) { SettingsPanel->Close(); }
 	if (MainMenu) { MainMenu->Open(); }
+}
+
+void UGT_GameHudWidget::HandleSettingsQuitGame()
+{
+	UKismetSystemLibrary::QuitGame(this, GetOwningPlayer(), EQuitPreference::Quit, false);
 }
 
 void UGT_GameHudWidget::HandlePersistenceActionRequested()

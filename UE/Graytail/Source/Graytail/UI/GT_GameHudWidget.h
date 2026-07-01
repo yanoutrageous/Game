@@ -102,6 +102,7 @@ private:
 	// 设置面板(标题): 打开 / 返回主菜单。
 	void HandleSettingsRequested();
 	void HandleSettingsBack();
+	void HandleSettingsQuitGame();
 	void HandlePersistenceActionRequested();
 
 	// 过门换房后的统一回调: 刷新信息面板 + 驱动新手教程弹窗(若在教程局)。

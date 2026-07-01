@@ -83,7 +83,9 @@ private:
 	void HandlePauseResume();        // 继续: 关菜单, 焦点还房间(移动续走)。
 	void HandlePauseReturnToTitle(); // 放弃本局回标题(已确认, 不结算)。
 	void HandlePauseQuitGame();      // 退出游戏。
+#if !UE_BUILD_SHIPPING
 	void HandleOpenCheatPanel();     // 打开作弊面板(作弊模式开启时)。
+#endif
 
 	// 主菜单回调: 选难度开局。
 	void HandleMenuStartRequested(EGT_Difficulty Difficulty);

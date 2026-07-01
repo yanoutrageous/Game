@@ -674,9 +674,11 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		PauseMenu->OnResume.BindUObject(this, &UGT_GameHudWidget::HandlePauseResume);
 		PauseMenu->OnReturnToTitle.BindUObject(this, &UGT_GameHudWidget::HandlePauseReturnToTitle);
 		PauseMenu->OnQuitGame.BindUObject(this, &UGT_GameHudWidget::HandlePauseQuitGame);
+#if !UE_BUILD_SHIPPING
 		PauseMenu->OnOpenCheatPanel.BindUObject(this, &UGT_GameHudWidget::HandleOpenCheatPanel);
 		PauseMenu->OnCheatApplied.BindUObject(this, &UGT_GameHudWidget::RefreshAll);
 		PauseMenu->OnToast.BindWeakLambda(this, [this](const FString& Msg) { ShowToast(Msg); });
+#endif
 		PauseMenu->SetVisibility(ESlateVisibility::Collapsed);
 		if (UOverlaySlot* PauseSlot = Screen->AddChildToOverlay(PauseMenu))
 		{
@@ -1889,8 +1891,12 @@ void UGT_GameHudWidget::TogglePauseMenu()
 		return;
 	}
 	// 作弊面板入口仅在作弊模式总开关开启时显示(标题「设置」里切换)。
+#if !UE_BUILD_SHIPPING
 	const UGT_DebugSubsystem* Debug = GetDebugSubsystem();
 	PauseMenu->Open(Debug && Debug->IsCheatModeEnabled());
+#else
+	PauseMenu->Open(false);
+#endif
 }
 
 void UGT_GameHudWidget::HandlePauseResume()
@@ -1933,10 +1939,12 @@ void UGT_GameHudWidget::HandlePauseQuitGame()
 	UKismetSystemLibrary::QuitGame(this, GetOwningPlayer(), EQuitPreference::Quit, false);
 }
 
+#if !UE_BUILD_SHIPPING
 void UGT_GameHudWidget::HandleOpenCheatPanel()
 {
 	// 增量2: 打开作弊面板。当前作弊入口未启用(Open(false) 不显示该按钮), 不会触发。
 }
+#endif
 
 void UGT_GameHudWidget::HandleRoomChanged()
 {

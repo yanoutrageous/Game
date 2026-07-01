@@ -1,7 +1,9 @@
 #include "UI/GT_SettingsWidget.h"
 
 #include "Core/GT_SettingsSubsystem.h"
+#if !UE_BUILD_SHIPPING
 #include "Debug/GT_DebugSubsystem.h"
+#endif
 #include "UI/GT_UIStyle.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
@@ -159,11 +161,13 @@ namespace
 	}
 }
 
+#if !UE_BUILD_SHIPPING
 UGT_DebugSubsystem* UGT_SettingsWidget::GetDebugSubsystem() const
 {
 	const UGameInstance* GameInstance = GetGameInstance();
 	return GameInstance ? GameInstance->GetSubsystem<UGT_DebugSubsystem>() : nullptr;
 }
+#endif
 
 UGT_SettingsSubsystem* UGT_SettingsWidget::GetSettingsSubsystem() const
 {
@@ -259,7 +263,8 @@ void UGT_SettingsWidget::BuildWidgetTree()
 	SfxSlider = AddSliderRow(WidgetTree, Column, TEXT("音效音量"), SfxPercentText);
 	SfxSlider->OnValueChanged.AddDynamic(this, &UGT_SettingsWidget::HandleSfxVolumeChanged);
 
-	// ── 其他(作弊) ──
+#if !UE_BUILD_SHIPPING
+	// ── 开发工具 ──
 	AddSectionHeader(WidgetTree, Column, TEXT("其他"));
 	{
 		UButton* CheatButton = AddStateButton(WidgetTree, Column, CheatToggleText);
@@ -275,6 +280,7 @@ void UGT_SettingsWidget::BuildWidgetTree()
 	{
 		HintSlot->SetPadding(FMargin(0.f, 2.f, 0.f, 10.f));
 	}
+#endif
 
 	UButton* BackButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
 	BackButton->SetStyle(GT_UIStyle::DarkButton());
@@ -299,7 +305,9 @@ void UGT_SettingsWidget::RefreshAll()
 	RefreshDisplayLabels();
 	RefreshMusicLabel();
 	RefreshSfxLabel();
+#if !UE_BUILD_SHIPPING
 	RefreshCheatLabel();
+#endif
 }
 
 void UGT_SettingsWidget::RefreshDisplayLabels()
@@ -343,6 +351,7 @@ void UGT_SettingsWidget::RefreshSfxLabel()
 	SfxPercentText->SetText(FText::FromString(FString::Printf(TEXT("%d%%"), FMath::RoundToInt(Vol * 100.f))));
 }
 
+#if !UE_BUILD_SHIPPING
 void UGT_SettingsWidget::RefreshCheatLabel()
 {
 	if (!CheatToggleText)
@@ -354,6 +363,7 @@ void UGT_SettingsWidget::RefreshCheatLabel()
 	CheatToggleText->SetText(FText::FromString(bOn ? TEXT("作弊模式: 开") : TEXT("作弊模式: 关")));
 	CheatToggleText->SetColorAndOpacity(FSlateColor(bOn ? GTSetOn : GTSetOff));
 }
+#endif
 
 void UGT_SettingsWidget::ApplyDisplaySettings()
 {
@@ -480,11 +490,13 @@ void UGT_SettingsWidget::HandleSfxVolumeChanged(float Value)
 
 void UGT_SettingsWidget::HandleToggleCheat()
 {
+#if !UE_BUILD_SHIPPING
 	if (UGT_DebugSubsystem* Debug = GetDebugSubsystem())
 	{
 		Debug->SetCheatModeEnabled(!Debug->IsCheatModeEnabled());
 	}
 	RefreshCheatLabel();
+#endif
 }
 
 void UGT_SettingsWidget::HandleBack()

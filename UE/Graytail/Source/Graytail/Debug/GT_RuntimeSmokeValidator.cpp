@@ -779,6 +779,7 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		&& bTriggerValuesWritten
 		&& GameDataSubsystem->ReloadFromDirectory(TriggerDirectory, false);
 
+#if !UE_BUILD_SHIPPING
 	if (MetaProgress)
 	{
 		MetaProgress->GMReset();
@@ -786,6 +787,7 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		FName EquipError;
 		MetaProgress->ToggleEquip(FName(TEXT("company_badge")), EquipError);
 	}
+#endif
 	UGT_RunContext* SettlementRun = bTriggerDataLoaded && RunSubsystem
 		? RunSubsystem->StartNewRun(1001, 10, 10)
 		: nullptr;
@@ -806,10 +808,12 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		RunSubsystem->EndCurrentRun();
 	}
 
+#if !UE_BUILD_SHIPPING
 	if (MetaProgress)
 	{
 		MetaProgress->GMReset();
 	}
+#endif
 	UGT_RunContext* ChestBonusRun = bTriggerDataLoaded && RunSubsystem
 		? RunSubsystem->StartNewRunStandard(1002, EGT_Difficulty::Easy)
 		: nullptr;
@@ -859,10 +863,12 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 	{
 		RunSubsystem->EndCurrentRun();
 	}
+#if !UE_BUILD_SHIPPING
 	if (MetaProgress)
 	{
 		MetaProgress->GMReset();
 	}
+#endif
 	const bool bDefaultRestoredAfterTriggerTests = GameDataSubsystem
 		&& GameDataSubsystem->ReloadFromDirectory(UGT_GameDataSubsystem::GetDefaultDataDirectory(), false);
 	if (!bDefaultRestoredAfterTriggerTests)
@@ -919,10 +925,12 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 			MetaProgress && MetaProgress->GetState().EquippedItems.Contains(OrphanedEquipId)
 				? TEXT("true")
 				: TEXT("false")));
+#if !UE_BUILD_SHIPPING
 	if (MetaProgress)
 	{
 		MetaProgress->GMReset();
 	}
+#endif
 
 	const FString DebugMirrorPath = FPaths::Combine(
 		FPaths::ProjectSavedDir(),

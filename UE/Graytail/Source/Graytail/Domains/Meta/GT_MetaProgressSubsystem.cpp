@@ -477,6 +477,7 @@ FGT_TalentEffects UGT_MetaProgressSubsystem::GetTalentEffects() const
 // GM 调试
 // ============================================================================
 
+#if !UE_BUILD_SHIPPING
 void UGT_MetaProgressSubsystem::GMGrantItem(FName ItemId)
 {
 	State.OwnedItems.AddUnique(ItemId);
@@ -513,3 +514,4 @@ void UGT_MetaProgressSubsystem::GMReset()
 	State = FGT_MetaProgressState();
 	Save();
 }
+#endif

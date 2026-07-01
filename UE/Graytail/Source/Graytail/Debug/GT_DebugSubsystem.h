@@ -71,6 +71,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
 	bool DebugUseConsumable(FName ItemId, FGT_DebugRunSnapshot& OutSnapshot);
 
+#if !UE_BUILD_SHIPPING
 	// ---- 调试作弊命令(gt.God/gt.AddGold/gt.GiveItem/gt.SetHp/gt.Goto)----
 	// 切换无敌(危险伤害归零)。
 	bool DebugSetGodMode(bool bEnabled, FGT_DebugRunSnapshot& OutSnapshot);
@@ -88,6 +89,7 @@ public:
 	// 开启后局内 ESC 暂停菜单才显示「作弊面板」入口。不影响 163(默认关)。
 	void SetCheatModeEnabled(bool bEnabled) { bCheatModeEnabled = bEnabled; }
 	bool IsCheatModeEnabled() const { return bCheatModeEnabled; }
+#endif
 
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Debug")
 	bool GetDebugRunSnapshot(FGT_DebugRunSnapshot& OutSnapshot) const;
@@ -118,6 +120,8 @@ private:
 	UGT_RunSubsystem* GetRunSubsystem() const;
 	bool SubmitDebugCommand(FName CommandType, int32 X, int32 Y, FGT_DebugRunSnapshot& OutSnapshot, FName PayloadId = NAME_None);
 
+#if !UE_BUILD_SHIPPING
 	// 作弊模式总开关(本会话内存态, 不存档)。
 	bool bCheatModeEnabled = false;
+#endif
 };

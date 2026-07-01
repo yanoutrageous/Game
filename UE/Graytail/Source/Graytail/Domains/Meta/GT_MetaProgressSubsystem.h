@@ -73,12 +73,14 @@ public:
 	FGT_EquipBonus GetEquipBonus() const;       // 对齐 Lua GetEquipBonus
 	FGT_TalentEffects GetTalentEffects() const; // 对齐 Lua GetTalentEffects
 
+#if !UE_BUILD_SHIPPING
 	// --- GM 调试(免费, 不扣币) ---
 	void GMGrantItem(FName ItemId);
 	void GMGrantTalent(FName TalentId);
 	void GMEquipAll();
 	void GMUnequipAll();
 	void GMReset();
+#endif
 
 	// 只读访问(调试命令打印用)
 	const FGT_MetaProgressState& GetState() const { return State; }

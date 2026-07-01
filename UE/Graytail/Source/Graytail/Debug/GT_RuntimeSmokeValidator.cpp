@@ -1,5 +1,7 @@
 #include "Debug/GT_RuntimeSmokeValidator.h"
 
+#include "App/GT_GameMode.h"
+#include "App/GT_PlayerController.h"
 #include "Core/GT_CommandBus.h"
 #include "Core/GT_CommandProcessor.h"
 #include "Core/GT_ContentRegistry.h"
@@ -9,6 +11,7 @@
 #include "Core/GT_RunSubsystem.h"
 #include "Debug/GT_DebugSubsystem.h"
 #include "Debug/GT_DebugTypes.h"
+#include "Debug/GT_MetaPersistenceSmokeValidator.h"
 #include "Data/GT_GameDataSubsystem.h"
 #include "Dom/JsonObject.h"
 #include "Domains/Combat/GT_MonsterCatalog.h"
@@ -32,6 +35,10 @@
 
 namespace
 {
+	const FName GTCheck_DefaultGameModeUsesGraytailController(TEXT("DefaultGameModeUsesGraytailController"));
+	const FName GTCheck_LocalControllerCreatesHudOnce(TEXT("LocalControllerCreatesHudOnce"));
+	const FName GTCheck_ExistingHudIsNotDuplicated(TEXT("ExistingHudIsNotDuplicated"));
+	const FName GTCheck_RemoteControllerDoesNotCreateHud(TEXT("RemoteControllerDoesNotCreateHud"));
 	const FName GTCheck_RunSubsystemValid(TEXT("RunSubsystemValid"));
 	const FName GTCheck_PlayerExists(TEXT("PlayerExists"));
 	const FName GTCheck_InitialPlayerPosition(TEXT("InitialPlayerPosition"));
@@ -335,6 +342,52 @@ void UGT_RuntimeSmokeValidator::SetDebugSubsystem(UGT_DebugSubsystem* InDebugSub
 bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSmokeCheckResult>& OutResults)
 {
 	OutResults.Reset();
+
+	const AGT_GameMode* DefaultGameMode = GetDefault<AGT_GameMode>();
+	AddCheck(
+		OutResults,
+		GTCheck_DefaultGameModeUsesGraytailController,
+		DefaultGameMode && DefaultGameMode->PlayerControllerClass == AGT_PlayerController::StaticClass(),
+		TEXT("Graytail game mode must use the Graytail player controller."));
+	AddCheck(
+		OutResults,
+		GTCheck_LocalControllerCreatesHudOnce,
+		AGT_PlayerController::ShouldCreateHud(true, false),
+		TEXT("A local controller without a HUD should create one."));
+	AddCheck(
+		OutResults,
+		GTCheck_ExistingHudIsNotDuplicated,
+		!AGT_PlayerController::ShouldCreateHud(true, true),
+		TEXT("A local controller with a HUD must not create a duplicate."));
+	AddCheck(
+		OutResults,
+		GTCheck_RemoteControllerDoesNotCreateHud,
+		!AGT_PlayerController::ShouldCreateHud(false, false),
+		TEXT("A remote controller must not create a local HUD."));
+#if !UE_BUILD_SHIPPING
+	FString StartupProbeSlot;
+	AddCheck(
+		OutResults,
+		FName(TEXT("StartupProbeRequiresIsolatedSaveSlot")),
+		AGT_PlayerController::TryGetIsolatedStartupProbeSlot(
+			TEXT("-GraytailStartupProbe -GraytailSaveSlot=GraytailStartupProbe_123"),
+			StartupProbeSlot)
+			&& StartupProbeSlot == TEXT("GraytailStartupProbe_123")
+			&& !AGT_PlayerController::TryGetIsolatedStartupProbeSlot(
+				TEXT("-GraytailStartupProbe -GraytailSaveSlot=GraytailMeta"),
+				StartupProbeSlot)
+			&& !AGT_PlayerController::TryGetIsolatedStartupProbeSlot(
+				TEXT("-GraytailStartupProbe"),
+				StartupProbeSlot),
+		TEXT("The packaged startup probe must refuse normal or missing save slots."));
+#endif
+	UGT_MetaProgressSubsystem* PersistenceMeta = DebugSubsystem && DebugSubsystem->GetGameInstance()
+		? DebugSubsystem->GetGameInstance()->GetSubsystem<UGT_MetaProgressSubsystem>()
+		: nullptr;
+	GT_MetaPersistenceSmokeValidator::AppendChecks(
+		OutResults,
+		PersistenceMeta,
+		RunSubsystem);
 
 	FGT_GameDataSnapshot DefaultGameData;
 	TArray<FString> DefaultGameDataErrors;
@@ -751,6 +804,7 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		&& bTriggerValuesWritten
 		&& GameDataSubsystem->ReloadFromDirectory(TriggerDirectory, false);
 
+#if !UE_BUILD_SHIPPING
 	if (MetaProgress)
 	{
 		MetaProgress->GMReset();
@@ -758,7 +812,19 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		FName EquipError;
 		MetaProgress->ToggleEquip(FName(TEXT("company_badge")), EquipError);
 	}
-	UGT_RunContext* SettlementRun = bTriggerDataLoaded && RunSubsystem
+#endif
+	FGuid SettlementRunId;
+	TMap<FName, int32> SettlementConsumed;
+	const FGT_MetaOperationResult SettlementEscrow = bTriggerDataLoaded && MetaProgress
+		? MetaProgress->BeginRunEscrow(
+			1001,
+			EGT_Difficulty::Easy,
+			SettlementRunId,
+			SettlementConsumed)
+		: FGT_MetaOperationResult::Failure(
+			FName(TEXT("test_setup_failed")),
+			FText::FromString(TEXT("Settlement test setup failed.")));
+	UGT_RunContext* SettlementRun = SettlementEscrow.bSuccess && RunSubsystem
 		? RunSubsystem->StartNewRun(1001, 10, 10)
 		: nullptr;
 	if (SettlementRun)
@@ -778,10 +844,12 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		RunSubsystem->EndCurrentRun();
 	}
 
+#if !UE_BUILD_SHIPPING
 	if (MetaProgress)
 	{
 		MetaProgress->GMReset();
 	}
+#endif
 	UGT_RunContext* ChestBonusRun = bTriggerDataLoaded && RunSubsystem
 		? RunSubsystem->StartNewRunStandard(1002, EGT_Difficulty::Easy)
 		: nullptr;
@@ -831,10 +899,12 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 	{
 		RunSubsystem->EndCurrentRun();
 	}
+#if !UE_BUILD_SHIPPING
 	if (MetaProgress)
 	{
 		MetaProgress->GMReset();
 	}
+#endif
 	const bool bDefaultRestoredAfterTriggerTests = GameDataSubsystem
 		&& GameDataSubsystem->ReloadFromDirectory(UGT_GameDataSubsystem::GetDefaultDataDirectory(), false);
 	if (!bDefaultRestoredAfterTriggerTests)
@@ -891,10 +961,12 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 			MetaProgress && MetaProgress->GetState().EquippedItems.Contains(OrphanedEquipId)
 				? TEXT("true")
 				: TEXT("false")));
+#if !UE_BUILD_SHIPPING
 	if (MetaProgress)
 	{
 		MetaProgress->GMReset();
 	}
+#endif
 
 	const FString DebugMirrorPath = FPaths::Combine(
 		FPaths::ProjectSavedDir(),
@@ -920,7 +992,7 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		&& DebugMirrorObject.IsValid();
 	const TSharedPtr<FJsonObject>* DebugStateObject = nullptr;
 	const bool bMirrorMatches = bMirrorParsed
-		&& DebugMirrorObject->GetIntegerField(TEXT("saveVersion")) == 1
+		&& DebugMirrorObject->GetIntegerField(TEXT("saveVersion")) == UGT_MetaSaveGame::CurrentSaveVersion
 		&& DebugMirrorObject->TryGetObjectField(TEXT("state"), DebugStateObject)
 		&& DebugStateObject
 		&& (*DebugStateObject)->GetIntegerField(TEXT("gold")) == MetaProgress->GetGold();

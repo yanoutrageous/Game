@@ -1,5 +1,7 @@
 #include "Debug/GT_DebugSubsystem.h"
 
+#if !UE_BUILD_SHIPPING
+
 #include "Debug/GT_DebugTypes.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
@@ -1190,3 +1192,5 @@ namespace
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleGoto));
 
 }
+
+#endif

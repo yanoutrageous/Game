@@ -55,6 +55,7 @@ namespace
 	const FLinearColor GTColBtnDisabled(FColor(52, 58, 70));
 	const FLinearColor GTColBtnText(FColor(245, 248, 252));
 	const FLinearColor GTColBtnTextDisabled(0.45f, 0.48f, 0.55f);
+	const FLinearColor GTColError(FColor(255, 115, 105));
 
 	// 物品稀有度(FName)-> 中文档位键。装备在 UI 层按 id 派生。
 	FName RarityTierKey(FName Rarity)
@@ -984,6 +985,10 @@ void UGT_DeployTerminalWidget::RefreshSummary()
 	};
 
 	AddLine(TEXT("出勤摘要"), 20, GTColGold);
+	if (!OperationNotice.IsEmpty())
+	{
+		AddLine(OperationNotice.ToString(), 14, GTColError);
+	}
 	AddLine(TEXT("── 已装备 ──"), 12, GTColDim);
 	const TArray<FName>& Equipped = Meta->GetEquippedItems();
 	if (Equipped.Num() == 0) { AddLine(TEXT("(未配置)"), 15, GTColDim); }
@@ -1065,6 +1070,8 @@ void UGT_DeployTerminalWidget::HandleRowClicked(int32 Index)
 	if (!Meta) { return; }
 	const FRowRef Ref = CurrentRows[Index];
 	FName Err;
+	bool bPersistenceFailure = false;
+	OperationNotice = FText::GetEmpty();
 
 	switch (Ref.Kind)
 	{
@@ -1077,7 +1084,8 @@ void UGT_DeployTerminalWidget::HandleRowClicked(int32 Index)
 			int32 Cap = Stock;
 			if (Def && Def->MaxCarry > 0) { Cap = FMath::Min(Cap, Def->MaxCarry); }
 			const int32 Next = (Cur >= Cap) ? 0 : Cur + 1;
-			Meta->SetLoadoutConsumable(Ref.Id, Next);
+			bPersistenceFailure = !Meta->SetLoadoutConsumable(Ref.Id, Next)
+				&& !Meta->GetLastPersistenceResult().bSuccess;
 		}
 		else
 		{
@@ -1102,6 +1110,12 @@ void UGT_DeployTerminalWidget::HandleRowClicked(int32 Index)
 		break;
 	}
 	}
+	bPersistenceFailure |= Err == FName(TEXT("save_write_failed"));
+	if (bPersistenceFailure)
+	{
+		OperationNotice = FText::FromString(
+			TEXT("保存失败：") + Meta->GetLastPersistenceResult().Message.ToString());
+	}
 	RefreshAll();
 }
 
@@ -1123,7 +1137,13 @@ void UGT_DeployTerminalWidget::AdjustCarry(int32 Index, int32 Delta)
 	const int32 Next = FMath::Clamp(Cur + Delta, 0, Cap);
 	if (Next != Cur)
 	{
-		Meta->SetLoadoutConsumable(Ref.Id, Next);
+		OperationNotice = FText::GetEmpty();
+		if (!Meta->SetLoadoutConsumable(Ref.Id, Next)
+			&& !Meta->GetLastPersistenceResult().bSuccess)
+		{
+			OperationNotice = FText::FromString(
+				TEXT("保存失败：") + Meta->GetLastPersistenceResult().Message.ToString());
+		}
 		RefreshAll();   // 重建卡片(数字更新)+右侧摘要, 与 HandleRowClicked 一致。
 	}
 }

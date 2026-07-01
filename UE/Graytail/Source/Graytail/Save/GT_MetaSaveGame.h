@@ -12,6 +12,8 @@ class GRAYTAIL_API UGT_MetaSaveGame : public USaveGame
 	GENERATED_BODY()
 
 public:
+	static constexpr int32 CurrentSaveVersion = 2;
+
 	UPROPERTY() FGT_MetaProgressState State;
-	UPROPERTY() int32 SaveVersion = 1;   // 预留迁移
+	UPROPERTY() int32 SaveVersion = CurrentSaveVersion;
 };

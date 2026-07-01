@@ -324,6 +324,7 @@ namespace
 	}
 }
 
+#if !UE_BUILD_SHIPPING
 bool UGT_DebugSubsystem::DebugSetGodMode(bool bEnabled, FGT_DebugRunSnapshot& OutSnapshot)
 {
 	OutSnapshot = FGT_DebugRunSnapshot();
@@ -522,6 +523,7 @@ bool UGT_DebugSubsystem::DebugGotoRoomType(const FString& TypeArg, FGT_DebugRunS
 		*TypeArg, BestX, BestY, bMoved ? TEXT("entered") : TEXT("move-failed"), *OutSnapshot.Summary);
 	return bMoved;
 }
+#endif
 
 bool UGT_DebugSubsystem::DebugSearch(FGT_DebugRunSnapshot& OutSnapshot)
 {

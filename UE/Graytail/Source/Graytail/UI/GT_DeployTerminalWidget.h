@@ -115,6 +115,7 @@ private:
 	UPROPERTY(Transient) UWrapBox* ContentWrap = nullptr;
 	UPROPERTY(Transient) UVerticalBox* SummaryBox = nullptr;
 	UPROPERTY(Transient) UTextBlock* DetailText = nullptr;
+	FText OperationNotice;
 
 	UPROPERTY(Transient) TMap<FString, UTexture2D*> TexCache;
 

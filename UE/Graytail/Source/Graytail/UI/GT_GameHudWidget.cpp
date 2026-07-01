@@ -80,6 +80,7 @@ void UGT_GameHudWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 	RefreshAll();
+	RefreshMetaPresentation(true);
 
 	// 无局时先进主菜单选难度(替代原来的自动开局), 已有局(如 gt.StartStd 后再 gt.HUD)直接进游戏。
 	const UGT_RunContext* RunContext = GetRunContext();
@@ -87,6 +88,25 @@ void UGT_GameHudWidget::NativeConstruct()
 	{
 		MainMenu->Open();
 	}
+}
+
+bool UGT_GameHudWidget::IsMainMenuVisible() const
+{
+	return MainMenu && MainMenu->IsOpen();
+}
+
+bool UGT_GameHudWidget::TryStartRunFromMenu(EGT_Difficulty Difficulty)
+{
+	if (!StartNewRun(Difficulty))
+	{
+		return false;
+	}
+
+	if (MainMenu)
+	{
+		MainMenu->Close();
+	}
+	return true;
 }
 
 void UGT_GameHudWidget::BuildWidgetTree()
@@ -578,12 +598,20 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		RunEndButton->OnClicked.AddDynamic(this, &UGT_GameHudWidget::OnNewRun);
 
 		// 返回菜单: 重选难度(打通 菜单→局内→局终→菜单 循环)。
-		UButton* MenuButton = MakeButton(ButtonRow, TEXT("返回菜单"));
-		if (UHorizontalBoxSlot* MenuButtonSlot = Cast<UHorizontalBoxSlot>(MenuButton->Slot))
+		RunEndMenuButton = MakeButton(ButtonRow, TEXT("返回菜单"));
+		if (UHorizontalBoxSlot* MenuButtonSlot = Cast<UHorizontalBoxSlot>(RunEndMenuButton->Slot))
 		{
 			MenuButtonSlot->SetPadding(FMargin(12.f, 0.f, 0.f, 0.f));
 		}
-		MenuButton->OnClicked.AddDynamic(this, &UGT_GameHudWidget::OnReturnToMenu);
+		RunEndMenuButton->OnClicked.AddDynamic(this, &UGT_GameHudWidget::OnReturnToMenu);
+
+		RunEndRetryButton = MakeButton(ButtonRow, TEXT("重试保存"));
+		if (UHorizontalBoxSlot* RetrySlot = Cast<UHorizontalBoxSlot>(RunEndRetryButton->Slot))
+		{
+			RetrySlot->SetPadding(FMargin(12.f, 0.f, 0.f, 0.f));
+		}
+		RunEndRetryButton->OnClicked.AddDynamic(this, &UGT_GameHudWidget::OnRetrySettlement);
+		RunEndRetryButton->SetVisibility(ESlateVisibility::Collapsed);
 
 		RunEndRoot = EndRoot;
 		RunEndRoot->SetVisibility(ESlateVisibility::Collapsed);
@@ -601,6 +629,9 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		MainMenu->OnStartRequested.BindUObject(this, &UGT_GameHudWidget::HandleMenuStartRequested);
 		MainMenu->OnDeployRequested.BindUObject(this, &UGT_GameHudWidget::HandleDeployRequested);
 		MainMenu->OnSettingsRequested.BindUObject(this, &UGT_GameHudWidget::HandleSettingsRequested);
+		MainMenu->OnPersistenceActionRequested.BindUObject(
+			this,
+			&UGT_GameHudWidget::HandlePersistenceActionRequested);
 		MainMenu->SetVisibility(ESlateVisibility::Collapsed);
 		if (UOverlaySlot* MenuSlot = Screen->AddChildToOverlay(MainMenu))
 		{
@@ -655,9 +686,11 @@ void UGT_GameHudWidget::BuildWidgetTree()
 		PauseMenu->OnResume.BindUObject(this, &UGT_GameHudWidget::HandlePauseResume);
 		PauseMenu->OnReturnToTitle.BindUObject(this, &UGT_GameHudWidget::HandlePauseReturnToTitle);
 		PauseMenu->OnQuitGame.BindUObject(this, &UGT_GameHudWidget::HandlePauseQuitGame);
+#if !UE_BUILD_SHIPPING
 		PauseMenu->OnOpenCheatPanel.BindUObject(this, &UGT_GameHudWidget::HandleOpenCheatPanel);
 		PauseMenu->OnCheatApplied.BindUObject(this, &UGT_GameHudWidget::RefreshAll);
 		PauseMenu->OnToast.BindWeakLambda(this, [this](const FString& Msg) { ShowToast(Msg); });
+#endif
 		PauseMenu->SetVisibility(ESlateVisibility::Collapsed);
 		if (UOverlaySlot* PauseSlot = Screen->AddChildToOverlay(PauseMenu))
 		{
@@ -807,14 +840,19 @@ void UGT_GameHudWidget::RefreshRunEndPanel()
 		RunEndRoot->SetVisibility(ESlateVisibility::Collapsed);
 		return;
 	}
-	if (bRunEndShown)
+	UGT_RunSubsystem* RunSubsystem = GetGameInstance()
+		? GetGameInstance()->GetSubsystem<UGT_RunSubsystem>()
+		: nullptr;
+	const bool bSettlementPending = RunSubsystem && RunSubsystem->HasPendingSettlement();
+	if (bRunEndShown && !bSettlementPending)
 	{
 		return;
 	}
+	const bool bFirstPresentation = !bRunEndShown;
 	bRunEndShown = true;
 
 	const bool bSuccess = RunState == EGT_RunState::Succeeded;
-	if (bSuccess)
+	if (bSuccess && bFirstPresentation)
 	{
 		if (UGameInstance* GI = GetGameInstance())
 		{
@@ -883,7 +921,7 @@ void UGT_GameHudWidget::RefreshRunEndPanel()
 	const FGT_RunInventoryState& Inventory = RunContext->GetRunInventory();
 	// 失败丢装备: 列出本局损失的已装备装备(撤离成功时为空)。
 	FString LostEquipLine;
-	if (!bSuccess)
+	if (!bSuccess && !bSettlementPending)
 	{
 		if (UGT_MetaProgressSubsystem* Meta = GetGameInstance() ? GetGameInstance()->GetSubsystem<UGT_MetaProgressSubsystem>() : nullptr)
 		{
@@ -909,6 +947,27 @@ void UGT_GameHudWidget::RefreshRunEndPanel()
 		bSuccess ? TEXT("") : TEXT(" (已遗失)"),
 		Inventory.SearchedRooms.Num(),
 		*LostEquipLine)));
+
+	if (bSettlementPending)
+	{
+		const UGT_MetaProgressSubsystem* Meta = GetGameInstance()
+			? GetGameInstance()->GetSubsystem<UGT_MetaProgressSubsystem>()
+			: nullptr;
+		const FString Detail = Meta
+			? Meta->GetLastPersistenceResult().Message.ToString()
+			: TEXT("存档服务不可用。");
+		RunEndBody->SetText(FText::FromString(
+			RunEndBody->GetText().ToString()
+			+ TEXT("\n\n结算尚未保存，请重试。退出前必须先保存成功。\n")
+			+ Detail));
+	}
+	if (RunEndButton) { RunEndButton->SetIsEnabled(!bSettlementPending); }
+	if (RunEndMenuButton) { RunEndMenuButton->SetIsEnabled(!bSettlementPending); }
+	if (RunEndRetryButton)
+	{
+		RunEndRetryButton->SetVisibility(
+			bSettlementPending ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	}
 
 	RunEndRoot->SetVisibility(ESlateVisibility::Visible);
 	// 按钮拿焦点: 房间视图失焦后移动闸门关闭, 局终不再响应 WASD。
@@ -1734,14 +1793,78 @@ void UGT_GameHudWidget::ShowCompassHintIfNeeded()
 
 void UGT_GameHudWidget::OnNewRun()
 {
-	UGT_DebugSubsystem* Debug = GetDebugSubsystem();
-	FGT_DebugRunSnapshot Snapshot;
-	if (Debug)
+	if (!StartNewRun(LastDifficulty))
 	{
-		// 每局随机种子(对齐原版); 局内随机仍由该种子完全确定, 复现指定地图用 gt.StartStd。
-		// 难度 = 主菜单最近一次选择("重新出发"沿用同难度)。
-		Debug->DebugStartStandardRun(FMath::RandRange(1, MAX_int32 - 1), LastDifficulty, Snapshot);
+		ShowToast(TEXT("无法开始新行动，请查看日志中的配置或存档错误。"));
 	}
+}
+
+void UGT_GameHudWidget::OnRetrySettlement()
+{
+	UGT_RunSubsystem* RunSubsystem = GetGameInstance()
+		? GetGameInstance()->GetSubsystem<UGT_RunSubsystem>()
+		: nullptr;
+	const FGT_MetaOperationResult Result = RunSubsystem
+		? RunSubsystem->RetryPendingSettlement()
+		: FGT_MetaOperationResult::Failure(
+			FName(TEXT("run_unavailable")),
+			FText::FromString(TEXT("行动系统不可用。")));
+	if (!Result.bSuccess)
+	{
+		ShowToast(Result.Message.ToString(), 4.f);
+		RefreshRunEndPanel();
+		return;
+	}
+	bRunEndShown = false;
+	ShowToast(TEXT("结算已安全保存。"));
+	RefreshRunEndPanel();
+}
+
+void UGT_GameHudWidget::RefreshMetaPresentation(bool bConsumeStartupNotice)
+{
+	UGT_MetaProgressSubsystem* Meta = GetGameInstance()
+		? GetGameInstance()->GetSubsystem<UGT_MetaProgressSubsystem>()
+		: nullptr;
+	if (!Meta)
+	{
+		return;
+	}
+	const FText StartupNotice = bConsumeStartupNotice
+		? Meta->ConsumeStartupNotice()
+		: FText::GetEmpty();
+	const FGT_MetaUiState UiState = GT_BuildMetaUiState(
+		Meta->GetPersistenceStatus(),
+		Meta->GetLastPersistenceResult(),
+		StartupNotice);
+	if (MainMenu)
+	{
+		MainMenu->SetProgressAvailability(
+			UiState.bCanStart,
+			UiState.bCanRetry,
+			UiState.bCanReset,
+			UiState.Message);
+	}
+	if (!UiState.Message.IsEmpty())
+	{
+		ShowToast(UiState.Message.ToString(), 5.f);
+	}
+}
+
+bool UGT_GameHudWidget::StartNewRun(EGT_Difficulty Difficulty)
+{
+	UGameInstance* GameInstance = GetGameInstance();
+	UGT_RunSubsystem* RunSubsystem = GameInstance
+		? GameInstance->GetSubsystem<UGT_RunSubsystem>()
+		: nullptr;
+	UGT_RunContext* NewRun = RunSubsystem
+		? RunSubsystem->StartNewRunStandard(FMath::RandRange(1, MAX_int32 - 1), Difficulty)
+		: nullptr;
+	if (!NewRun)
+	{
+		return false;
+	}
+
+	LastDifficulty = Difficulty;
 	if (MapOverlay)
 	{
 		// 上一局的标雷旗随新局清空。
@@ -1767,8 +1890,14 @@ void UGT_GameHudWidget::OnNewRun()
 	TutorialReset();
 	if (bTutorialActive)
 	{
-		TutorialEnterRoom(Snapshot.PlayerX, Snapshot.PlayerY);
+		int32 PlayerX = 0;
+		int32 PlayerY = 0;
+		if (NewRun->TryGetPlayerPosition(PlayerX, PlayerY))
+		{
+			TutorialEnterRoom(PlayerX, PlayerY);
+		}
 	}
+	return true;
 }
 
 void UGT_GameHudWidget::HandleDeployRequested()
@@ -1795,6 +1924,49 @@ void UGT_GameHudWidget::HandleSettingsBack()
 	if (MainMenu) { MainMenu->Open(); }
 }
 
+void UGT_GameHudWidget::HandlePersistenceActionRequested()
+{
+	UGT_MetaProgressSubsystem* Meta = GetGameInstance()
+		? GetGameInstance()->GetSubsystem<UGT_MetaProgressSubsystem>()
+		: nullptr;
+	if (!Meta)
+	{
+		ShowToast(TEXT("存档系统不可用。"), 4.f);
+		return;
+	}
+
+	const EGT_MetaPersistenceStatus Status = Meta->GetPersistenceStatus();
+	if (Status == EGT_MetaPersistenceStatus::RecoveryWritePending)
+	{
+		const FGT_MetaLoadResult Result = Meta->Load();
+		bResetSaveConfirmationArmed = false;
+		RefreshMetaPresentation(false);
+		ShowToast(
+			Result.IsUsable() ? TEXT("存档修复成功。") : Result.Message.ToString(),
+			4.f);
+		return;
+	}
+
+	if (Status != EGT_MetaPersistenceStatus::Corrupt
+		&& Status != EGT_MetaPersistenceStatus::UnsupportedVersion)
+	{
+		return;
+	}
+	if (!bResetSaveConfirmationArmed)
+	{
+		bResetSaveConfirmationArmed = true;
+		ShowToast(TEXT("警告：再次确认会永久清空旧进度。"), 6.f);
+		return;
+	}
+
+	const FGT_MetaOperationResult Result = Meta->ResetCorruptSaveAndCreateFresh();
+	bResetSaveConfirmationArmed = false;
+	RefreshMetaPresentation(false);
+	ShowToast(
+		Result.bSuccess ? TEXT("已建立新的空白存档。") : Result.Message.ToString(),
+		4.f);
+}
+
 void UGT_GameHudWidget::HandleDeployDepart()
 {
 	if (DeployTerminal) { DeployTerminal->Close(); }
@@ -1803,6 +1975,16 @@ void UGT_GameHudWidget::HandleDeployDepart()
 
 void UGT_GameHudWidget::OnReturnToMenu()
 {
+	if (UGT_RunSubsystem* RunSubsystem = GetGameInstance()
+		? GetGameInstance()->GetSubsystem<UGT_RunSubsystem>()
+		: nullptr)
+	{
+		if (RunSubsystem->HasPendingSettlement())
+		{
+			ShowToast(TEXT("结算尚未保存，请先重试保存。"), 4.f);
+			return;
+		}
+	}
 	// 只做导航: 收起局终弹窗回主菜单重选难度。bRunEndShown 保持 true,
 	// 防止 RefreshRunEndPanel 在局态仍为 Failed/Succeeded 时把弹窗又弹回来。
 	if (RunEndRoot)
@@ -1851,8 +2033,12 @@ void UGT_GameHudWidget::TogglePauseMenu()
 		return;
 	}
 	// 作弊面板入口仅在作弊模式总开关开启时显示(标题「设置」里切换)。
+#if !UE_BUILD_SHIPPING
 	const UGT_DebugSubsystem* Debug = GetDebugSubsystem();
 	PauseMenu->Open(Debug && Debug->IsCheatModeEnabled());
+#else
+	PauseMenu->Open(false);
+#endif
 }
 
 void UGT_GameHudWidget::HandlePauseResume()
@@ -1876,7 +2062,12 @@ void UGT_GameHudWidget::HandlePauseReturnToTitle()
 	{
 		if (UGT_RunSubsystem* RunSys = GI->GetSubsystem<UGT_RunSubsystem>())
 		{
-			RunSys->AbandonRun();
+			const FGT_MetaOperationResult Result = RunSys->AbandonRun();
+			if (!Result.bSuccess)
+			{
+				ShowToast(Result.Message.ToString(), 4.f);
+				return;
+			}
 		}
 	}
 	if (PauseMenu)
@@ -1888,6 +2079,18 @@ void UGT_GameHudWidget::HandlePauseReturnToTitle()
 
 void UGT_GameHudWidget::HandlePauseQuitGame()
 {
+	if (UGameInstance* GI = GetGameInstance())
+	{
+		if (UGT_RunSubsystem* RunSys = GI->GetSubsystem<UGT_RunSubsystem>())
+		{
+			const FGT_MetaOperationResult Result = RunSys->AbandonRun();
+			if (!Result.bSuccess)
+			{
+				ShowToast(Result.Message.ToString(), 4.f);
+				return;
+			}
+		}
+	}
 	if (PauseMenu)
 	{
 		PauseMenu->Close();
@@ -1895,10 +2098,12 @@ void UGT_GameHudWidget::HandlePauseQuitGame()
 	UKismetSystemLibrary::QuitGame(this, GetOwningPlayer(), EQuitPreference::Quit, false);
 }
 
+#if !UE_BUILD_SHIPPING
 void UGT_GameHudWidget::HandleOpenCheatPanel()
 {
 	// 增量2: 打开作弊面板。当前作弊入口未启用(Open(false) 不显示该按钮), 不会触发。
 }
+#endif
 
 void UGT_GameHudWidget::HandleRoomChanged()
 {
@@ -2012,10 +2217,15 @@ void UGT_GameHudWidget::TutorialConfirm()
 void UGT_GameHudWidget::HandleMenuStartRequested(EGT_Difficulty Difficulty)
 {
 	// 难度确认后直接开局; 将来部署界面(局外组)插在这一步之前, 由团队定。
-	LastDifficulty = Difficulty;
-	if (MainMenu)
+	if (!TryStartRunFromMenu(Difficulty))
 	{
-		MainMenu->Close();
+		RefreshMetaPresentation(false);
+		UGT_MetaProgressSubsystem* Meta = GetGameInstance()
+			? GetGameInstance()->GetSubsystem<UGT_MetaProgressSubsystem>()
+			: nullptr;
+		const FString Message = Meta && !Meta->GetLastPersistenceResult().Message.IsEmpty()
+			? Meta->GetLastPersistenceResult().Message.ToString()
+			: TEXT("无法开始新行动，请检查配置或存档。");
+		ShowToast(Message, 4.f);
 	}
-	OnNewRun();
 }

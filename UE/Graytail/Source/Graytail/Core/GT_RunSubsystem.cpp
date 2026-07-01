@@ -35,7 +35,7 @@ void UGT_RunSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UGT_RunSubsystem::Deinitialize()
 {
-	EndCurrentRun();
+	ClearCurrentRun();
 
 	CommandBus = nullptr;
 	CommandProcessor = nullptr;
@@ -55,7 +55,11 @@ UGT_RunContext* UGT_RunSubsystem::StartNewRun(int32 Seed, int32 Width, int32 Hei
 		return nullptr;
 	}
 
-	EndCurrentRun();
+	const FGT_MetaOperationResult EndResult = EndCurrentRun();
+	if (!EndResult.bSuccess)
+	{
+		return nullptr;
+	}
 	CurrentRunContext = NewObject<UGT_RunContext>(this);
 	bRunSettled = false;
 	CurrentRunContext->InitializeRun(Seed, Width, Height);
@@ -71,9 +75,45 @@ UGT_RunContext* UGT_RunSubsystem::StartNewRunStandard(int32 Seed, EGT_Difficulty
 		return nullptr;
 	}
 
-	EndCurrentRun();
+	TMap<FName, int32> ConsumedConsumables;
+	UGT_MetaProgressSubsystem* Meta = nullptr;
+	if (Difficulty != EGT_Difficulty::Tutorial)
+	{
+		UGameInstance* GameInstance = GetGameInstance();
+		Meta = GameInstance ? GameInstance->GetSubsystem<UGT_MetaProgressSubsystem>() : nullptr;
+		if (!Meta)
+		{
+			return nullptr;
+		}
+		FGuid RunId;
+		const FGT_MetaOperationResult EscrowResult = Meta->BeginRunEscrow(
+			Seed,
+			Difficulty,
+			RunId,
+			ConsumedConsumables);
+		if (!EscrowResult.bSuccess)
+		{
+			UE_LOG(
+				LogTemp,
+				Warning,
+				TEXT("StartNewRunStandard blocked by save failure: %s"),
+				*EscrowResult.Message.ToString());
+			return nullptr;
+		}
+	}
+
+	const FGT_MetaOperationResult EndResult = EndCurrentRun();
+	if (!EndResult.bSuccess)
+	{
+		if (Meta)
+		{
+			Meta->RecoverInterruptedRun();
+		}
+		return nullptr;
+	}
 	CurrentRunContext = NewObject<UGT_RunContext>(this);
 	bRunSettled = false;
+	PendingSettlementEvent = NAME_None;
 	CurrentRunContext->InitializeRunStandard(Seed, Difficulty);
 	if (CurrentRunContext->IsTutorialRun())
 	{
@@ -82,7 +122,7 @@ UGT_RunContext* UGT_RunSubsystem::StartNewRunStandard(int32 Seed, EGT_Difficulty
 	}
 	else
 	{
-		ApplyMetaLoadoutToRun();
+		ApplyMetaLoadoutToRun(ConsumedConsumables);
 	}
 	FinishStartRun();
 	return CurrentRunContext;
@@ -137,7 +177,28 @@ UGT_RunContext* UGT_RunSubsystem::GetCurrentRunContext() const
 	return CurrentRunContext;
 }
 
-void UGT_RunSubsystem::EndCurrentRun()
+FGT_MetaOperationResult UGT_RunSubsystem::EndCurrentRun()
+{
+	if (HasPendingSettlement())
+	{
+		const FGT_MetaOperationResult RetryResult = RetryPendingSettlement();
+		if (!RetryResult.bSuccess)
+		{
+			return RetryResult;
+		}
+	}
+	if (CurrentRunContext
+		&& CurrentRunContext->IsRunActive()
+		&& CurrentRunContext->GetMapMode() == EGT_MapMode::Standard
+		&& !CurrentRunContext->IsTutorialRun())
+	{
+		return AbandonRun();
+	}
+	ClearCurrentRun();
+	return FGT_MetaOperationResult::Success();
+}
+
+void UGT_RunSubsystem::ClearCurrentRun()
 {
 	if (CurrentRunContext)
 	{
@@ -166,9 +227,11 @@ void UGT_RunSubsystem::EndCurrentRun()
 	}
 
 	bRunSettled = false;
+	PendingSettlementEvent = NAME_None;
 }
 
-void UGT_RunSubsystem::ApplyMetaLoadoutToRun()
+void UGT_RunSubsystem::ApplyMetaLoadoutToRun(
+	const TMap<FName, int32>& ConsumedConsumables)
 {
 	// 仅 Standard 局应用(BasicDebug/163 夹具不动)。
 	if (!CurrentRunContext || CurrentRunContext->GetMapMode() != EGT_MapMode::Standard)
@@ -185,9 +248,8 @@ void UGT_RunSubsystem::ApplyMetaLoadoutToRun()
 
 	const FGT_EquipBonus Equip = Meta->GetEquipBonus();
 	const FGT_TalentEffects Talents = Meta->GetTalentEffects();
-	TMap<FName, int32> Consumables = Meta->ConsumeLoadoutForRun();   // 扣库存, 返回本局携带量
 	const TArray<FName> EquippedIds = Meta->GetEquippedItems();      // S6: 激活触发型装备
-	CurrentRunContext->ApplyMetaLoadout(Equip, Talents, Consumables, EquippedIds);
+	CurrentRunContext->ApplyMetaLoadout(Equip, Talents, ConsumedConsumables, EquippedIds);
 }
 
 void UGT_RunSubsystem::HandleRunEvent(FGT_GameEvent Event)
@@ -206,49 +268,76 @@ void UGT_RunSubsystem::HandleRunEvent(FGT_GameEvent Event)
 	}
 
 	const FName Type = Event.EventType;
-	if (Type == FName(TEXT("RunStarted")))
-	{
-		Meta->RecordRun();
-	}
-	else if (Type == FName(TEXT("RunSucceeded")))
+	if (Type == FName(TEXT("RunSucceeded")) || Type == FName(TEXT("RunFailed")))
 	{
 		if (!bRunSettled)
 		{
-			bRunSettled = true;
-			GT_MetaSettlement::SettleExtraction(*CurrentRunContext, *Meta);
-		}
-	}
-	else if (Type == FName(TEXT("RunFailed")))
-	{
-		if (!bRunSettled)
-		{
-			bRunSettled = true;
-			GT_MetaSettlement::SettleFailure(*CurrentRunContext, *Meta);
+			PendingSettlementEvent = Type;
+			RetryPendingSettlement();
 		}
 	}
 }
 
-void UGT_RunSubsystem::AbandonRun()
+FGT_MetaOperationResult UGT_RunSubsystem::RetryPendingSettlement()
+{
+	if (!CurrentRunContext || PendingSettlementEvent.IsNone())
+	{
+		return FGT_MetaOperationResult::Failure(
+			FName(TEXT("no_pending_settlement")),
+			FText::FromString(TEXT("There is no pending run settlement.")));
+	}
+	UGameInstance* GameInstance = GetGameInstance();
+	UGT_MetaProgressSubsystem* Meta = GameInstance
+		? GameInstance->GetSubsystem<UGT_MetaProgressSubsystem>()
+		: nullptr;
+	if (!Meta)
+	{
+		return FGT_MetaOperationResult::Failure(
+			FName(TEXT("meta_unavailable")),
+			FText::FromString(TEXT("Meta progress is unavailable.")));
+	}
+
+	const FGT_MetaOperationResult Result =
+		PendingSettlementEvent == FName(TEXT("RunSucceeded"))
+			? GT_MetaSettlement::SettleExtraction(*CurrentRunContext, *Meta)
+			: GT_MetaSettlement::SettleFailure(*CurrentRunContext, *Meta);
+	if (Result.bSuccess)
+	{
+		bRunSettled = true;
+		PendingSettlementEvent = NAME_None;
+	}
+	return Result;
+}
+
+FGT_MetaOperationResult UGT_RunSubsystem::AbandonRun()
 {
 	if (!CurrentRunContext || !CurrentRunContext->IsRunActive())
 	{
-		return;
+		return FGT_MetaOperationResult::Success();
 	}
-	// 主动放弃比阵亡更惨: 不走结算 → 待结算金币 + 安全金全丢(随 RunContext 重置, 不进 meta;
-	// 阵亡走 SettleFailure 还能拿安全金 + 抢救 1 件, 放弃啥都不剩)。
-	CurrentRunContext->MarkRunFailed(FName(TEXT("Abandoned")));
-	// 但带入(已装备)的装备照样损失 —— 防"快死了放弃保装备"的 exploit(对齐撤离失败丢装备)。
 	if (CurrentRunContext->GetMapMode() == EGT_MapMode::Standard && !CurrentRunContext->IsTutorialRun())
 	{
 		UGameInstance* GameInstance = GetGameInstance();
 		UGT_MetaProgressSubsystem* Meta = GameInstance ? GameInstance->GetSubsystem<UGT_MetaProgressSubsystem>() : nullptr;
-		if (Meta)
+		if (!Meta)
 		{
-			Meta->LoseEquippedItemsOnFailure();
+			return FGT_MetaOperationResult::Failure(
+				FName(TEXT("meta_unavailable")),
+				FText::FromString(TEXT("Meta progress is unavailable.")));
 		}
+		FGT_FailureSettlement Settlement;
+		Settlement.Reason = FName(TEXT("Abandoned"));
+		const FGT_MetaOperationResult Result = Meta->CommitFailure(Settlement);
+		if (!Result.bSuccess)
+		{
+			return Result;
+		}
+		bRunSettled = true;
 	}
 
-	EndCurrentRun();
+	CurrentRunContext->MarkRunFailed(FName(TEXT("Abandoned")));
+	ClearCurrentRun();
+	return FGT_MetaOperationResult::Success();
 }
 
 UGT_CommandBus* UGT_RunSubsystem::GetCommandBus() const

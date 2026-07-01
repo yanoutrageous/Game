@@ -3,12 +3,29 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "Domains/Map/GT_MapTypes.h"
+#include "Domains/Meta/GT_MetaPersistenceTypes.h"
 #include "GT_MainMenuWidget.generated.h"
 
 class UBorder;
 class UCanvasPanel;
 class UTextBlock;
 class UTexture2D;
+
+USTRUCT(BlueprintType)
+struct GRAYTAIL_API FGT_MetaUiState
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly) bool bCanStart = false;
+	UPROPERTY(BlueprintReadOnly) bool bCanRetry = false;
+	UPROPERTY(BlueprintReadOnly) bool bCanReset = false;
+	UPROPERTY(BlueprintReadOnly) FText Message;
+};
+
+GRAYTAIL_API FGT_MetaUiState GT_BuildMetaUiState(
+	EGT_MetaPersistenceStatus Status,
+	const FGT_MetaOperationResult& LastResult,
+	const FText& StartupNotice);
 
 // 主菜单(对齐 Lua 原版: 整图背景 + 画面元素上的点击热区), 三页:
 //   主页   = menu_bg(文字烤在图里): 出发探索/新手教程/装备天赋/设置 四热区,
@@ -39,6 +56,11 @@ public:
 	bool IsOpen() const;
 	// 从部署终端「出发探索」回来: 打开并直接进区域选择页。
 	void OpenToDepart();
+	void SetProgressAvailability(
+		bool bCanStart,
+		bool bCanRetry,
+		bool bCanReset,
+		const FText& Message);
 
 	// 选难度开局(HUD 负责发命令); 参数 = 内核难度档。
 	TDelegate<void(EGT_Difficulty)> OnStartRequested;
@@ -48,6 +70,7 @@ public:
 
 	// 「设置」入口: 打开设置面板(含作弊模式总开关; HUD 接)。
 	TDelegate<void()> OnSettingsRequested;
+	TDelegate<void()> OnPersistenceActionRequested;
 
 private:
 	// 页面: 主页(四入口) / 区域页(地图大小) / 难度页(三档, 随区域切换)。
@@ -113,6 +136,10 @@ private:
 	int32 SelectedIndex = 0;
 	// 区域页选了大型(13×13)? 决定难度页的三档文案与映射。
 	bool bLargeMap = false;
+	bool bProgressStartAllowed = true;
+	bool bProgressRetryAllowed = false;
+	bool bProgressResetAllowed = false;
+	FText ProgressMessage;
 
 	// ---- 校准模式状态 ----
 	// 槽位缓存(校准时改锚点用)。区域页板映射城堡板 {0,1,3}。

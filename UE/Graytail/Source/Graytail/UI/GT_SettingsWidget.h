@@ -10,7 +10,9 @@ class USlider;
 class UTextBlock;
 class UVerticalBox;
 
+#if !UE_BUILD_SHIPPING
 class UGT_DebugSubsystem;
+#endif
 class UGT_SettingsSubsystem;
 
 // 标题界面「设置」面板(纯 C++ UMG): 显示(模式/分辨率/垂同, 走 UGameUserSettings)
@@ -33,11 +35,15 @@ public:
 
 private:
 	void BuildWidgetTree();
+#if !UE_BUILD_SHIPPING
 	UGT_DebugSubsystem* GetDebugSubsystem() const;
+#endif
 	UGT_SettingsSubsystem* GetSettingsSubsystem() const;
 
 	void RefreshAll();
+#if !UE_BUILD_SHIPPING
 	void RefreshCheatLabel();
+#endif
 	void RefreshDisplayLabels();
 	void RefreshMusicLabel();
 	void RefreshSfxLabel();

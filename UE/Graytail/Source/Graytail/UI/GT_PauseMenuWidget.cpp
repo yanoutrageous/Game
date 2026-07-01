@@ -1,10 +1,12 @@
 #include "UI/GT_PauseMenuWidget.h"
 
 #include "UI/GT_UIStyle.h"
+#if !UE_BUILD_SHIPPING
 #include "UI/GT_IndexedButton.h"
 #include "Core/GT_RunContext.h"
 #include "Core/GT_RunSubsystem.h"
 #include "Debug/GT_DebugSubsystem.h"
+#endif
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
@@ -112,8 +114,10 @@ void UGT_PauseMenuWidget::BuildWidgetTree()
 	UButton* ResumeButton = AddMenuButton(MainButtons, TEXT("继续"), GTPauseBtnText);
 	ResumeButton->OnClicked.AddDynamic(this, &UGT_PauseMenuWidget::HandleResume);
 
+#if !UE_BUILD_SHIPPING
 	CheatButton = AddMenuButton(MainButtons, TEXT("作弊面板"), GTPauseWarn);
 	CheatButton->OnClicked.AddDynamic(this, &UGT_PauseMenuWidget::HandleCheat);
+#endif
 
 	UButton* ReturnButton = AddMenuButton(MainButtons, TEXT("返回标题"), GTPauseBtnText);
 	ReturnButton->OnClicked.AddDynamic(this, &UGT_PauseMenuWidget::HandleReturnClicked);
@@ -144,12 +148,15 @@ void UGT_PauseMenuWidget::BuildWidgetTree()
 
 	ConfirmBox->SetVisibility(ESlateVisibility::Collapsed);
 
+#if !UE_BUILD_SHIPPING
 	// 作弊面板子视图(作弊模式开启时由「作弊面板」按钮切入)。
 	BuildCheatBox(Column);
+#endif
 
 	SetVisibility(ESlateVisibility::Collapsed);
 }
 
+#if !UE_BUILD_SHIPPING
 UTextBlock* UGT_PauseMenuWidget::AddCheatButton(UVerticalBox* Box, const FString& Label, int32 Index, const FLinearColor& Tint)
 {
 	UGT_IndexedButton* Button = WidgetTree->ConstructWidget<UGT_IndexedButton>(UGT_IndexedButton::StaticClass());
@@ -221,6 +228,7 @@ void UGT_PauseMenuWidget::RefreshGodLabel()
 	CheatGodText->SetText(FText::FromString(bOn ? TEXT("无敌: 开") : TEXT("无敌: 关")));
 	CheatGodText->SetColorAndOpacity(FSlateColor(bOn ? FLinearColor(FColor(150, 225, 160)) : GTPauseBtnText));
 }
+#endif
 
 void UGT_PauseMenuWidget::ShowConfirmReturn(bool bShow)
 {
@@ -232,12 +240,15 @@ void UGT_PauseMenuWidget::ShowConfirmReturn(bool bShow)
 	{
 		ConfirmBox->SetVisibility(bShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	}
+#if !UE_BUILD_SHIPPING
 	if (CheatBox)
 	{
 		CheatBox->SetVisibility(ESlateVisibility::Collapsed);
 	}
+#endif
 }
 
+#if !UE_BUILD_SHIPPING
 void UGT_PauseMenuWidget::ShowCheatView(bool bShow)
 {
 	if (MainButtons)
@@ -253,6 +264,7 @@ void UGT_PauseMenuWidget::ShowCheatView(bool bShow)
 		CheatBox->SetVisibility(bShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	}
 }
+#endif
 
 void UGT_PauseMenuWidget::Open(bool bShowCheatEntry)
 {
@@ -260,11 +272,15 @@ void UGT_PauseMenuWidget::Open(bool bShowCheatEntry)
 	{
 		return;
 	}
+#if !UE_BUILD_SHIPPING
 	bCheatEntryVisible = bShowCheatEntry;
 	if (CheatButton)
 	{
 		CheatButton->SetVisibility(bShowCheatEntry ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	}
+#else
+	(void)bShowCheatEntry;
+#endif
 	ShowConfirmReturn(false);
 	SetVisibility(ESlateVisibility::Visible);
 	SetKeyboardFocus();
@@ -286,6 +302,7 @@ void UGT_PauseMenuWidget::HandleResume()
 	OnResume.ExecuteIfBound();
 }
 
+#if !UE_BUILD_SHIPPING
 void UGT_PauseMenuWidget::HandleCheat()
 {
 	// 作弊面板内置于本控件: 切到作弊子视图(同步无敌按钮标签)。
@@ -336,6 +353,20 @@ void UGT_PauseMenuWidget::HandleCheatIndex(int32 Index)
 		OnResume.ExecuteIfBound();      // 进房型后关菜单, 直接看到房间
 	}
 }
+#else
+void UGT_PauseMenuWidget::HandleCheat()
+{
+}
+
+void UGT_PauseMenuWidget::HandleCheatBack()
+{
+}
+
+void UGT_PauseMenuWidget::HandleCheatIndex(int32 Index)
+{
+	(void)Index;
+}
+#endif
 
 void UGT_PauseMenuWidget::HandleReturnClicked()
 {

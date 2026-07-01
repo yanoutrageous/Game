@@ -2,6 +2,8 @@
 
 #include "CoreMinimal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
+#include "Domains/Meta/GT_MetaPersistenceTypes.h"
+#include "Domains/Meta/GT_MetaSaveRepository.h"
 #include "Domains/Meta/GT_MetaTypes.h"
 #include "GT_MetaProgressSubsystem.generated.h"
 
@@ -16,8 +18,29 @@ public:
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 
 	// --- 存读档 ---
-	void Save();
-	void Load();
+	FGT_MetaOperationResult Save();
+	FGT_MetaLoadResult Load();
+	FGT_MetaOperationResult CommitCandidate(FGT_MetaProgressState Candidate);
+	const FGT_MetaOperationResult& GetLastPersistenceResult() const { return LastPersistenceResult; }
+	EGT_MetaPersistenceStatus GetPersistenceStatus() const { return PersistenceStatus; }
+	bool CanMutateProgress() const;
+	FGT_MetaOperationResult ResetCorruptSaveAndCreateFresh();
+	FGT_MetaOperationResult BeginRunEscrow(
+		int32 Seed,
+		EGT_Difficulty Difficulty,
+		FGuid& OutRunId,
+		TMap<FName, int32>& OutConsumedConsumables);
+	FGT_MetaOperationResult CommitExtraction(
+		const FGT_ExtractionReward& Reward,
+		const TMap<FName, int32>& ReturnedConsumables);
+	FGT_MetaOperationResult CommitFailure(const FGT_FailureSettlement& Settlement);
+	FGT_MetaOperationResult RecoverInterruptedRun();
+	FText ConsumeStartupNotice();
+
+#if !UE_BUILD_SHIPPING
+	void SetRepositoryForTests(TUniquePtr<FGT_MetaSaveRepository> InRepository);
+	void RestoreEngineRepositoryForTests();
+#endif
 
 	// --- 币(对齐 Lua GetGold/AddGold/SpendGold) ---
 	int32 GetGold() const { return State.Gold; }
@@ -50,7 +73,7 @@ public:
 
 	// --- loadout(对齐 Lua SetLoadoutConsumable/GetLoadout/ConsumeLoadoutForRun) ---
 	// 把 Count 夹到 [0, min(stock, maxCarry)]; 0 表示移除。
-	void SetLoadoutConsumable(FName ItemId, int32 Count);
+	bool SetLoadoutConsumable(FName ItemId, int32 Count);
 	const TMap<FName, int32>& GetLoadout() const { return State.LoadoutConsumables; }
 	// 开局调:从库存扣掉 loadout 选定量, 返回本局携带的 id->数量(S3 用)。
 	TMap<FName, int32> ConsumeLoadoutForRun();
@@ -73,18 +96,25 @@ public:
 	FGT_EquipBonus GetEquipBonus() const;       // 对齐 Lua GetEquipBonus
 	FGT_TalentEffects GetTalentEffects() const; // 对齐 Lua GetTalentEffects
 
+#if !UE_BUILD_SHIPPING
 	// --- GM 调试(免费, 不扣币) ---
 	void GMGrantItem(FName ItemId);
 	void GMGrantTalent(FName TalentId);
 	void GMEquipAll();
 	void GMUnequipAll();
 	void GMReset();
+#endif
 
 	// 只读访问(调试命令打印用)
 	const FGT_MetaProgressState& GetState() const { return State; }
 
 private:
 	FGT_MetaProgressState State;
+	FGT_MetaProgressState LastCommittedState;
+	FGT_MetaOperationResult LastPersistenceResult;
+	EGT_MetaPersistenceStatus PersistenceStatus = EGT_MetaPersistenceStatus::Corrupt;
+	TUniquePtr<FGT_MetaSaveRepository> SaveRepository;
+	FText StartupNotice;
 
 	// 最近一次撤离失败损失的装备 id(非持久, 仅供结算面板本次显示)。
 	TArray<FName> LastFailureLostEquips;

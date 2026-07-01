@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Domains/Map/GT_MapTypes.h"
 #include "GT_MetaTypes.generated.h"
 
 // 仓库里一条物品(回收物/装备/消耗品统一表示, Source 区分来源)。对齐 Lua warehouse.items[id]。
@@ -39,6 +40,20 @@ struct GRAYTAIL_API FGT_MetaStats
 	UPROPERTY() int32 TotalGoldEarned = 0;
 };
 
+USTRUCT(BlueprintType)
+struct GRAYTAIL_API FGT_ActiveRunEscrow
+{
+	GENERATED_BODY()
+
+	UPROPERTY() bool bActive = false;
+	UPROPERTY() FGuid RunId;
+	UPROPERTY() int32 Seed = 0;
+	UPROPERTY() EGT_Difficulty Difficulty = EGT_Difficulty::Standard;
+	UPROPERTY() TArray<FName> EquippedItemIds;
+	UPROPERTY() TMap<FName, int32> ConsumedConsumables;
+	UPROPERTY() FDateTime StartedAtUtc;
+};
+
 // 局外持久状态全集(对齐 Lua MetaProgress 的 data 表)。
 USTRUCT(BlueprintType)
 struct GRAYTAIL_API FGT_MetaProgressState
@@ -54,6 +69,7 @@ struct GRAYTAIL_API FGT_MetaProgressState
 	UPROPERTY() TMap<FName, int32> LoadoutConsumables;  // 选定带入 id->数量
 	UPROPERTY() FGT_RecoverySummary Recovery;
 	UPROPERTY() FGT_MetaStats Stats;
+	UPROPERTY() FGT_ActiveRunEscrow ActiveRun;
 };
 
 // 一件回收物入账(结算 RecordExtractionReward 的元素, 由 S2 从局内背包构造)。
@@ -77,6 +93,16 @@ struct GRAYTAIL_API FGT_ExtractionReward
 	UPROPERTY() int32 DirectGold = 0;       // 已结算/安全金币
 	UPROPERTY() int32 LoosePartsGold = 0;   // 零散零件折算金币
 	UPROPERTY() TArray<FGT_RewardItem> CarriedItems;
+};
+
+USTRUCT(BlueprintType)
+struct GRAYTAIL_API FGT_FailureSettlement
+{
+	GENERATED_BODY()
+
+	UPROPERTY() FName Reason = NAME_None;
+	UPROPERTY() int32 Gold = 0;
+	UPROPERTY() TArray<FGT_RewardItem> SalvagedItems;
 };
 
 // GetEquipBonus 返回(对齐 Lua 同名函数字段)。

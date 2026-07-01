@@ -42,6 +42,10 @@ public:
 	virtual FReply NativeOnKeyUp(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 	virtual FReply NativeOnFocusReceived(const FGeometry& InGeometry, const FFocusEvent& InFocusEvent) override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
+	virtual bool NativeSupportsKeyboardFocus() const override { return true; }
+
+	bool IsMainMenuVisible() const;
+	bool TryStartRunFromMenu(EGT_Difficulty Difficulty);
 
 private:
 	void BuildWidgetTree();
@@ -73,13 +77,18 @@ private:
 	UFUNCTION() void OnExtract();
 	UFUNCTION() void OnNewRun();
 	UFUNCTION() void OnReturnToMenu();
+	UFUNCTION() void OnRetrySettlement();
+	bool StartNewRun(EGT_Difficulty Difficulty);
+	void RefreshMetaPresentation(bool bConsumeStartupNotice);
 
 	// 局内暂停菜单(ESC / =): 打开/关闭 + 三个菜单动作。
 	void TogglePauseMenu();
 	void HandlePauseResume();        // 继续: 关菜单, 焦点还房间(移动续走)。
 	void HandlePauseReturnToTitle(); // 放弃本局回标题(已确认, 不结算)。
 	void HandlePauseQuitGame();      // 退出游戏。
+#if !UE_BUILD_SHIPPING
 	void HandleOpenCheatPanel();     // 打开作弊面板(作弊模式开启时)。
+#endif
 
 	// 主菜单回调: 选难度开局。
 	void HandleMenuStartRequested(EGT_Difficulty Difficulty);
@@ -92,6 +101,7 @@ private:
 	// 设置面板(标题): 打开 / 返回主菜单。
 	void HandleSettingsRequested();
 	void HandleSettingsBack();
+	void HandlePersistenceActionRequested();
 
 	// 过门换房后的统一回调: 刷新信息面板 + 驱动新手教程弹窗(若在教程局)。
 	void HandleRoomChanged();
@@ -147,7 +157,10 @@ private:
 	UPROPERTY(Transient) UTextBlock* RunEndTitle = nullptr;
 	UPROPERTY(Transient) UTextBlock* RunEndBody = nullptr;
 	UPROPERTY(Transient) UButton* RunEndButton = nullptr;
+	UPROPERTY(Transient) UButton* RunEndMenuButton = nullptr;
+	UPROPERTY(Transient) UButton* RunEndRetryButton = nullptr;
 	bool bRunEndShown = false;
+	bool bResetSaveConfirmationArmed = false;
 
 	// 主菜单(最顶层): 无局时显示, 选难度后开局; "重新出发"沿用上次选的难度。
 	UPROPERTY(Transient) UGT_MainMenuWidget* MainMenu = nullptr;

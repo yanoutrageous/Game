@@ -1,4 +1,7 @@
 #include "CoreMinimal.h"
+
+#if !UE_BUILD_SHIPPING
+
 #include "Domains/Meta/GT_MetaProgressSubsystem.h"
 #include "Domains/Meta/GT_MetaTypes.h"
 #include "Engine/Engine.h"
@@ -217,3 +220,5 @@ namespace
 	FAutoConsoleCommandWithWorldAndArgs GTMetaLoadCmd(TEXT("gt.MetaLoad"), TEXT("强制读档"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleMetaLoad));
 }
+
+#endif

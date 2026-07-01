@@ -2,6 +2,8 @@
 
 #include "CoreMinimal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
+#include "Domains/Meta/GT_MetaPersistenceTypes.h"
+#include "Domains/Meta/GT_MetaSaveRepository.h"
 #include "Domains/Meta/GT_MetaTypes.h"
 #include "GT_MetaProgressSubsystem.generated.h"
 
@@ -16,8 +18,18 @@ public:
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 
 	// --- 存读档 ---
-	void Save();
-	void Load();
+	FGT_MetaOperationResult Save();
+	FGT_MetaLoadResult Load();
+	FGT_MetaOperationResult CommitCandidate(FGT_MetaProgressState Candidate);
+	const FGT_MetaOperationResult& GetLastPersistenceResult() const { return LastPersistenceResult; }
+	EGT_MetaPersistenceStatus GetPersistenceStatus() const { return PersistenceStatus; }
+	bool CanMutateProgress() const;
+	FGT_MetaOperationResult ResetCorruptSaveAndCreateFresh();
+
+#if !UE_BUILD_SHIPPING
+	void SetRepositoryForTests(TUniquePtr<FGT_MetaSaveRepository> InRepository);
+	void RestoreEngineRepositoryForTests();
+#endif
 
 	// --- 币(对齐 Lua GetGold/AddGold/SpendGold) ---
 	int32 GetGold() const { return State.Gold; }
@@ -87,6 +99,10 @@ public:
 
 private:
 	FGT_MetaProgressState State;
+	FGT_MetaProgressState LastCommittedState;
+	FGT_MetaOperationResult LastPersistenceResult;
+	EGT_MetaPersistenceStatus PersistenceStatus = EGT_MetaPersistenceStatus::Corrupt;
+	TUniquePtr<FGT_MetaSaveRepository> SaveRepository;
 
 	// 最近一次撤离失败损失的装备 id(非持久, 仅供结算面板本次显示)。
 	TArray<FName> LastFailureLostEquips;

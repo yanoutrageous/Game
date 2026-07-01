@@ -35,94 +35,132 @@ FString UGT_MetaProgressSubsystem::SaveSlotName()
 void UGT_MetaProgressSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
+	SaveRepository = FGT_MetaSaveRepository::CreateEngine(SaveSlotName(), SaveUserIndex);
 	Load();
 }
 
-void UGT_MetaProgressSubsystem::Save()
+FGT_MetaOperationResult UGT_MetaProgressSubsystem::Save()
 {
-	UGT_MetaSaveGame* SaveObj = Cast<UGT_MetaSaveGame>(
-		UGameplayStatics::CreateSaveGameObject(UGT_MetaSaveGame::StaticClass()));
-	if (!SaveObj)
+	if (!SaveRepository)
 	{
-		UE_LOG(LogGraytailMeta, Warning, TEXT("Save: failed to create save object."));
-		return;
+		SaveRepository = FGT_MetaSaveRepository::CreateEngine(SaveSlotName(), SaveUserIndex);
 	}
-	SaveObj->State = State;
-	if (!UGameplayStatics::SaveGameToSlot(SaveObj, SaveSlotName(), SaveUserIndex))
+	LastPersistenceResult = SaveRepository->Commit(State);
+	if (!LastPersistenceResult.bSuccess)
 	{
-		UE_LOG(LogGraytailMeta, Warning, TEXT("Save: SaveGameToSlot failed."));
-		return;
+		State = LastCommittedState;
+		PersistenceStatus = EGT_MetaPersistenceStatus::WriteFailed;
+		UE_LOG(
+			LogGraytailMeta,
+			Warning,
+			TEXT("Save failed: %s"),
+			*LastPersistenceResult.Message.ToString());
+		return LastPersistenceResult;
 	}
+
+	LastCommittedState = State;
+	PersistenceStatus = EGT_MetaPersistenceStatus::Ready;
+	UE_LOG(LogGraytailMeta, Log, TEXT("Saved: gold=%d"), State.Gold);
+	return LastPersistenceResult;
+}
+
+FGT_MetaLoadResult UGT_MetaProgressSubsystem::Load()
+{
+	if (!SaveRepository)
+	{
+		SaveRepository = FGT_MetaSaveRepository::CreateEngine(SaveSlotName(), SaveUserIndex);
+	}
+	FGT_MetaLoadResult Result = SaveRepository->Load();
+	PersistenceStatus = Result.Status;
+	if (!Result.IsUsable())
+	{
+		LastPersistenceResult = FGT_MetaOperationResult::Failure(
+			FName(TEXT("save_load_failed")),
+			Result.Message);
+		UE_LOG(LogGraytailMeta, Error, TEXT("Load failed: %s"), *Result.Message.ToString());
+		return Result;
+	}
+
+	State = Result.State;
+	LastCommittedState = State;
+	LastPersistenceResult = FGT_MetaOperationResult::Success();
+	UE_LOG(LogGraytailMeta, Log, TEXT("Loaded: gold=%d"), State.Gold);
+	return Result;
+}
+
+FGT_MetaOperationResult UGT_MetaProgressSubsystem::CommitCandidate(
+	FGT_MetaProgressState Candidate)
+{
+	if (!CanMutateProgress())
+	{
+		return FGT_MetaOperationResult::Failure(
+			FName(TEXT("persistence_blocked")),
+			FText::FromString(TEXT("Progress is blocked until the save error is resolved.")));
+	}
+	if (!SaveRepository)
+	{
+		SaveRepository = FGT_MetaSaveRepository::CreateEngine(SaveSlotName(), SaveUserIndex);
+	}
+
+	LastPersistenceResult = SaveRepository->Commit(Candidate);
+	if (!LastPersistenceResult.bSuccess)
+	{
+		PersistenceStatus = EGT_MetaPersistenceStatus::WriteFailed;
+		return LastPersistenceResult;
+	}
+
+	State = MoveTemp(Candidate);
+	LastCommittedState = State;
+	PersistenceStatus = EGT_MetaPersistenceStatus::Ready;
+	return LastPersistenceResult;
+}
+
+bool UGT_MetaProgressSubsystem::CanMutateProgress() const
+{
+	return PersistenceStatus == EGT_MetaPersistenceStatus::Ready
+		|| PersistenceStatus == EGT_MetaPersistenceStatus::Fresh
+		|| PersistenceStatus == EGT_MetaPersistenceStatus::RecoveredBackup;
+}
+
+FGT_MetaOperationResult UGT_MetaProgressSubsystem::ResetCorruptSaveAndCreateFresh()
+{
+	if (PersistenceStatus != EGT_MetaPersistenceStatus::Corrupt
+		&& PersistenceStatus != EGT_MetaPersistenceStatus::UnsupportedVersion)
+	{
+		return FGT_MetaOperationResult::Failure(
+			FName(TEXT("reset_not_allowed")),
+			FText::FromString(TEXT("The current save status does not allow reset.")));
+	}
+	if (!SaveRepository)
+	{
+		SaveRepository = FGT_MetaSaveRepository::CreateEngine(SaveSlotName(), SaveUserIndex);
+	}
+	LastPersistenceResult = SaveRepository->ResetWithFreshState();
+	if (LastPersistenceResult.bSuccess)
+	{
+		State = FGT_MetaProgressState();
+		LastCommittedState = State;
+		PersistenceStatus = EGT_MetaPersistenceStatus::Ready;
+	}
+	return LastPersistenceResult;
+}
 
 #if !UE_BUILD_SHIPPING
-	TSharedRef<FJsonObject> StateObject = MakeShared<FJsonObject>();
-	if (FJsonObjectConverter::UStructToJsonObject(
-		FGT_MetaProgressState::StaticStruct(),
-		&SaveObj->State,
-		StateObject,
-		0,
-		0))
-	{
-		TSharedRef<FJsonObject> RootObject = MakeShared<FJsonObject>();
-		RootObject->SetNumberField(TEXT("saveVersion"), SaveObj->SaveVersion);
-		RootObject->SetObjectField(TEXT("state"), StateObject);
-
-		FString Json;
-		const TSharedRef<TJsonWriter<TCHAR, TPrettyJsonPrintPolicy<TCHAR>>> Writer =
-			TJsonWriterFactory<TCHAR, TPrettyJsonPrintPolicy<TCHAR>>::Create(&Json);
-		if (FJsonSerializer::Serialize(RootObject, Writer))
-		{
-			const FString MirrorDirectory = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("SaveGames"));
-			IFileManager::Get().MakeDirectory(*MirrorDirectory, true);
-			const FString MirrorPath = FPaths::Combine(MirrorDirectory, TEXT("GraytailMeta.debug.json"));
-			if (!FFileHelper::SaveStringToFile(
-				Json,
-				*MirrorPath,
-				FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
-			{
-				UE_LOG(LogGraytailMeta, Warning, TEXT("Save: failed to write debug mirror %s."), *MirrorPath);
-			}
-		}
-	}
-#endif
-
-	UE_LOG(LogGraytailMeta, Log, TEXT("Saved: gold=%d"), State.Gold);
-}
-
-void UGT_MetaProgressSubsystem::Load()
+void UGT_MetaProgressSubsystem::SetRepositoryForTests(
+	TUniquePtr<FGT_MetaSaveRepository> InRepository)
 {
-	if (!UGameplayStatics::DoesSaveGameExist(SaveSlotName(), SaveUserIndex))
-	{
-		State = FGT_MetaProgressState();   // 全新起始
-		UE_LOG(LogGraytailMeta, Log, TEXT("Load: no save, starting fresh."));
-		return;
-	}
-	UGT_MetaSaveGame* SaveObj = Cast<UGT_MetaSaveGame>(
-		UGameplayStatics::LoadGameFromSlot(SaveSlotName(), SaveUserIndex));
-	if (!SaveObj)
-	{
-		UE_LOG(LogGraytailMeta, Error, TEXT("Load: slot exists but could not be deserialized."));
-		return;
-	}
-	FGT_MetaProgressState Candidate = SaveObj->State;
-	FString ValidationError;
-	if (!GT_MigrateMetaSave(SaveObj->SaveVersion, Candidate, ValidationError))
-	{
-		UE_LOG(LogGraytailMeta, Error, TEXT("Load: %s"), *ValidationError);
-		return;
-	}
-	if (!GT_ValidateAndSanitizeMetaState(Candidate, ValidationError))
-	{
-		UE_LOG(LogGraytailMeta, Error, TEXT("Load: invalid state: %s"), *ValidationError);
-		return;
-	}
-	State = MoveTemp(Candidate);
-	if (SaveObj->SaveVersion != UGT_MetaSaveGame::CurrentSaveVersion)
-	{
-		Save();
-	}
-	UE_LOG(LogGraytailMeta, Log, TEXT("Loaded: gold=%d"), State.Gold);
+	SaveRepository = MoveTemp(InRepository);
+	LastCommittedState = State;
+	LastPersistenceResult = FGT_MetaOperationResult::Success();
+	PersistenceStatus = EGT_MetaPersistenceStatus::Ready;
 }
+
+void UGT_MetaProgressSubsystem::RestoreEngineRepositoryForTests()
+{
+	SaveRepository = FGT_MetaSaveRepository::CreateEngine(SaveSlotName(), SaveUserIndex);
+	Load();
+}
+#endif
 
 void UGT_MetaProgressSubsystem::SanitizeAfterLoad()
 {
@@ -157,8 +195,7 @@ bool UGT_MetaProgressSubsystem::SpendGold(int32 Amount)
 	if (Amount <= 0) { return false; }
 	if (State.Gold < Amount) { return false; }
 	State.Gold -= Amount;
-	Save();
-	return true;
+	return Save().bSuccess;
 }
 
 // ============================================================================
@@ -173,7 +210,7 @@ bool UGT_MetaProgressSubsystem::BuyItem(FName ItemId, FName& OutError)
 	if (State.Gold < Def->Price) { OutError = TEXT("not_enough_gold"); return false; }
 	State.Gold -= Def->Price;
 	State.OwnedItems.AddUnique(ItemId);
-	Save();
+	if (!Save().bSuccess) { OutError = TEXT("save_write_failed"); return false; }
 	return true;
 }
 
@@ -184,7 +221,7 @@ bool UGT_MetaProgressSubsystem::ToggleEquip(FName ItemId, FName& OutError)
 	if (Index != INDEX_NONE)
 	{
 		State.EquippedItems.RemoveAt(Index);   // 已装备 -> 卸下
-		Save();
+		if (!Save().bSuccess) { OutError = TEXT("save_write_failed"); return false; }
 		return true;
 	}
 	if (State.EquippedItems.Num() >= GT_MetaCatalog::GetMaxEquipped())
@@ -193,7 +230,7 @@ bool UGT_MetaProgressSubsystem::ToggleEquip(FName ItemId, FName& OutError)
 		return false;
 	}
 	State.EquippedItems.Add(ItemId);
-	Save();
+	if (!Save().bSuccess) { OutError = TEXT("save_write_failed"); return false; }
 	return true;
 }
 
@@ -218,7 +255,7 @@ bool UGT_MetaProgressSubsystem::UnlockTalent(FName TalentId, FName& OutError)
 	if (State.Gold < Def->Price) { OutError = TEXT("not_enough_gold"); return false; }
 	State.Gold -= Def->Price;
 	State.UnlockedTalents.AddUnique(TalentId);
-	Save();
+	if (!Save().bSuccess) { OutError = TEXT("save_write_failed"); return false; }
 	return true;
 }
 
@@ -236,7 +273,7 @@ bool UGT_MetaProgressSubsystem::BuyConsumable(FName ItemId, int32 Count, FName& 
 	if (State.Gold < Price) { OutError = TEXT("not_enough_gold"); return false; }
 	State.Gold -= Price;
 	State.ConsumableStock.FindOrAdd(ItemId) += Count;
-	Save();
+	if (!Save().bSuccess) { OutError = TEXT("save_write_failed"); return false; }
 	return true;
 }
 
@@ -246,8 +283,7 @@ bool UGT_MetaProgressSubsystem::AddConsumable(FName ItemId, int32 Count)
 	Count = ClampNonNegative(Count);
 	if (Count <= 0) { return false; }
 	State.ConsumableStock.FindOrAdd(ItemId) += Count;
-	Save();
-	return true;
+	return Save().bSuccess;
 }
 
 bool UGT_MetaProgressSubsystem::RemoveConsumable(FName ItemId, int32 Count)
@@ -265,8 +301,7 @@ bool UGT_MetaProgressSubsystem::RemoveConsumable(FName ItemId, int32 Count)
 		if (*Loadout > Remaining) { *Loadout = Remaining; }
 		if (*Loadout <= 0) { State.LoadoutConsumables.Remove(ItemId); }
 	}
-	Save();
-	return true;
+	return Save().bSuccess;
 }
 
 void UGT_MetaProgressSubsystem::SetLoadoutConsumable(FName ItemId, int32 Count)
@@ -378,7 +413,7 @@ bool UGT_MetaProgressSubsystem::SellWarehouseItem(FName ItemId, int32 Count, int
 	if (!RemoveWarehouseItem(ItemId, Count)) { OutError = TEXT("remove_failed"); return false; }
 	State.Gold += OutGold;
 	State.Stats.TotalGoldEarned += OutGold;
-	Save();
+	if (!Save().bSuccess) { OutError = TEXT("save_write_failed"); OutGold = 0; return false; }
 	return true;
 }
 

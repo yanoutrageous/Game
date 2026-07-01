@@ -364,7 +364,10 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		GTCheck_RemoteControllerDoesNotCreateHud,
 		!AGT_PlayerController::ShouldCreateHud(false, false),
 		TEXT("A remote controller must not create a local HUD."));
-	GT_MetaPersistenceSmokeValidator::AppendChecks(OutResults);
+	UGT_MetaProgressSubsystem* PersistenceMeta = DebugSubsystem && DebugSubsystem->GetGameInstance()
+		? DebugSubsystem->GetGameInstance()->GetSubsystem<UGT_MetaProgressSubsystem>()
+		: nullptr;
+	GT_MetaPersistenceSmokeValidator::AppendChecks(OutResults, PersistenceMeta);
 
 	FGT_GameDataSnapshot DefaultGameData;
 	TArray<FString> DefaultGameDataErrors;

@@ -77,6 +77,13 @@ namespace
 		return Save;
 	}
 
+	UGT_MetaSaveGame* MakeVersionedSave(int32 Version, int32 Gold)
+	{
+		UGT_MetaSaveGame* Save = MakeSave(Gold);
+		Save->SaveVersion = Version;
+		return Save;
+	}
+
 	void AddCheck(
 		TArray<FGT_RuntimeSmokeCheckResult>& OutResults,
 		const TCHAR* Name,
@@ -230,6 +237,41 @@ void GT_MetaPersistenceSmokeValidator::AppendChecks(
 	{
 		const TSharedRef<FGT_FakeMetaSaveBackend> Backend =
 			MakeShared<FGT_FakeMetaSaveBackend>();
+		Backend->Put(
+			TEXT("TestMain"),
+			MakeVersionedSave(UGT_MetaSaveGame::CurrentSaveVersion + 1, 99));
+		Backend->Put(TEXT("TestMainBackup"), MakeSave(44));
+		FGT_MetaSaveRepository Repository(Backend, TEXT("TestMain"), 0);
+		const FGT_MetaLoadResult Result = Repository.Load();
+		const UGT_MetaSaveGame* Main = Cast<UGT_MetaSaveGame>(
+			Backend->Load(TEXT("TestMain"), 0));
+		AddCheck(
+			OutResults,
+			TEXT("MetaSaveFutureMainNeverRollsBackToBackup"),
+			Result.Status == EGT_MetaPersistenceStatus::UnsupportedVersion
+				&& Main
+				&& Main->SaveVersion == UGT_MetaSaveGame::CurrentSaveVersion + 1
+				&& Main->State.Gold == 99,
+			Result.Message.ToString());
+	}
+
+	{
+		const TSharedRef<FGT_FakeMetaSaveBackend> Backend =
+			MakeShared<FGT_FakeMetaSaveBackend>();
+		Backend->FailWrite(TEXT("TestMainBackup"));
+		FGT_MetaSaveRepository Repository(Backend, TEXT("TestMain"), 0);
+		const FGT_MetaOperationResult Result = Repository.ResetWithFreshState();
+		AddCheck(
+			OutResults,
+			TEXT("MetaSaveResetBackupFailurePreventsSuccess"),
+			!Result.bSuccess
+				&& !Backend->Exists(TEXT("TestMain"), 0),
+			Result.Message.ToString());
+	}
+
+	{
+		const TSharedRef<FGT_FakeMetaSaveBackend> Backend =
+			MakeShared<FGT_FakeMetaSaveBackend>();
 		UGT_MetaSaveGame* VersionOneSave = MakeSave(12);
 		VersionOneSave->SaveVersion = 1;
 		VersionOneSave->State.ActiveRun.bActive = true;
@@ -355,6 +397,27 @@ void GT_MetaPersistenceSmokeValidator::AppendChecks(
 			TEXT("MetaSaveWriteFailureRollsBackMemory"),
 			MetaProgress->GetGold() == GoldBeforeFailure
 				&& !MetaProgress->GetLastPersistenceResult().bSuccess,
+			MetaProgress->GetLastPersistenceResult().Message.ToString());
+		MetaProgress->RestoreEngineRepositoryForTests();
+	}
+
+	if (MetaProgress)
+	{
+		const TSharedRef<FGT_FakeMetaSaveBackend> Backend =
+			MakeShared<FGT_FakeMetaSaveBackend>();
+		MetaProgress->SetRepositoryForTests(
+			MakeUnique<FGT_MetaSaveRepository>(Backend, TEXT("LoadoutFailMain"), 0));
+		MetaProgress->GMReset();
+		MetaProgress->AddConsumable(FName(TEXT("emergency_bandage")), 1);
+		Backend->FailWrite(TEXT("LoadoutFailMain"));
+		const bool bLoadoutSaved = MetaProgress->SetLoadoutConsumable(
+			FName(TEXT("emergency_bandage")),
+			1);
+		AddCheck(
+			OutResults,
+			TEXT("MetaLoadoutWriteFailureIsReportedAndRolledBack"),
+			!bLoadoutSaved
+				&& !MetaProgress->GetLoadout().Contains(FName(TEXT("emergency_bandage"))),
 			MetaProgress->GetLastPersistenceResult().Message.ToString());
 		MetaProgress->RestoreEngineRepositoryForTests();
 	}
@@ -499,6 +562,28 @@ void GT_MetaPersistenceSmokeValidator::AppendChecks(
 				&& !MetaProgress->GetState().ActiveRun.bActive,
 			MetaProgress->GetLastPersistenceResult().Message.ToString());
 		RunSubsystem->EndCurrentRun();
+		MetaProgress->RestoreEngineRepositoryForTests();
+	}
+
+	if (MetaProgress && RunSubsystem)
+	{
+		RunSubsystem->EndCurrentRun();
+		const TSharedRef<FGT_FakeMetaSaveBackend> Backend =
+			MakeShared<FGT_FakeMetaSaveBackend>();
+		MetaProgress->SetRepositoryForTests(
+			MakeUnique<FGT_MetaSaveRepository>(Backend, TEXT("SafeEndMain"), 0));
+		UGT_RunContext* ActiveRun = RunSubsystem->StartNewRunStandard(
+			1357,
+			EGT_Difficulty::Standard);
+		const FGT_MetaOperationResult EndResult = RunSubsystem->EndCurrentRun();
+		AddCheck(
+			OutResults,
+			TEXT("RunEndUsesPersistedAbandonment"),
+			ActiveRun
+				&& EndResult.bSuccess
+				&& RunSubsystem->GetCurrentRunContext() == nullptr
+				&& !MetaProgress->GetState().ActiveRun.bActive,
+			EndResult.Message.ToString());
 		MetaProgress->RestoreEngineRepositoryForTests();
 	}
 #endif

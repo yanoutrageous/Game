@@ -542,17 +542,17 @@ bool UGT_MetaProgressSubsystem::RemoveConsumable(FName ItemId, int32 Count)
 	return Save().bSuccess;
 }
 
-void UGT_MetaProgressSubsystem::SetLoadoutConsumable(FName ItemId, int32 Count)
+bool UGT_MetaProgressSubsystem::SetLoadoutConsumable(FName ItemId, int32 Count)
 {
 	const FGT_ConsumableDef* Def = GT_MetaCatalog::FindConsumable(ItemId);
-	if (!Def) { return; }
+	if (!Def) { return false; }
 	Count = ClampNonNegative(Count);
 	const int32 Stock = State.ConsumableStock.FindRef(ItemId);
 	Count = FMath::Min(Count, Stock);
 	if (Def->MaxCarry > 0) { Count = FMath::Min(Count, Def->MaxCarry); }
 	if (Count <= 0) { State.LoadoutConsumables.Remove(ItemId); }
 	else { State.LoadoutConsumables.Add(ItemId, Count); }
-	Save();
+	return Save().bSuccess;
 }
 
 TMap<FName, int32> UGT_MetaProgressSubsystem::ConsumeLoadoutForRun()

@@ -35,7 +35,7 @@ void UGT_RunSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UGT_RunSubsystem::Deinitialize()
 {
-	EndCurrentRun();
+	ClearCurrentRun();
 
 	CommandBus = nullptr;
 	CommandProcessor = nullptr;
@@ -55,7 +55,11 @@ UGT_RunContext* UGT_RunSubsystem::StartNewRun(int32 Seed, int32 Width, int32 Hei
 		return nullptr;
 	}
 
-	EndCurrentRun();
+	const FGT_MetaOperationResult EndResult = EndCurrentRun();
+	if (!EndResult.bSuccess)
+	{
+		return nullptr;
+	}
 	CurrentRunContext = NewObject<UGT_RunContext>(this);
 	bRunSettled = false;
 	CurrentRunContext->InitializeRun(Seed, Width, Height);
@@ -98,7 +102,15 @@ UGT_RunContext* UGT_RunSubsystem::StartNewRunStandard(int32 Seed, EGT_Difficulty
 		}
 	}
 
-	EndCurrentRun();
+	const FGT_MetaOperationResult EndResult = EndCurrentRun();
+	if (!EndResult.bSuccess)
+	{
+		if (Meta)
+		{
+			Meta->RecoverInterruptedRun();
+		}
+		return nullptr;
+	}
 	CurrentRunContext = NewObject<UGT_RunContext>(this);
 	bRunSettled = false;
 	PendingSettlementEvent = NAME_None;
@@ -165,7 +177,28 @@ UGT_RunContext* UGT_RunSubsystem::GetCurrentRunContext() const
 	return CurrentRunContext;
 }
 
-void UGT_RunSubsystem::EndCurrentRun()
+FGT_MetaOperationResult UGT_RunSubsystem::EndCurrentRun()
+{
+	if (HasPendingSettlement())
+	{
+		const FGT_MetaOperationResult RetryResult = RetryPendingSettlement();
+		if (!RetryResult.bSuccess)
+		{
+			return RetryResult;
+		}
+	}
+	if (CurrentRunContext
+		&& CurrentRunContext->IsRunActive()
+		&& CurrentRunContext->GetMapMode() == EGT_MapMode::Standard
+		&& !CurrentRunContext->IsTutorialRun())
+	{
+		return AbandonRun();
+	}
+	ClearCurrentRun();
+	return FGT_MetaOperationResult::Success();
+}
+
+void UGT_RunSubsystem::ClearCurrentRun()
 {
 	if (CurrentRunContext)
 	{
@@ -303,7 +336,7 @@ FGT_MetaOperationResult UGT_RunSubsystem::AbandonRun()
 	}
 
 	CurrentRunContext->MarkRunFailed(FName(TEXT("Abandoned")));
-	EndCurrentRun();
+	ClearCurrentRun();
 	return FGT_MetaOperationResult::Success();
 }
 

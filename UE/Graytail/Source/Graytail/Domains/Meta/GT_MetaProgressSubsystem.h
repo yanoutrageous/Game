@@ -73,7 +73,7 @@ public:
 
 	// --- loadout(对齐 Lua SetLoadoutConsumable/GetLoadout/ConsumeLoadoutForRun) ---
 	// 把 Count 夹到 [0, min(stock, maxCarry)]; 0 表示移除。
-	void SetLoadoutConsumable(FName ItemId, int32 Count);
+	bool SetLoadoutConsumable(FName ItemId, int32 Count);
 	const TMap<FName, int32>& GetLoadout() const { return State.LoadoutConsumables; }
 	// 开局调:从库存扣掉 loadout 选定量, 返回本局携带的 id->数量(S3 用)。
 	TMap<FName, int32> ConsumeLoadoutForRun();

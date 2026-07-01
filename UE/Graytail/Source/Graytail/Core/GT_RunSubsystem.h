@@ -38,7 +38,7 @@ public:
 	UGT_RunContext* GetCurrentRunContext() const;
 
 	UFUNCTION(BlueprintCallable, Category = "Graytail|Run")
-	void EndCurrentRun();
+	FGT_MetaOperationResult EndCurrentRun();
 
 	// 主动放弃本局(ESC 暂停菜单"返回标题"): 视同撤离失败 —— 带入装备损失 + 失败金币结算,
 	// 防"快死了放弃保住装备"的 exploit。仅 Standard 非教程实际结算。
@@ -66,6 +66,7 @@ private:
 
 	// 开局把局外 loadout/加成应用到当前 RunContext(S3, 仅 Standard 局)。
 	void ApplyMetaLoadoutToRun(const TMap<FName, int32>& ConsumedConsumables);
+	void ClearCurrentRun();
 
 	// 本局是否已结算(防重复事件触发多次结算; StartNewRun* 时重置)。
 	bool bRunSettled = false;

@@ -82,6 +82,12 @@ FGT_MetaLoadResult FGT_MetaSaveRepository::Load()
 		Result.Status = EGT_MetaPersistenceStatus::Ready;
 		return Result;
 	}
+	if (MainRead == EReadResult::UnsupportedVersion)
+	{
+		Result.Status = EGT_MetaPersistenceStatus::UnsupportedVersion;
+		Result.Message = MainMessage;
+		return Result;
+	}
 
 	FText BackupMessage;
 	FGT_MetaProgressState BackupState;
@@ -176,6 +182,14 @@ FGT_MetaOperationResult FGT_MetaSaveRepository::Commit(
 FGT_MetaOperationResult FGT_MetaSaveRepository::ResetWithFreshState()
 {
 	const FGT_MetaProgressState FreshState;
+	const FGT_MetaOperationResult BackupWrite = WriteState(
+		BackupSlot(),
+		FreshState,
+		FName(TEXT("reset_backup_write_failed")));
+	if (!BackupWrite.bSuccess)
+	{
+		return BackupWrite;
+	}
 	const FGT_MetaOperationResult MainWrite = WriteState(
 		MainSlot(),
 		FreshState,
@@ -184,7 +198,6 @@ FGT_MetaOperationResult FGT_MetaSaveRepository::ResetWithFreshState()
 	{
 		return MainWrite;
 	}
-	WriteState(BackupSlot(), FreshState, FName(TEXT("reset_backup_write_failed")));
 	WriteDebugMirror(FreshState);
 	return FGT_MetaOperationResult::Success();
 }

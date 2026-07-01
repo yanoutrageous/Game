@@ -1428,7 +1428,12 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 		return;
 	}
 
-	// 开箱演出不受焦点影响(弹窗刚关/按钮持焦时也要继续播)。
+	if (bSimulationPaused)
+	{
+		MoveVelocity = FVector2D::ZeroVector;
+		return;
+	}
+
 	UpdateChestBurstAnim(InDeltaTime);
 
 	// ==========================================
@@ -1448,14 +1453,6 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 			bSlot1Shatter = false;
 			if (DeathEffectImage1) { DeathEffectImage1->SetVisibility(ESlateVisibility::Collapsed); }
 
-			// 暂停门控: ESC 暂停菜单(或任何抢走键盘焦点的顶层界面)打开时, 冻结整段战斗模拟 ——
-			// 怪物不移动、不进入攻击相位、不发射弹道、不扣血。表现层保持当前帧, 恢复焦点后接着算。
-			// 玩家移动在下方同样以 HasKeyboardFocus 门控, 这里补上怪物侧, 真正实现"暂停=全停"。
-			// 直接 return: 不可改 if 条件落入下面的 else(那会被误判为战斗结束 → 重置状态并触发死亡碎裂)。
-			if (!HasKeyboardFocus())
-			{
-				return;
-			}
 			// 行为原型(决定移动/攻击模式/数值; 见 GT_MonsterCatalog)。
 			const FGT_MonsterArchetype& Arch = GT_MonsterCatalog::GetArchetype(Snapshot.EnemyType);
 			CurrentPlayerAttackRange = Arch.PlayerAttackRange;
@@ -2432,14 +2429,6 @@ void UGT_RoomViewWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 		if (PlayerHitFlashTimer > 0.f) { PlayerHitFlashTimer = FMath::Max(0.f, PlayerHitFlashTimer - InDeltaTime); }
 		const float PlayerFlash = FMath::Clamp(PlayerHitFlashTimer / 0.14f, 0.f, 1.f);
 		PlayerImage->SetColorAndOpacity(FMath::Lerp(FLinearColor::White, FLinearColor(3.f, 3.f, 3.f, 1.f), PlayerFlash));
-	}
-
-	// 焦点在弹窗/按钮上时暂停移动(不动 HeldKeys —— 持键真值由全局 InputPreProcessor 维护,
-	// 关弹窗后仍按着的键会续走、松开则停, 不受 UIOnly/焦点切换影响, 也不会漏 KeyUp 卡键)。
-	if (!HasKeyboardFocus())
-	{
-		MoveVelocity = FVector2D::ZeroVector;
-		return;
 	}
 
 	const float InputX = (HeldKeys[3] ? 1.f : 0.f) - (HeldKeys[1] ? 1.f : 0.f);

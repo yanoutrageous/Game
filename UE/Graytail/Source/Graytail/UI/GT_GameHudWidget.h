@@ -57,6 +57,7 @@ private:
 	void RefreshMiniMapGrid();
 	void RefreshMineRiskTag();
 	void RefreshItemsList();
+	void UpdateRoomSimulationPause();
 	void RefreshConsumableList();                 // 左下道具面板: 列可用消耗品 + 【N】标号 + 选中高亮
 	void SelectConsumableSlot(int32 InSlot);      // 数字键选择道具槽(1-based)
 	TArray<FName> GetUsableConsumableIds() const; // 背包里可用消耗品 id(按携带顺序), 供面板 + Q 共用
@@ -146,7 +147,6 @@ private:
 	UPROPERTY(Transient) UVerticalBox* ItemsList = nullptr;
 	UPROPERTY(Transient) UVerticalBox* ConsumableList = nullptr;   // 左下道具选择面板
 	int32 SelectedConsumableSlot = 1;                              // 当前选中道具槽(1-based)
-	UPROPERTY(Transient) UTextBlock* LogText = nullptr;
 	UPROPERTY(Transient) UTextBlock* ProtocolText = nullptr;
 	UPROPERTY(Transient) UImage* ProtocolBarImage = nullptr;   // 协议N 状态条贴图(组员美术)
 

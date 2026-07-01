@@ -95,6 +95,16 @@ struct GRAYTAIL_API FGT_ExtractionReward
 	UPROPERTY() TArray<FGT_RewardItem> CarriedItems;
 };
 
+USTRUCT(BlueprintType)
+struct GRAYTAIL_API FGT_FailureSettlement
+{
+	GENERATED_BODY()
+
+	UPROPERTY() FName Reason = NAME_None;
+	UPROPERTY() int32 Gold = 0;
+	UPROPERTY() TArray<FGT_RewardItem> SalvagedItems;
+};
+
 // GetEquipBonus 返回(对齐 Lua 同名函数字段)。
 USTRUCT(BlueprintType)
 struct GRAYTAIL_API FGT_EquipBonus

@@ -1,6 +1,7 @@
 #include "Debug/GT_MetaPersistenceSmokeValidator.h"
 
 #include "Debug/GT_RuntimeSmokeValidator.h"
+#include "Core/GT_RunSubsystem.h"
 #include "Domains/Meta/GT_MetaPersistenceTypes.h"
 #include "Domains/Meta/GT_MetaProgressSubsystem.h"
 #include "Domains/Meta/GT_MetaSaveRepository.h"
@@ -46,6 +47,11 @@ namespace
 			FailWrites.Add(SlotKey(Slot, 0));
 		}
 
+		void AllowWrite(const FString& Slot)
+		{
+			FailWrites.Remove(SlotKey(Slot, 0));
+		}
+
 		int32 WriteCount(const FString& Slot) const
 		{
 			return WriteCounts.FindRef(SlotKey(Slot, 0));
@@ -86,7 +92,8 @@ namespace
 
 void GT_MetaPersistenceSmokeValidator::AppendChecks(
 	TArray<FGT_RuntimeSmokeCheckResult>& OutResults,
-	UGT_MetaProgressSubsystem* MetaProgress)
+	UGT_MetaProgressSubsystem* MetaProgress,
+	UGT_RunSubsystem* RunSubsystem)
 {
 	FGT_MetaProgressState VersionOneState;
 	VersionOneState.Gold = 17;
@@ -321,6 +328,149 @@ void GT_MetaPersistenceSmokeValidator::AppendChecks(
 			MetaProgress->GetGold() == GoldBeforeFailure
 				&& !MetaProgress->GetLastPersistenceResult().bSuccess,
 			MetaProgress->GetLastPersistenceResult().Message.ToString());
+		MetaProgress->RestoreEngineRepositoryForTests();
+	}
+#endif
+
+#if !UE_BUILD_SHIPPING
+	if (MetaProgress)
+	{
+		const TSharedRef<FGT_FakeMetaSaveBackend> Backend =
+			MakeShared<FGT_FakeMetaSaveBackend>();
+		UGT_MetaProgressSubsystem* EscrowMeta = MetaProgress;
+		EscrowMeta->SetRepositoryForTests(
+			MakeUnique<FGT_MetaSaveRepository>(Backend, TEXT("EscrowMain"), 0));
+		EscrowMeta->GMGrantItem(FName(TEXT("armor")));
+		FName EquipError;
+		EscrowMeta->ToggleEquip(FName(TEXT("armor")), EquipError);
+		EscrowMeta->AddConsumable(FName(TEXT("emergency_bandage")), 2);
+		EscrowMeta->SetLoadoutConsumable(FName(TEXT("emergency_bandage")), 1);
+
+		FGuid RunId;
+		TMap<FName, int32> Consumed;
+		const FGT_MetaOperationResult BeginResult = EscrowMeta->BeginRunEscrow(
+			1234,
+			EGT_Difficulty::Standard,
+			RunId,
+			Consumed);
+		AddCheck(
+			OutResults,
+			TEXT("MetaRunEscrowCommitsBeforeRun"),
+			BeginResult.bSuccess
+				&& RunId.IsValid()
+				&& EscrowMeta->GetState().ActiveRun.bActive
+				&& EscrowMeta->GetState().ActiveRun.RunId == RunId
+				&& Consumed.FindRef(FName(TEXT("emergency_bandage"))) == 1
+				&& EscrowMeta->GetConsumableCount(FName(TEXT("emergency_bandage"))) == 1
+				&& EscrowMeta->GetStats().TotalRuns == 1,
+			BeginResult.Message.ToString());
+
+		const FGT_MetaOperationResult RecoveryResult = EscrowMeta->RecoverInterruptedRun();
+		AddCheck(
+			OutResults,
+			TEXT("MetaInterruptedRunRecoversAsAbandonment"),
+			RecoveryResult.bSuccess
+				&& !EscrowMeta->GetState().ActiveRun.bActive
+				&& !EscrowMeta->OwnsItem(FName(TEXT("armor")))
+				&& EscrowMeta->GetConsumableCount(FName(TEXT("emergency_bandage"))) == 1,
+			RecoveryResult.Message.ToString());
+		EscrowMeta->RestoreEngineRepositoryForTests();
+	}
+
+	if (MetaProgress)
+	{
+		const TSharedRef<FGT_FakeMetaSaveBackend> Backend =
+			MakeShared<FGT_FakeMetaSaveBackend>();
+		UGT_MetaProgressSubsystem* EscrowMeta = MetaProgress;
+		EscrowMeta->SetRepositoryForTests(
+			MakeUnique<FGT_MetaSaveRepository>(Backend, TEXT("SettlementRetryMain"), 0));
+
+		const int32 InitialGold = EscrowMeta->GetGold();
+		const int32 InitialExtractions = EscrowMeta->GetStats().TotalExtractions;
+		FGuid RunId;
+		TMap<FName, int32> Consumed;
+		const FGT_MetaOperationResult BeginResult = EscrowMeta->BeginRunEscrow(
+			2468,
+			EGT_Difficulty::Standard,
+			RunId,
+			Consumed);
+
+		Backend->FailWrite(TEXT("SettlementRetryMain"));
+		FGT_ExtractionReward Reward;
+		Reward.DirectGold = 77;
+		const FGT_MetaOperationResult FailedSettlement =
+			EscrowMeta->CommitExtraction(Reward, TMap<FName, int32>());
+		const bool bFailureWasAtomic =
+			BeginResult.bSuccess
+			&& !FailedSettlement.bSuccess
+			&& EscrowMeta->GetState().ActiveRun.bActive
+			&& EscrowMeta->GetGold() == InitialGold
+			&& EscrowMeta->GetStats().TotalExtractions == InitialExtractions;
+
+		Backend->AllowWrite(TEXT("SettlementRetryMain"));
+		const FGT_MetaOperationResult RetriedSettlement =
+			EscrowMeta->CommitExtraction(Reward, TMap<FName, int32>());
+		const FGT_MetaOperationResult DuplicateSettlement =
+			EscrowMeta->CommitExtraction(Reward, TMap<FName, int32>());
+		AddCheck(
+			OutResults,
+			TEXT("MetaExtractionSettlementRetriesExactlyOnce"),
+			bFailureWasAtomic
+				&& RetriedSettlement.bSuccess
+				&& !DuplicateSettlement.bSuccess
+				&& !EscrowMeta->GetState().ActiveRun.bActive
+				&& EscrowMeta->GetGold() == InitialGold + 77
+				&& EscrowMeta->GetStats().TotalExtractions == InitialExtractions + 1,
+			RetriedSettlement.Message.ToString());
+		EscrowMeta->RestoreEngineRepositoryForTests();
+	}
+
+	if (MetaProgress)
+	{
+		const TSharedRef<FGT_FakeMetaSaveBackend> Backend =
+			MakeShared<FGT_FakeMetaSaveBackend>();
+		Backend->FailWrite(TEXT("EscrowFailMain"));
+		UGT_MetaProgressSubsystem* EscrowMeta = MetaProgress;
+		EscrowMeta->SetRepositoryForTests(
+			MakeUnique<FGT_MetaSaveRepository>(Backend, TEXT("EscrowFailMain"), 0));
+		FGuid RunId;
+		TMap<FName, int32> Consumed;
+		const FGT_MetaOperationResult BeginResult = EscrowMeta->BeginRunEscrow(
+			5678,
+			EGT_Difficulty::Hard,
+			RunId,
+			Consumed);
+		AddCheck(
+			OutResults,
+			TEXT("MetaRunEscrowWriteFailureLeavesStateUnchanged"),
+			!BeginResult.bSuccess
+				&& !RunId.IsValid()
+				&& Consumed.IsEmpty()
+				&& !EscrowMeta->GetState().ActiveRun.bActive
+				&& EscrowMeta->GetStats().TotalRuns == 0,
+			BeginResult.Message.ToString());
+		EscrowMeta->RestoreEngineRepositoryForTests();
+	}
+
+	if (MetaProgress && RunSubsystem)
+	{
+		RunSubsystem->EndCurrentRun();
+		const TSharedRef<FGT_FakeMetaSaveBackend> Backend =
+			MakeShared<FGT_FakeMetaSaveBackend>();
+		Backend->FailWrite(TEXT("RunStartFailMain"));
+		MetaProgress->SetRepositoryForTests(
+			MakeUnique<FGT_MetaSaveRepository>(Backend, TEXT("RunStartFailMain"), 0));
+		UGT_RunContext* FailedRun = RunSubsystem->StartNewRunStandard(
+			9012,
+			EGT_Difficulty::Standard);
+		AddCheck(
+			OutResults,
+			TEXT("RunStartWaitsForEscrowCommit"),
+			FailedRun == nullptr
+				&& RunSubsystem->GetCurrentRunContext() == nullptr
+				&& !MetaProgress->GetState().ActiveRun.bActive,
+			MetaProgress->GetLastPersistenceResult().Message.ToString());
+		RunSubsystem->EndCurrentRun();
 		MetaProgress->RestoreEngineRepositoryForTests();
 	}
 #endif

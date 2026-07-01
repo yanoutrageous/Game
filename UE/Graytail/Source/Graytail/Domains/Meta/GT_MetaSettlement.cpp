@@ -9,11 +9,12 @@
 
 namespace GT_MetaSettlement
 {
-	void SettleExtraction(const UGT_RunContext& Run, UGT_MetaProgressSubsystem& Meta)
+	FGT_MetaOperationResult SettleExtraction(const UGT_RunContext& Run, UGT_MetaProgressSubsystem& Meta)
 	{
 		const FGT_RunInventoryState& Inv = Run.GetRunInventory();
 
 		FGT_ExtractionReward Reward;
+		TMap<FName, int32> ReturnedConsumables;
 		int32 DirectGold = Inv.PendingGold + Inv.SafeGold;   // 对齐 Lua directGold = pending+safe
 		int32 SettleGoldBonusPercent = 0;
 		for (const FName& EquippedId : Meta.GetEquippedItems())
@@ -44,7 +45,7 @@ namespace GT_MetaSettlement
 			const FGT_ItemCatalogEntry* Def = GT_ItemCatalog::FindItemDef(Stack.ItemId);
 			if (Def && Def->Kind == EGT_ItemKind::Consumable)
 			{
-				Meta.AddConsumable(Stack.ItemId, Stack.Count);
+				ReturnedConsumables.FindOrAdd(Stack.ItemId) += Stack.Count;
 				continue;
 			}
 			FGT_RewardItem Item;
@@ -54,15 +55,14 @@ namespace GT_MetaSettlement
 			Reward.CarriedItems.Add(Item);
 		}
 
-		Meta.RecordExtractionReward(Reward);
+		return Meta.CommitExtraction(Reward, ReturnedConsumables);
 	}
 
-	void SettleFailure(const UGT_RunContext& Run, UGT_MetaProgressSubsystem& Meta)
+	FGT_MetaOperationResult SettleFailure(const UGT_RunContext& Run, UGT_MetaProgressSubsystem& Meta)
 	{
 		const FGT_RunInventoryState& Inv = Run.GetRunInventory();
-
-		// 失败丢装备(用户拍板): 带入(已装备)的装备损失, 未装备的拥有装备保留(轻装规避=自然缓解)。
-		Meta.LoseEquippedItemsOnFailure();
+		FGT_FailureSettlement Settlement;
+		Settlement.Reason = Run.GetRunEndReason();
 
 		// 抢救最高价值 1 件(对齐 Lua: 遍历 carriedItems 取 itemBaseValue 最大者, count=1)。
 		FName BestId = NAME_None;
@@ -88,11 +88,7 @@ namespace GT_MetaSettlement
 		}
 
 		// 金币 = SafeGold + 撤离天赋补币(PendingGold 丢失; canSalvagePart=false 零件不抢救)。
-		const int32 FinalGold = Inv.SafeGold + Meta.GetTalentEffects().FailureGoldBonus;
-		if (FinalGold > 0)
-		{
-			Meta.AddGold(FinalGold);
-		}
+		Settlement.Gold = Inv.SafeGold + Meta.GetTalentEffects().FailureGoldBonus;
 
 		if (!BestId.IsNone())
 		{
@@ -100,10 +96,8 @@ namespace GT_MetaSettlement
 			Item.ItemId = BestId;
 			Item.Count = 1;
 			Item.Value = FMath::Max(0, BestValue);
-			TArray<FGT_RewardItem> Salvaged;
-			Salvaged.Add(Item);
-			Meta.AddWarehouseItems(Salvaged, FName(TEXT("recovered")));
-			Meta.Save();   // AddWarehouseItems 不自存, 末尾补一次落盘
+			Settlement.SalvagedItems.Add(Item);
 		}
+		return Meta.CommitFailure(Settlement);
 	}
 }

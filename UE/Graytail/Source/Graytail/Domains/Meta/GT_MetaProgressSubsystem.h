@@ -25,6 +25,17 @@ public:
 	EGT_MetaPersistenceStatus GetPersistenceStatus() const { return PersistenceStatus; }
 	bool CanMutateProgress() const;
 	FGT_MetaOperationResult ResetCorruptSaveAndCreateFresh();
+	FGT_MetaOperationResult BeginRunEscrow(
+		int32 Seed,
+		EGT_Difficulty Difficulty,
+		FGuid& OutRunId,
+		TMap<FName, int32>& OutConsumedConsumables);
+	FGT_MetaOperationResult CommitExtraction(
+		const FGT_ExtractionReward& Reward,
+		const TMap<FName, int32>& ReturnedConsumables);
+	FGT_MetaOperationResult CommitFailure(const FGT_FailureSettlement& Settlement);
+	FGT_MetaOperationResult RecoverInterruptedRun();
+	FText ConsumeStartupNotice();
 
 #if !UE_BUILD_SHIPPING
 	void SetRepositoryForTests(TUniquePtr<FGT_MetaSaveRepository> InRepository);
@@ -103,6 +114,7 @@ private:
 	FGT_MetaOperationResult LastPersistenceResult;
 	EGT_MetaPersistenceStatus PersistenceStatus = EGT_MetaPersistenceStatus::Corrupt;
 	TUniquePtr<FGT_MetaSaveRepository> SaveRepository;
+	FText StartupNotice;
 
 	// 最近一次撤离失败损失的装备 id(非持久, 仅供结算面板本次显示)。
 	TArray<FName> LastFailureLostEquips;

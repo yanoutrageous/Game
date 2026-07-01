@@ -36,7 +36,16 @@ void UGT_MetaProgressSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
 	SaveRepository = FGT_MetaSaveRepository::CreateEngine(SaveSlotName(), SaveUserIndex);
-	Load();
+	const FGT_MetaLoadResult LoadResult = Load();
+	if (LoadResult.IsUsable() && State.ActiveRun.bActive)
+	{
+		const FGT_MetaOperationResult Recovery = RecoverInterruptedRun();
+		if (Recovery.bSuccess)
+		{
+			StartupNotice = FText::FromString(
+				TEXT("上一局异常中断，已按主动放弃处理装备和消耗品。"));
+		}
+	}
 }
 
 FGT_MetaOperationResult UGT_MetaProgressSubsystem::Save()
@@ -45,7 +54,19 @@ FGT_MetaOperationResult UGT_MetaProgressSubsystem::Save()
 	{
 		SaveRepository = FGT_MetaSaveRepository::CreateEngine(SaveSlotName(), SaveUserIndex);
 	}
-	LastPersistenceResult = SaveRepository->Commit(State);
+	FGT_MetaProgressState Candidate = State;
+	FString ValidationError;
+	if (!GT_ValidateAndSanitizeMetaState(Candidate, ValidationError))
+	{
+		State = LastCommittedState;
+		PersistenceStatus = EGT_MetaPersistenceStatus::WriteFailed;
+		LastPersistenceResult = FGT_MetaOperationResult::Failure(
+			FName(TEXT("save_validation_failed")),
+			FText::FromString(ValidationError));
+		return LastPersistenceResult;
+	}
+
+	LastPersistenceResult = SaveRepository->Commit(Candidate);
 	if (!LastPersistenceResult.bSuccess)
 	{
 		State = LastCommittedState;
@@ -58,6 +79,7 @@ FGT_MetaOperationResult UGT_MetaProgressSubsystem::Save()
 		return LastPersistenceResult;
 	}
 
+	State = MoveTemp(Candidate);
 	LastCommittedState = State;
 	PersistenceStatus = EGT_MetaPersistenceStatus::Ready;
 	UE_LOG(LogGraytailMeta, Log, TEXT("Saved: gold=%d"), State.Gold);
@@ -91,7 +113,9 @@ FGT_MetaLoadResult UGT_MetaProgressSubsystem::Load()
 FGT_MetaOperationResult UGT_MetaProgressSubsystem::CommitCandidate(
 	FGT_MetaProgressState Candidate)
 {
-	if (!CanMutateProgress())
+	if (PersistenceStatus == EGT_MetaPersistenceStatus::Corrupt
+		|| PersistenceStatus == EGT_MetaPersistenceStatus::UnsupportedVersion
+		|| PersistenceStatus == EGT_MetaPersistenceStatus::RecoveryWritePending)
 	{
 		return FGT_MetaOperationResult::Failure(
 			FName(TEXT("persistence_blocked")),
@@ -100,6 +124,15 @@ FGT_MetaOperationResult UGT_MetaProgressSubsystem::CommitCandidate(
 	if (!SaveRepository)
 	{
 		SaveRepository = FGT_MetaSaveRepository::CreateEngine(SaveSlotName(), SaveUserIndex);
+	}
+
+	FString ValidationError;
+	if (!GT_ValidateAndSanitizeMetaState(Candidate, ValidationError))
+	{
+		LastPersistenceResult = FGT_MetaOperationResult::Failure(
+			FName(TEXT("save_validation_failed")),
+			FText::FromString(ValidationError));
+		return LastPersistenceResult;
 	}
 
 	LastPersistenceResult = SaveRepository->Commit(Candidate);
@@ -113,6 +146,210 @@ FGT_MetaOperationResult UGT_MetaProgressSubsystem::CommitCandidate(
 	LastCommittedState = State;
 	PersistenceStatus = EGT_MetaPersistenceStatus::Ready;
 	return LastPersistenceResult;
+}
+
+FGT_MetaOperationResult UGT_MetaProgressSubsystem::BeginRunEscrow(
+	int32 Seed,
+	EGT_Difficulty Difficulty,
+	FGuid& OutRunId,
+	TMap<FName, int32>& OutConsumedConsumables)
+{
+	OutRunId.Invalidate();
+	OutConsumedConsumables.Reset();
+	if (State.ActiveRun.bActive)
+	{
+		return FGT_MetaOperationResult::Failure(
+			FName(TEXT("active_run_exists")),
+			FText::FromString(TEXT("An active run escrow already exists.")));
+	}
+
+	FGT_MetaProgressState Candidate = State;
+	TMap<FName, int32> Consumed;
+	for (const TPair<FName, int32>& Pair : Candidate.LoadoutConsumables)
+	{
+		const int32 Stock = Candidate.ConsumableStock.FindRef(Pair.Key);
+		const int32 Take = FMath::Min(Pair.Value, Stock);
+		if (Take <= 0)
+		{
+			continue;
+		}
+		Consumed.Add(Pair.Key, Take);
+		const int32 Remaining = Stock - Take;
+		if (Remaining > 0)
+		{
+			Candidate.ConsumableStock.Add(Pair.Key, Remaining);
+		}
+		else
+		{
+			Candidate.ConsumableStock.Remove(Pair.Key);
+		}
+	}
+
+	FGT_ActiveRunEscrow Escrow;
+	Escrow.bActive = true;
+	Escrow.RunId = FGuid::NewGuid();
+	Escrow.Seed = Seed;
+	Escrow.Difficulty = Difficulty;
+	Escrow.EquippedItemIds = Candidate.EquippedItems;
+	Escrow.ConsumedConsumables = Consumed;
+	Escrow.StartedAtUtc = FDateTime::UtcNow();
+	Candidate.ActiveRun = Escrow;
+	Candidate.Stats.TotalRuns += 1;
+
+	const FGT_MetaOperationResult Result = CommitCandidate(MoveTemp(Candidate));
+	if (Result.bSuccess)
+	{
+		OutRunId = Escrow.RunId;
+		OutConsumedConsumables = MoveTemp(Consumed);
+	}
+	return Result;
+}
+
+FGT_MetaOperationResult UGT_MetaProgressSubsystem::CommitExtraction(
+	const FGT_ExtractionReward& Reward,
+	const TMap<FName, int32>& ReturnedConsumables)
+{
+	if (!State.ActiveRun.bActive)
+	{
+		return FGT_MetaOperationResult::Failure(
+			FName(TEXT("no_active_run")),
+			FText::FromString(TEXT("Extraction has no active run escrow.")));
+	}
+
+	FGT_MetaProgressState Candidate = State;
+	const int32 GoldAdded =
+		ClampNonNegative(Reward.DirectGold)
+		+ ClampNonNegative(Reward.LoosePartsGold);
+	Candidate.Gold += GoldAdded;
+	Candidate.Stats.TotalGoldEarned += GoldAdded;
+	Candidate.Stats.TotalExtractions += 1;
+
+	for (const TPair<FName, int32>& Pair : ReturnedConsumables)
+	{
+		if (GT_MetaCatalog::FindConsumable(Pair.Key) && Pair.Value > 0)
+		{
+			Candidate.ConsumableStock.FindOrAdd(Pair.Key) += Pair.Value;
+		}
+	}
+
+	int32 ItemCount = 0;
+	int32 ItemValue = 0;
+	for (const FGT_RewardItem& Item : Reward.CarriedItems)
+	{
+		const int32 Count = ClampNonNegative(Item.Count);
+		if (Item.ItemId.IsNone() || Count <= 0)
+		{
+			continue;
+		}
+		ItemCount += Count;
+		ItemValue += FMath::Max(0, Item.Value) * Count;
+		FGT_WarehouseEntry* Entry = Candidate.Warehouse.FindByPredicate(
+			[&Item](const FGT_WarehouseEntry& Existing)
+			{
+				return Existing.ItemId == Item.ItemId;
+			});
+		if (!Entry)
+		{
+			Entry = &Candidate.Warehouse.AddDefaulted_GetRef();
+			Entry->ItemId = Item.ItemId;
+			Entry->Value = FMath::Max(0, Item.Value);
+			Entry->Source = FName(TEXT("recovered"));
+		}
+		Entry->Count += Count;
+		for (int32 Index = 0; Index < Count; ++Index)
+		{
+			Candidate.Recovery.RecentItemIds.Insert(Item.ItemId, 0);
+		}
+	}
+	if (ItemCount > 0)
+	{
+		Candidate.Recovery.TotalItems += ItemCount;
+		Candidate.Recovery.TotalValue += ItemValue;
+		Candidate.Recovery.TotalExtractionsWithItems += 1;
+	}
+	if (Candidate.Recovery.RecentItemIds.Num() > GT_MetaCatalog::GetRecentRecoveryMax())
+	{
+		Candidate.Recovery.RecentItemIds.SetNum(GT_MetaCatalog::GetRecentRecoveryMax());
+	}
+	Candidate.ActiveRun = FGT_ActiveRunEscrow();
+	return CommitCandidate(MoveTemp(Candidate));
+}
+
+FGT_MetaOperationResult UGT_MetaProgressSubsystem::CommitFailure(
+	const FGT_FailureSettlement& Settlement)
+{
+	if (!State.ActiveRun.bActive)
+	{
+		return FGT_MetaOperationResult::Failure(
+			FName(TEXT("no_active_run")),
+			FText::FromString(TEXT("Failure settlement has no active run escrow.")));
+	}
+
+	FGT_MetaProgressState Candidate = State;
+	const TArray<FName> LostEquipment = Candidate.ActiveRun.EquippedItemIds;
+	bool bRecoveredAnyItem = false;
+	for (FName ItemId : LostEquipment)
+	{
+		Candidate.OwnedItems.Remove(ItemId);
+		Candidate.EquippedItems.Remove(ItemId);
+	}
+	const int32 GoldAdded = ClampNonNegative(Settlement.Gold);
+	Candidate.Gold += GoldAdded;
+	Candidate.Stats.TotalGoldEarned += GoldAdded;
+	for (const FGT_RewardItem& Item : Settlement.SalvagedItems)
+	{
+		const int32 Count = ClampNonNegative(Item.Count);
+		if (Item.ItemId.IsNone() || Count <= 0)
+		{
+			continue;
+		}
+		FGT_WarehouseEntry* Entry = Candidate.Warehouse.FindByPredicate(
+			[&Item](const FGT_WarehouseEntry& Existing)
+			{
+				return Existing.ItemId == Item.ItemId;
+			});
+		if (!Entry)
+		{
+			Entry = &Candidate.Warehouse.AddDefaulted_GetRef();
+			Entry->ItemId = Item.ItemId;
+			Entry->Value = FMath::Max(0, Item.Value);
+			Entry->Source = FName(TEXT("recovered"));
+		}
+		Entry->Count += Count;
+		Candidate.Recovery.TotalItems += Count;
+		Candidate.Recovery.TotalValue += FMath::Max(0, Item.Value) * Count;
+		bRecoveredAnyItem = true;
+		Candidate.Recovery.RecentItemIds.Insert(Item.ItemId, 0);
+	}
+	if (bRecoveredAnyItem)
+	{
+		Candidate.Recovery.TotalExtractionsWithItems += 1;
+	}
+	Candidate.ActiveRun = FGT_ActiveRunEscrow();
+	const FGT_MetaOperationResult Result = CommitCandidate(MoveTemp(Candidate));
+	if (Result.bSuccess)
+	{
+		LastFailureLostEquips = LostEquipment;
+	}
+	return Result;
+}
+
+FGT_MetaOperationResult UGT_MetaProgressSubsystem::RecoverInterruptedRun()
+{
+	if (!State.ActiveRun.bActive)
+	{
+		return FGT_MetaOperationResult::Success();
+	}
+	FGT_FailureSettlement Settlement;
+	Settlement.Reason = FName(TEXT("Interrupted"));
+	return CommitFailure(Settlement);
+}
+
+FText UGT_MetaProgressSubsystem::ConsumeStartupNotice()
+{
+	FText Notice = StartupNotice;
+	StartupNotice = FText::GetEmpty();
+	return Notice;
 }
 
 bool UGT_MetaProgressSubsystem::CanMutateProgress() const

@@ -367,7 +367,10 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 	UGT_MetaProgressSubsystem* PersistenceMeta = DebugSubsystem && DebugSubsystem->GetGameInstance()
 		? DebugSubsystem->GetGameInstance()->GetSubsystem<UGT_MetaProgressSubsystem>()
 		: nullptr;
-	GT_MetaPersistenceSmokeValidator::AppendChecks(OutResults, PersistenceMeta);
+	GT_MetaPersistenceSmokeValidator::AppendChecks(
+		OutResults,
+		PersistenceMeta,
+		RunSubsystem);
 
 	FGT_GameDataSnapshot DefaultGameData;
 	TArray<FString> DefaultGameDataErrors;
@@ -793,7 +796,18 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		MetaProgress->ToggleEquip(FName(TEXT("company_badge")), EquipError);
 	}
 #endif
-	UGT_RunContext* SettlementRun = bTriggerDataLoaded && RunSubsystem
+	FGuid SettlementRunId;
+	TMap<FName, int32> SettlementConsumed;
+	const FGT_MetaOperationResult SettlementEscrow = bTriggerDataLoaded && MetaProgress
+		? MetaProgress->BeginRunEscrow(
+			1001,
+			EGT_Difficulty::Easy,
+			SettlementRunId,
+			SettlementConsumed)
+		: FGT_MetaOperationResult::Failure(
+			FName(TEXT("test_setup_failed")),
+			FText::FromString(TEXT("Settlement test setup failed.")));
+	UGT_RunContext* SettlementRun = SettlementEscrow.bSuccess && RunSubsystem
 		? RunSubsystem->StartNewRun(1001, 10, 10)
 		: nullptr;
 	if (SettlementRun)

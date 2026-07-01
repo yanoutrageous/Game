@@ -297,6 +297,21 @@ void UGT_SettingsWidget::BuildWidgetTree()
 		BackSlot->SetHorizontalAlignment(HAlign_Fill);
 	}
 
+	UButton* QuitButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
+	QuitButton->SetStyle(GT_UIStyle::DarkButton());
+	UTextBlock* QuitText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+	QuitText->SetFont(GT_UIStyle::Font(16));
+	QuitText->SetColorAndOpacity(FSlateColor(FLinearColor(FColor(235, 105, 105))));
+	QuitText->SetJustification(ETextJustify::Center);
+	QuitText->SetText(FText::FromString(TEXT("退出游戏")));
+	QuitButton->AddChild(QuitText);
+	QuitButton->OnClicked.AddDynamic(this, &UGT_SettingsWidget::HandleQuit);
+	if (UVerticalBoxSlot* QuitSlot = Column->AddChildToVerticalBox(QuitButton))
+	{
+		QuitSlot->SetPadding(FMargin(0.f, 14.f, 0.f, 0.f));
+		QuitSlot->SetHorizontalAlignment(HAlign_Fill);
+	}
+
 	SetVisibility(ESlateVisibility::Collapsed);
 }
 
@@ -502,6 +517,16 @@ void UGT_SettingsWidget::HandleToggleCheat()
 void UGT_SettingsWidget::HandleBack()
 {
 	OnBackRequested.ExecuteIfBound();
+}
+
+void UGT_SettingsWidget::RequestQuit()
+{
+	OnQuitRequested.ExecuteIfBound();
+}
+
+void UGT_SettingsWidget::HandleQuit()
+{
+	RequestQuit();
 }
 
 FReply UGT_SettingsWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)

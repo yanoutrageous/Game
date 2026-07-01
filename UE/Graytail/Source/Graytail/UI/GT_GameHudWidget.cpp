@@ -12,6 +12,7 @@
 #include "Components/OverlaySlot.h"
 #include "Components/ProgressBar.h"
 #include "Components/ScaleBox.h"
+#include "Components/ScrollBox.h"
 #include "Components/SizeBox.h"
 #include "Components/Spacer.h"
 #include "Components/TextBlock.h"
@@ -45,6 +46,7 @@
 #include "UI/GT_RoomViewWidget.h"
 #include "UI/GT_TutorialContent.h"
 #include "UI/GT_TutorialPopupWidget.h"
+#include "UI/ViewModels/GT_BagSummaryViewModel.h"
 #include "Kismet/KismetSystemLibrary.h"
 
 namespace
@@ -351,11 +353,13 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	BagTitle->SetText(FText::FromString(TEXT("作业包摘要")));
 
 	ItemsList = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
-	UpperBox->AddChildToVerticalBox(ItemsList);
-
-	// 动作按钮已移除: F=搜索/攻击, E=撤离, 重开走局终弹窗。
-	LogText = MakePanelText(UpperBox, 11, FLinearColor(0.6f, 0.65f, 0.72f, 1.f));
-	LogText->SetAutoWrapText(true);
+	UScrollBox* ItemsScroll = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass());
+	ItemsScroll->SetAnimateWheelScrolling(true);
+	ItemsScroll->AddChild(ItemsList);
+	USizeBox* ItemsViewport = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+	ItemsViewport->SetHeightOverride(GT_BagSummaryViewModel::ViewportHeight);
+	ItemsViewport->SetContent(ItemsScroll);
+	UpperBox->AddChildToVerticalBox(ItemsViewport);
 
 	// 道具选择面板放在下半块里; 顶部留一点间距往下挪, 不贴分隔线(用户反馈钉在分隔线正下沿偏上)。PIE 可调。
 	{
@@ -659,6 +663,7 @@ void UGT_GameHudWidget::BuildWidgetTree()
 	if (SettingsPanel)
 	{
 		SettingsPanel->OnBackRequested.BindUObject(this, &UGT_GameHudWidget::HandleSettingsBack);
+		SettingsPanel->OnQuitRequested.BindUObject(this, &UGT_GameHudWidget::HandleSettingsQuitGame);
 		SettingsPanel->SetVisibility(ESlateVisibility::Collapsed);
 		if (UOverlaySlot* SettingsSlot = Screen->AddChildToOverlay(SettingsPanel))
 		{
@@ -785,18 +790,6 @@ void UGT_GameHudWidget::RefreshPanels()
 	RefreshMineRiskTag();
 	RefreshItemsList();
 	RefreshConsumableList();
-
-	FString RoomText;
-	FString Hint;
-	UGT_DebugSubsystem* Debug = GetDebugSubsystem();
-	if (Debug && Debug->GetDebugRoomText(RoomText) && RoomText.Split(TEXT("Hint="), nullptr, &Hint))
-	{
-		LogText->SetText(FText::FromString(Hint));
-	}
-	else
-	{
-		LogText->SetText(FText::GetEmpty());
-	}
 
 	// 右上协议状态: 协议N 状态条贴图(等级+描述烤在图里) + 压力值文字。
 	if (ProtocolBarImage)
@@ -1264,7 +1257,7 @@ void UGT_GameHudWidget::RefreshItemsList()
 		return;
 	}
 
-	const TArray<FGT_ItemStack>& CarriedItems = RunContext->GetRunInventory().CarriedItems;
+	TArray<FGT_ItemStack> CarriedItems = RunContext->GetRunInventory().CarriedItems;
 	if (CarriedItems.Num() == 0)
 	{
 		// 空态占位, 面板不留白(对齐原版摘要区始终有内容)。
@@ -1276,20 +1269,9 @@ void UGT_GameHudWidget::RefreshItemsList()
 		return;
 	}
 
-	constexpr int32 MaxItemRows = 5;
-	int32 ShownRows = 0;
+	GT_BagSummaryViewModel::SortForDisplay(CarriedItems);
 	for (const FGT_ItemStack& Stack : CarriedItems)
 	{
-		if (ShownRows >= MaxItemRows)
-		{
-			UTextBlock* MoreText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-			MoreText->SetFont(GT_UIStyle::Font(11));
-			MoreText->SetColorAndOpacity(FSlateColor(FLinearColor(0.5f, 0.54f, 0.62f, 1.f)));
-			MoreText->SetText(FText::FromString(FString::Printf(TEXT("  另有 %d 项"), CarriedItems.Num() - MaxItemRows)));
-			ItemsList->AddChildToVerticalBox(MoreText);
-			break;
-		}
-		++ShownRows;
 		const FGT_ItemCatalogEntry* Def = GT_ItemCatalog::FindItemDef(Stack.ItemId);
 
 		const FName Rarity = Def ? Def->Rarity : NAME_None;
@@ -1299,9 +1281,12 @@ void UGT_GameHudWidget::RefreshItemsList()
 		UBorder* Card = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 		Card->SetBrushColor(FLinearColor(RC.R, RC.G, RC.B, 0.7f));
 		Card->SetPadding(FMargin(1.5f));
-		if (UVerticalBoxSlot* CardSlot = ItemsList->AddChildToVerticalBox(Card))
+		USizeBox* CardSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+		CardSize->SetHeightOverride(GT_BagSummaryViewModel::CardHeight);
+		CardSize->SetContent(Card);
+		if (UVerticalBoxSlot* CardSlot = ItemsList->AddChildToVerticalBox(CardSize))
 		{
-			CardSlot->SetPadding(FMargin(0.f, 0.f, 0.f, 5.f));
+			CardSlot->SetPadding(FMargin(0.f, 0.f, 0.f, GT_BagSummaryViewModel::RowSpacing));
 		}
 		UBorder* CardBg = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 		CardBg->SetBrushColor(FLinearColor(FColor(22, 28, 40, 235)));
@@ -1746,6 +1731,7 @@ void UGT_GameHudWidget::OnUseConsumable()
 void UGT_GameHudWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
+	UpdateRoomSimulationPause();
 	if (ToastTimer > 0.f && ToastRoot)
 	{
 		ToastTimer -= InDeltaTime;
@@ -1797,6 +1783,31 @@ void UGT_GameHudWidget::OnNewRun()
 	{
 		ShowToast(TEXT("无法开始新行动，请查看日志中的配置或存档错误。"));
 	}
+}
+
+void UGT_GameHudWidget::UpdateRoomSimulationPause()
+{
+	if (!RoomView)
+	{
+		return;
+	}
+	const auto IsLayerVisible = [](const UWidget* Widget)
+	{
+		return Widget
+			&& Widget->GetVisibility() != ESlateVisibility::Collapsed
+			&& Widget->GetVisibility() != ESlateVisibility::Hidden;
+	};
+	const bool bBlocked =
+		(PauseMenu && PauseMenu->IsOpen())
+		|| (TutorialPopup && TutorialPopup->IsBlockingActive())
+		|| (DeployTerminal && DeployTerminal->IsOpen())
+		|| (SettingsPanel && SettingsPanel->IsOpen())
+		|| (MainMenu && MainMenu->IsOpen())
+		|| (EventPanel && EventPanel->IsOpen())
+		|| IsLayerVisible(MapOverlay)
+		|| IsLayerVisible(LootResult)
+		|| IsLayerVisible(RunEndRoot);
+	RoomView->SetSimulationPaused(bBlocked);
 }
 
 void UGT_GameHudWidget::OnRetrySettlement()
@@ -1924,6 +1935,11 @@ void UGT_GameHudWidget::HandleSettingsBack()
 	if (MainMenu) { MainMenu->Open(); }
 }
 
+void UGT_GameHudWidget::HandleSettingsQuitGame()
+{
+	UKismetSystemLibrary::QuitGame(this, GetOwningPlayer(), EQuitPreference::Quit, false);
+}
+
 void UGT_GameHudWidget::HandlePersistenceActionRequested()
 {
 	UGT_MetaProgressSubsystem* Meta = GetGameInstance()
@@ -2039,6 +2055,7 @@ void UGT_GameHudWidget::TogglePauseMenu()
 #else
 	PauseMenu->Open(false);
 #endif
+	UpdateRoomSimulationPause();
 }
 
 void UGT_GameHudWidget::HandlePauseResume()
@@ -2050,8 +2067,9 @@ void UGT_GameHudWidget::HandlePauseResume()
 	// 焦点还房间视图, 暂停期间松开/按住的 WASD 下一次 keydown 会重新登记(不卡键)。
 	if (RoomView)
 	{
-		RoomView->SetKeyboardFocus();
+		RoomView->SetFocus();
 	}
+	UpdateRoomSimulationPause();
 }
 
 void UGT_GameHudWidget::HandlePauseReturnToTitle()
@@ -2065,7 +2083,14 @@ void UGT_GameHudWidget::HandlePauseReturnToTitle()
 			const FGT_MetaOperationResult Result = RunSys->AbandonRun();
 			if (!Result.bSuccess)
 			{
-				ShowToast(Result.Message.ToString(), 4.f);
+				if (PauseMenu)
+				{
+					PauseMenu->ShowActionError(Result.Message.ToString());
+				}
+				else
+				{
+					ShowToast(Result.Message.ToString(), 4.f);
+				}
 				return;
 			}
 		}
@@ -2086,7 +2111,14 @@ void UGT_GameHudWidget::HandlePauseQuitGame()
 			const FGT_MetaOperationResult Result = RunSys->AbandonRun();
 			if (!Result.bSuccess)
 			{
-				ShowToast(Result.Message.ToString(), 4.f);
+				if (PauseMenu)
+				{
+					PauseMenu->ShowActionError(Result.Message.ToString());
+				}
+				else
+				{
+					ShowToast(Result.Message.ToString(), 4.f);
+				}
 				return;
 			}
 		}

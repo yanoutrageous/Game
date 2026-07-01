@@ -30,8 +30,10 @@ public:
 	void Open();
 	void Close();
 	bool IsOpen() const;
+	void RequestQuit();
 
 	TDelegate<void()> OnBackRequested;   // 返回主菜单(HUD 接)
+	TDelegate<void()> OnQuitRequested;   // 退出游戏(HUD 接)
 
 private:
 	void BuildWidgetTree();
@@ -58,6 +60,7 @@ private:
 	UFUNCTION() void HandleSfxVolumeChanged(float Value);
 	UFUNCTION() void HandleToggleCheat();
 	UFUNCTION() void HandleBack();
+	UFUNCTION() void HandleQuit();
 
 	UPROPERTY(Transient) UCanvasPanel* Root = nullptr;
 	UPROPERTY(Transient) UTextBlock* WindowModeText = nullptr;

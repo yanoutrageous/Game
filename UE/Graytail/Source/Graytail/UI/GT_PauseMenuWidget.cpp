@@ -111,7 +111,7 @@ void UGT_PauseMenuWidget::BuildWidgetTree()
 	MainButtons = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	Column->AddChildToVerticalBox(MainButtons);
 
-	UButton* ResumeButton = AddMenuButton(MainButtons, TEXT("继续"), GTPauseBtnText);
+	ResumeButton = AddMenuButton(MainButtons, TEXT("继续"), GTPauseBtnText);
 	ResumeButton->OnClicked.AddDynamic(this, &UGT_PauseMenuWidget::HandleResume);
 
 #if !UE_BUILD_SHIPPING
@@ -124,6 +124,17 @@ void UGT_PauseMenuWidget::BuildWidgetTree()
 
 	UButton* QuitButton = AddMenuButton(MainButtons, TEXT("退出游戏"), GTPauseBtnText);
 	QuitButton->OnClicked.AddDynamic(this, &UGT_PauseMenuWidget::HandleQuit);
+
+	ActionErrorText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+	ActionErrorText->SetFont(GT_UIStyle::Font(12));
+	ActionErrorText->SetColorAndOpacity(FSlateColor(GTPauseDanger));
+	ActionErrorText->SetJustification(ETextJustify::Center);
+	ActionErrorText->SetAutoWrapText(true);
+	ActionErrorText->SetVisibility(ESlateVisibility::Collapsed);
+	if (UVerticalBoxSlot* ErrorSlot = Column->AddChildToVerticalBox(ActionErrorText))
+	{
+		ErrorSlot->SetPadding(FMargin(0.f, 8.f, 0.f, 0.f));
+	}
 
 	// 返回标题的二次确认组(默认隐藏)。
 	ConfirmBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
@@ -282,8 +293,20 @@ void UGT_PauseMenuWidget::Open(bool bShowCheatEntry)
 	(void)bShowCheatEntry;
 #endif
 	ShowConfirmReturn(false);
+	if (ActionErrorText)
+	{
+		ActionErrorText->SetText(FText::GetEmpty());
+		ActionErrorText->SetVisibility(ESlateVisibility::Collapsed);
+	}
 	SetVisibility(ESlateVisibility::Visible);
-	SetKeyboardFocus();
+	if (ResumeButton)
+	{
+		ResumeButton->SetKeyboardFocus();
+	}
+	else
+	{
+		SetKeyboardFocus();
+	}
 }
 
 void UGT_PauseMenuWidget::Close()
@@ -295,6 +318,20 @@ void UGT_PauseMenuWidget::Close()
 bool UGT_PauseMenuWidget::IsOpen() const
 {
 	return GetVisibility() != ESlateVisibility::Collapsed;
+}
+
+void UGT_PauseMenuWidget::ShowActionError(const FString& Message)
+{
+	ShowConfirmReturn(false);
+	if (ActionErrorText)
+	{
+		ActionErrorText->SetText(FText::FromString(Message));
+		ActionErrorText->SetVisibility(ESlateVisibility::HitTestInvisible);
+	}
+	if (ResumeButton)
+	{
+		ResumeButton->SetKeyboardFocus();
+	}
 }
 
 void UGT_PauseMenuWidget::HandleResume()

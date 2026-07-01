@@ -31,6 +31,7 @@ public:
 	void Open(bool bShowCheatEntry);
 	void Close();
 	bool IsOpen() const;
+	void ShowActionError(const FString& Message);
 
 	TDelegate<void()> OnResume;          // 继续(关菜单还焦点)
 	TDelegate<void()> OnReturnToTitle;   // 放弃本局回标题(已二次确认)
@@ -72,6 +73,8 @@ private:
 	UPROPERTY(Transient) UBorder* Backdrop = nullptr;
 	UPROPERTY(Transient) UVerticalBox* MainButtons = nullptr;
 	UPROPERTY(Transient) UVerticalBox* ConfirmBox = nullptr;
+	UPROPERTY(Transient) UButton* ResumeButton = nullptr;
+	UPROPERTY(Transient) UTextBlock* ActionErrorText = nullptr;
 	UPROPERTY(Transient) UVerticalBox* CheatBox = nullptr;
 	UPROPERTY(Transient) UButton* CheatButton = nullptr;
 	UPROPERTY(Transient) UTextBlock* CheatGodText = nullptr;

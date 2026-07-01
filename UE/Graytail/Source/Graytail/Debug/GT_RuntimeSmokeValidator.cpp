@@ -25,6 +25,9 @@
 #include "HAL/FileManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "Save/GT_MetaSaveGame.h"
+#include "UI/GT_RoomViewWidget.h"
+#include "UI/GT_SettingsWidget.h"
+#include "UI/ViewModels/GT_BagSummaryViewModel.h"
 #include "UI/ViewModels/GT_MiniMapViewModel.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Guid.h"
@@ -245,6 +248,10 @@ namespace
 	const FName GTCheck_MetaSaveDebugMirrorWritten(TEXT("MetaSaveDebugMirrorWritten"));
 	const FName GTCheck_MetaSaveDebugMirrorMatches(TEXT("MetaSaveDebugMirrorMatches"));
 	const FName GTCheck_MetaSaveIgnoresDebugMirror(TEXT("MetaSaveIgnoresDebugMirror"));
+	const FName GTCheck_BagSummaryShowsFourRows(TEXT("BagSummaryShowsFourRows"));
+	const FName GTCheck_BagSummarySortsHighestRarityFirst(TEXT("BagSummarySortsHighestRarityFirst"));
+	const FName GTCheck_RoomSimulationPauseIsExplicit(TEXT("RoomSimulationPauseIsExplicit"));
+	const FName GTCheck_SettingsQuitDispatchesRequest(TEXT("SettingsQuitDispatchesRequest"));
 
 	const TCHAR* GTGameDataFileNames[] = {
 		TEXT("core.json"),
@@ -400,6 +407,72 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		GTCheck_GameDataDefaultLoads,
 		bDefaultGameDataLoads,
 		bDefaultGameDataLoads ? TEXT("Default JSON game data loaded.") : FString::Join(DefaultGameDataErrors, TEXT(" | ")));
+
+	AddCheck(
+		OutResults,
+		GTCheck_BagSummaryShowsFourRows,
+		GT_BagSummaryViewModel::VisibleRowCount == 4
+			&& GT_BagSummaryViewModel::ViewportHeight
+				== GT_BagSummaryViewModel::VisibleRowCount * GT_BagSummaryViewModel::RowHeight,
+		FString::Printf(
+			TEXT("Bag summary rows=%d row height=%.0f viewport=%.0f."),
+			GT_BagSummaryViewModel::VisibleRowCount,
+			GT_BagSummaryViewModel::RowHeight,
+			GT_BagSummaryViewModel::ViewportHeight));
+
+	TArray<FGT_ItemStack> OriginalBagSummaryStacks;
+	for (const FName ItemId : {
+		FName(TEXT("broken_copper_wire")),
+		FName(TEXT("static_lens")),
+		FName(TEXT("fluorescent_shard")),
+		FName(TEXT("anomaly_core_shard")) })
+	{
+		FGT_ItemStack& Stack = OriginalBagSummaryStacks.AddDefaulted_GetRef();
+		Stack.ItemId = ItemId;
+		Stack.Count = 1;
+	}
+	TArray<FGT_ItemStack> BagSummaryStacks = OriginalBagSummaryStacks;
+	GT_BagSummaryViewModel::SortForDisplay(BagSummaryStacks);
+	const bool bBagSummarySorted =
+		BagSummaryStacks.Num() == 4
+		&& BagSummaryStacks[0].ItemId == FName(TEXT("anomaly_core_shard"))
+		&& BagSummaryStacks[1].ItemId == FName(TEXT("fluorescent_shard"))
+		&& BagSummaryStacks[2].ItemId == FName(TEXT("static_lens"))
+		&& BagSummaryStacks[3].ItemId == FName(TEXT("broken_copper_wire"))
+		&& OriginalBagSummaryStacks[0].ItemId == FName(TEXT("broken_copper_wire"));
+	AddCheck(
+		OutResults,
+		GTCheck_BagSummarySortsHighestRarityFirst,
+		bBagSummarySorted,
+		FString::Printf(
+			TEXT("Bag summary order=%s."),
+			*FString::JoinBy(
+				BagSummaryStacks,
+				TEXT(","),
+				[](const FGT_ItemStack& Stack) { return Stack.ItemId.ToString(); })));
+
+	UGT_RoomViewWidget* PauseProbe = NewObject<UGT_RoomViewWidget>(this);
+	PauseProbe->SetSimulationPaused(true);
+	const bool bPaused = PauseProbe->IsSimulationPaused();
+	PauseProbe->SetSimulationPaused(false);
+	AddCheck(
+		OutResults,
+		GTCheck_RoomSimulationPauseIsExplicit,
+		bPaused && !PauseProbe->IsSimulationPaused(),
+		TEXT("Room simulation pause must not depend on keyboard focus."));
+
+	UGT_SettingsWidget* SettingsProbe = NewObject<UGT_SettingsWidget>(this);
+	int32 QuitRequestCount = 0;
+	SettingsProbe->OnQuitRequested.BindLambda([&QuitRequestCount]()
+	{
+		++QuitRequestCount;
+	});
+	SettingsProbe->RequestQuit();
+	AddCheck(
+		OutResults,
+		GTCheck_SettingsQuitDispatchesRequest,
+		QuitRequestCount == 1,
+		FString::Printf(TEXT("Settings quit requests=%d."), QuitRequestCount));
 
 	FGT_GameDataSnapshot MissingGameData;
 	TArray<FString> MissingGameDataErrors;

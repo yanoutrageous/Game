@@ -37,6 +37,9 @@ public:
 	// 保证状态始终与物理按键一致(关弹窗后按住的键立刻续走, 不卡键不断手感)。
 	void SetHeldMovementKey(const FKey& Key, bool bDown);
 
+	void SetSimulationPaused(bool bPaused) { bSimulationPaused = bPaused; }
+	bool IsSimulationPaused() const { return bSimulationPaused; }
+
 	// 播放开箱金光 + 奖励飘字(对齐 Lua TriggerChestOpen/chestRewardBurst)。
 	void PlayChestRewardBurst(int32 Gold, int32 Parts);
 
@@ -250,6 +253,7 @@ private:
 
 	// 全局键盘预处理器: 不受焦点/UIOnly 影响地维护 WASD 持键真值(防漏 KeyUp 卡键 / 关弹窗续走)。
 	TSharedPtr<FGTMovementKeyProcessor> MovementProcessor;
+	bool bSimulationPaused = false;
 
 	// 怪物实时战斗状态(表现层): 归一化位置(追击移动)、近战相位机、攻击射程缓存。
 	FVector2D EnemyNormPos = FVector2D(0.35f, 0.45f);

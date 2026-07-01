@@ -89,6 +89,25 @@ void UGT_GameHudWidget::NativeConstruct()
 	}
 }
 
+bool UGT_GameHudWidget::IsMainMenuVisible() const
+{
+	return MainMenu && MainMenu->IsOpen();
+}
+
+bool UGT_GameHudWidget::TryStartRunFromMenu(EGT_Difficulty Difficulty)
+{
+	if (!StartNewRun(Difficulty))
+	{
+		return false;
+	}
+
+	if (MainMenu)
+	{
+		MainMenu->Close();
+	}
+	return true;
+}
+
 void UGT_GameHudWidget::BuildWidgetTree()
 {
 	// 全屏 Overlay: 房间铺底, 各面板悬浮其上(对齐 Lua 原版构图)。3D 世界被完全盖住。
@@ -1734,14 +1753,27 @@ void UGT_GameHudWidget::ShowCompassHintIfNeeded()
 
 void UGT_GameHudWidget::OnNewRun()
 {
-	UGT_DebugSubsystem* Debug = GetDebugSubsystem();
-	FGT_DebugRunSnapshot Snapshot;
-	if (Debug)
+	if (!StartNewRun(LastDifficulty))
 	{
-		// 每局随机种子(对齐原版); 局内随机仍由该种子完全确定, 复现指定地图用 gt.StartStd。
-		// 难度 = 主菜单最近一次选择("重新出发"沿用同难度)。
-		Debug->DebugStartStandardRun(FMath::RandRange(1, MAX_int32 - 1), LastDifficulty, Snapshot);
+		ShowToast(TEXT("无法开始新行动，请查看日志中的配置或存档错误。"));
 	}
+}
+
+bool UGT_GameHudWidget::StartNewRun(EGT_Difficulty Difficulty)
+{
+	UGameInstance* GameInstance = GetGameInstance();
+	UGT_RunSubsystem* RunSubsystem = GameInstance
+		? GameInstance->GetSubsystem<UGT_RunSubsystem>()
+		: nullptr;
+	UGT_RunContext* NewRun = RunSubsystem
+		? RunSubsystem->StartNewRunStandard(FMath::RandRange(1, MAX_int32 - 1), Difficulty)
+		: nullptr;
+	if (!NewRun)
+	{
+		return false;
+	}
+
+	LastDifficulty = Difficulty;
 	if (MapOverlay)
 	{
 		// 上一局的标雷旗随新局清空。
@@ -1767,8 +1799,14 @@ void UGT_GameHudWidget::OnNewRun()
 	TutorialReset();
 	if (bTutorialActive)
 	{
-		TutorialEnterRoom(Snapshot.PlayerX, Snapshot.PlayerY);
+		int32 PlayerX = 0;
+		int32 PlayerY = 0;
+		if (NewRun->TryGetPlayerPosition(PlayerX, PlayerY))
+		{
+			TutorialEnterRoom(PlayerX, PlayerY);
+		}
 	}
+	return true;
 }
 
 void UGT_GameHudWidget::HandleDeployRequested()
@@ -2012,10 +2050,8 @@ void UGT_GameHudWidget::TutorialConfirm()
 void UGT_GameHudWidget::HandleMenuStartRequested(EGT_Difficulty Difficulty)
 {
 	// 难度确认后直接开局; 将来部署界面(局外组)插在这一步之前, 由团队定。
-	LastDifficulty = Difficulty;
-	if (MainMenu)
+	if (!TryStartRunFromMenu(Difficulty))
 	{
-		MainMenu->Close();
+		ShowToast(TEXT("无法开始新行动，请查看日志中的配置或存档错误。"));
 	}
-	OnNewRun();
 }

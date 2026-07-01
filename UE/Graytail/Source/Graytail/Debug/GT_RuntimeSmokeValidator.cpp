@@ -1,5 +1,7 @@
 #include "Debug/GT_RuntimeSmokeValidator.h"
 
+#include "App/GT_GameMode.h"
+#include "App/GT_PlayerController.h"
 #include "Core/GT_CommandBus.h"
 #include "Core/GT_CommandProcessor.h"
 #include "Core/GT_ContentRegistry.h"
@@ -32,6 +34,10 @@
 
 namespace
 {
+	const FName GTCheck_DefaultGameModeUsesGraytailController(TEXT("DefaultGameModeUsesGraytailController"));
+	const FName GTCheck_LocalControllerCreatesHudOnce(TEXT("LocalControllerCreatesHudOnce"));
+	const FName GTCheck_ExistingHudIsNotDuplicated(TEXT("ExistingHudIsNotDuplicated"));
+	const FName GTCheck_RemoteControllerDoesNotCreateHud(TEXT("RemoteControllerDoesNotCreateHud"));
 	const FName GTCheck_RunSubsystemValid(TEXT("RunSubsystemValid"));
 	const FName GTCheck_PlayerExists(TEXT("PlayerExists"));
 	const FName GTCheck_InitialPlayerPosition(TEXT("InitialPlayerPosition"));
@@ -335,6 +341,28 @@ void UGT_RuntimeSmokeValidator::SetDebugSubsystem(UGT_DebugSubsystem* InDebugSub
 bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSmokeCheckResult>& OutResults)
 {
 	OutResults.Reset();
+
+	const AGT_GameMode* DefaultGameMode = GetDefault<AGT_GameMode>();
+	AddCheck(
+		OutResults,
+		GTCheck_DefaultGameModeUsesGraytailController,
+		DefaultGameMode && DefaultGameMode->PlayerControllerClass == AGT_PlayerController::StaticClass(),
+		TEXT("Graytail game mode must use the Graytail player controller."));
+	AddCheck(
+		OutResults,
+		GTCheck_LocalControllerCreatesHudOnce,
+		AGT_PlayerController::ShouldCreateHud(true, false),
+		TEXT("A local controller without a HUD should create one."));
+	AddCheck(
+		OutResults,
+		GTCheck_ExistingHudIsNotDuplicated,
+		!AGT_PlayerController::ShouldCreateHud(true, true),
+		TEXT("A local controller with a HUD must not create a duplicate."));
+	AddCheck(
+		OutResults,
+		GTCheck_RemoteControllerDoesNotCreateHud,
+		!AGT_PlayerController::ShouldCreateHud(false, false),
+		TEXT("A remote controller must not create a local HUD."));
 
 	FGT_GameDataSnapshot DefaultGameData;
 	TArray<FString> DefaultGameDataErrors;

@@ -43,6 +43,9 @@ public:
 	virtual FReply NativeOnFocusReceived(const FGeometry& InGeometry, const FFocusEvent& InFocusEvent) override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
+	bool IsMainMenuVisible() const;
+	bool TryStartRunFromMenu(EGT_Difficulty Difficulty);
+
 private:
 	void BuildWidgetTree();
 	UGT_DebugSubsystem* GetDebugSubsystem() const;
@@ -73,6 +76,7 @@ private:
 	UFUNCTION() void OnExtract();
 	UFUNCTION() void OnNewRun();
 	UFUNCTION() void OnReturnToMenu();
+	bool StartNewRun(EGT_Difficulty Difficulty);
 
 	// 局内暂停菜单(ESC / =): 打开/关闭 + 三个菜单动作。
 	void TogglePauseMenu();

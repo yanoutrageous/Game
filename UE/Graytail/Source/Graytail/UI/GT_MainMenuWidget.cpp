@@ -161,6 +161,52 @@ namespace
 	const int32 GTSizeToCastlePlank[] = { 0, 1, 3 };
 }
 
+FGT_MetaUiState GT_BuildMetaUiState(
+	EGT_MetaPersistenceStatus Status,
+	const FGT_MetaOperationResult& LastResult,
+	const FText& StartupNotice)
+{
+	FGT_MetaUiState State;
+	switch (Status)
+	{
+	case EGT_MetaPersistenceStatus::Ready:
+	case EGT_MetaPersistenceStatus::Fresh:
+		State.bCanStart = true;
+		break;
+	case EGT_MetaPersistenceStatus::RecoveredBackup:
+		State.bCanStart = true;
+		State.Message = FText::FromString(TEXT("主存档无法读取，已自动从备份恢复。"));
+		break;
+	case EGT_MetaPersistenceStatus::WriteFailed:
+		State.bCanStart = true;
+		State.bCanRetry = true;
+		State.Message = LastResult.Message.IsEmpty()
+			? FText::FromString(TEXT("上次保存失败，请重试。"))
+			: LastResult.Message;
+		break;
+	case EGT_MetaPersistenceStatus::RecoveryWritePending:
+		State.bCanRetry = true;
+		State.Message = FText::FromString(TEXT("备份已读取，但暂时无法修复主存档。请检查磁盘空间后重试。"));
+		break;
+	case EGT_MetaPersistenceStatus::Corrupt:
+		State.bCanReset = true;
+		State.Message = FText::FromString(TEXT("主存档和备份均已损坏。重置存档前请确认不再需要旧进度。"));
+		break;
+	case EGT_MetaPersistenceStatus::UnsupportedVersion:
+		State.bCanReset = true;
+		State.Message = FText::FromString(TEXT("存档来自更新版本，当前版本无法安全读取。"));
+		break;
+	}
+
+	if (!StartupNotice.IsEmpty())
+	{
+		State.Message = State.Message.IsEmpty()
+			? StartupNotice
+			: FText::FromString(State.Message.ToString() + TEXT("\n") + StartupNotice.ToString());
+	}
+	return State;
+}
+
 TSharedRef<SWidget> UGT_MainMenuWidget::RebuildWidget()
 {
 	if (!WidgetTree->RootWidget)
@@ -443,6 +489,27 @@ void UGT_MainMenuWidget::OpenToDepart()
 	ShowPage(EPage::Size);
 }
 
+void UGT_MainMenuWidget::SetProgressAvailability(
+	bool bCanStart,
+	bool bCanRetry,
+	bool bCanReset,
+	const FText& Message)
+{
+	bProgressStartAllowed = bCanStart;
+	bProgressRetryAllowed = bCanRetry;
+	bProgressResetAllowed = bCanReset;
+	if (!bCanStart && (bCanRetry || bCanReset))
+	{
+		const TCHAR* Action = bCanRetry ? TEXT("按确认键重试修复。") : TEXT("按确认键进入重置确认。");
+		ProgressMessage = FText::FromString(Message.ToString() + TEXT("\n") + Action);
+	}
+	else
+	{
+		ProgressMessage = Message;
+	}
+	RefreshOptionStyles();
+}
+
 void UGT_MainMenuWidget::Close()
 {
 	SetVisibility(ESlateVisibility::Collapsed);
@@ -565,6 +632,12 @@ void UGT_MainMenuWidget::RefreshOptionStyles()
 	UTextBlock* Hint = CurrentPage == EPage::Main ? HintMain : CurrentPage == EPage::Size ? HintSize : HintDiff;
 	if (Hint && SelectedIndex >= 0 && SelectedIndex < CurrentOptionCount())
 	{
+		if (!bProgressStartAllowed)
+		{
+			Hint->SetColorAndOpacity(FSlateColor(GTMenuHintLocked));
+			Hint->SetText(ProgressMessage);
+			return;
+		}
 		if (!GT_GameData::IsReady())
 		{
 			Hint->SetColorAndOpacity(FSlateColor(GTMenuHintLocked));
@@ -593,6 +666,15 @@ void UGT_MainMenuWidget::ConfirmSelection()
 		|| (CurrentPage == EPage::Difficulty && SelectedIndex != GTDiffOption_Back);
 	if (bRequiresGameData && !GT_GameData::IsReady())
 	{
+		RefreshOptionStyles();
+		return;
+	}
+	if (bRequiresGameData && !bProgressStartAllowed)
+	{
+		if (bProgressRetryAllowed || bProgressResetAllowed)
+		{
+			OnPersistenceActionRequested.ExecuteIfBound();
+		}
 		RefreshOptionStyles();
 		return;
 	}

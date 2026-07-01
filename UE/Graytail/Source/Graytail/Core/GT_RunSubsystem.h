@@ -46,6 +46,7 @@ public:
 	FGT_MetaOperationResult AbandonRun();
 
 	FGT_MetaOperationResult RetryPendingSettlement();
+	bool HasPendingSettlement() const { return !PendingSettlementEvent.IsNone(); }
 
 	// 局终结算挂接: 订阅 EventBus, 在 Standard 局终把结果结算进局外 MetaProgress(S2)。
 	UFUNCTION()

@@ -356,7 +356,8 @@ bool UGT_MetaProgressSubsystem::CanMutateProgress() const
 {
 	return PersistenceStatus == EGT_MetaPersistenceStatus::Ready
 		|| PersistenceStatus == EGT_MetaPersistenceStatus::Fresh
-		|| PersistenceStatus == EGT_MetaPersistenceStatus::RecoveredBackup;
+		|| PersistenceStatus == EGT_MetaPersistenceStatus::RecoveredBackup
+		|| PersistenceStatus == EGT_MetaPersistenceStatus::WriteFailed;
 }
 
 FGT_MetaOperationResult UGT_MetaProgressSubsystem::ResetCorruptSaveAndCreateFresh()

@@ -8,6 +8,7 @@
 #include "Domains/Meta/GT_MetaTypes.h"
 #include "Save/GT_MetaSaveGame.h"
 #include "Save/GT_SaveGame.h"
+#include "UI/GT_MainMenuWidget.h"
 
 namespace
 {
@@ -134,6 +135,33 @@ void GT_MetaPersistenceSmokeValidator::AppendChecks(
 		TEXT("MetaSaveFutureVersionRejected"),
 		bFutureRejected && !Error.IsEmpty(),
 		Error);
+
+	const FGT_MetaUiState ReadyUi = GT_BuildMetaUiState(
+		EGT_MetaPersistenceStatus::Ready,
+		FGT_MetaOperationResult::Success(),
+		FText::GetEmpty());
+	const FGT_MetaUiState CorruptUi = GT_BuildMetaUiState(
+		EGT_MetaPersistenceStatus::Corrupt,
+		FGT_MetaOperationResult::Failure(
+			FName(TEXT("corrupt")),
+			FText::FromString(TEXT("corrupt"))),
+		FText::GetEmpty());
+	const FGT_MetaUiState RecoveryPendingUi = GT_BuildMetaUiState(
+		EGT_MetaPersistenceStatus::RecoveryWritePending,
+		FGT_MetaOperationResult::Failure(
+			FName(TEXT("write_failed")),
+			FText::FromString(TEXT("write failed"))),
+		FText::FromString(TEXT("startup notice")));
+	AddCheck(
+		OutResults,
+		TEXT("MetaUiStateSeparatesPlayableAndBlockingSaves"),
+		ReadyUi.bCanStart
+			&& !CorruptUi.bCanStart
+			&& CorruptUi.bCanReset
+			&& !RecoveryPendingUi.bCanStart
+			&& RecoveryPendingUi.bCanRetry
+			&& RecoveryPendingUi.Message.ToString().Contains(TEXT("startup notice")),
+		RecoveryPendingUi.Message.ToString());
 
 	FGT_MetaProgressState DirtyState;
 	DirtyState.Gold = -100;

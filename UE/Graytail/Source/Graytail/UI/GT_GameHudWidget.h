@@ -76,7 +76,9 @@ private:
 	UFUNCTION() void OnExtract();
 	UFUNCTION() void OnNewRun();
 	UFUNCTION() void OnReturnToMenu();
+	UFUNCTION() void OnRetrySettlement();
 	bool StartNewRun(EGT_Difficulty Difficulty);
+	void RefreshMetaPresentation(bool bConsumeStartupNotice);
 
 	// 局内暂停菜单(ESC / =): 打开/关闭 + 三个菜单动作。
 	void TogglePauseMenu();
@@ -98,6 +100,7 @@ private:
 	// 设置面板(标题): 打开 / 返回主菜单。
 	void HandleSettingsRequested();
 	void HandleSettingsBack();
+	void HandlePersistenceActionRequested();
 
 	// 过门换房后的统一回调: 刷新信息面板 + 驱动新手教程弹窗(若在教程局)。
 	void HandleRoomChanged();
@@ -153,7 +156,10 @@ private:
 	UPROPERTY(Transient) UTextBlock* RunEndTitle = nullptr;
 	UPROPERTY(Transient) UTextBlock* RunEndBody = nullptr;
 	UPROPERTY(Transient) UButton* RunEndButton = nullptr;
+	UPROPERTY(Transient) UButton* RunEndMenuButton = nullptr;
+	UPROPERTY(Transient) UButton* RunEndRetryButton = nullptr;
 	bool bRunEndShown = false;
+	bool bResetSaveConfirmationArmed = false;
 
 	// 主菜单(最顶层): 无局时显示, 选难度后开局; "重新出发"沿用上次选的难度。
 	UPROPERTY(Transient) UGT_MainMenuWidget* MainMenu = nullptr;

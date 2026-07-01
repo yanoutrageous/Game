@@ -36,6 +36,7 @@ public:
 
 	// 某格是否被玩家插旗(左上小地图同步显示用; 旗标是 UI 标注, 内核不感知)。
 	bool IsCellFlagged(int32 X, int32 Y) const { return FlaggedCells.Contains(FIntPoint(X, Y)); }
+	const TSet<FIntPoint>& GetFlaggedCells() const { return FlaggedCells; }
 
 	// 关闭后回调(HUD 整体刷新并还焦点给房间视图; 回传也走这条路)。
 	FSimpleDelegate OnClosed;
@@ -43,7 +44,7 @@ public:
 private:
 	void BuildWidgetTree();
 	UGT_DebugSubsystem* GetDebugSubsystem() const;
-	const UGT_RunContext* GetRunContext() const;   // 邻域感知天赋: 读真值给大地图相邻格分色
+	const UGT_RunContext* GetRunContext() const;   // 邻域感知天赋: 读取本局装备效果是否启用
 	UTexture2D* LoadUiTexture(const FString& AssetPath);
 
 	UPROPERTY(Transient) USizeBox* GridSizeBox = nullptr;

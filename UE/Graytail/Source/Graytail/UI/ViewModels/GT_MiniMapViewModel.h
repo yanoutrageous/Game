@@ -41,6 +41,16 @@ struct GRAYTAIL_API FGT_MiniMapCellViewData
 	EGT_IntelReliabilityState ReliabilityState = EGT_IntelReliabilityState::Unknown;
 };
 
+namespace GT_NeighborhoodSensingViewModel
+{
+	GRAYTAIL_API TSet<FIntPoint> FindSafeUnknownNeighbors(
+		const TArray<FGT_MiniMapCellViewData>& Cells,
+		int32 Width,
+		int32 Height,
+		const FIntPoint& Center,
+		const TSet<FIntPoint>& FlaggedCells);
+}
+
 UCLASS(BlueprintType)
 class GRAYTAIL_API UGT_MiniMapViewModel : public UObject
 {

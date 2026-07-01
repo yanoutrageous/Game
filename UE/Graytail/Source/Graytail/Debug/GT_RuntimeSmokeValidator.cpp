@@ -89,6 +89,9 @@ namespace
 	const FName GTCheck_MiniMapViewModelDisplayedNumber(TEXT("MiniMapViewModelDisplayedNumber"));
 	const FName GTCheck_MiniMapViewModelCellVisibleExplored(TEXT("MiniMapViewModelCellVisibleExplored"));
 	const FName GTCheck_MiniMapViewModelReliability(TEXT("MiniMapViewModelReliability"));
+	const FName GTCheck_NeighborhoodSensingCountsPlayerFlags(TEXT("NeighborhoodSensingCountsPlayerFlags"));
+	const FName GTCheck_NeighborhoodSensingCountsTriggeredMines(TEXT("NeighborhoodSensingCountsTriggeredMines"));
+	const FName GTCheck_NeighborhoodSensingWaitsForExactCount(TEXT("NeighborhoodSensingWaitsForExactCount"));
 	const FName GTCheck_QueryFacadeReusesMiniMapViewModel(TEXT("QueryFacadeReusesMiniMapViewModel"));
 	const FName GTCheck_NormalRoomResolveOutcome(TEXT("NormalRoomResolveOutcome"));
 	const FName GTCheck_NormalRoomEvents(TEXT("NormalRoomEvents"));
@@ -1576,6 +1579,67 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		GTCheck_MiniMapViewModelSize,
 		bMiniMapViewModelSizeOk,
 		FString::Printf(TEXT("MiniMapViewModel size is %dx%d with %d cells."), MiniMapWidth, MiniMapHeight, MiniMapCells.Num()));
+
+	TArray<FGT_MiniMapCellViewData> SensingCells;
+	SensingCells.SetNum(9);
+	for (int32 Y = 0; Y < 3; ++Y)
+	{
+		for (int32 X = 0; X < 3; ++X)
+		{
+			FGT_MiniMapCellViewData& Cell = SensingCells[Y * 3 + X];
+			Cell.X = X;
+			Cell.Y = Y;
+		}
+	}
+	FGT_MiniMapCellViewData& SensingCenter = SensingCells[4];
+	SensingCenter.bVisible = true;
+	SensingCenter.bExplored = true;
+	SensingCenter.bScanned = true;
+	SensingCenter.DisplayedNumber = 1;
+
+	TSet<FIntPoint> SensingFlags = { FIntPoint(0, 0) };
+	TSet<FIntPoint> SafeUnknownNeighbors =
+		GT_NeighborhoodSensingViewModel::FindSafeUnknownNeighbors(
+			SensingCells,
+			3,
+			3,
+			FIntPoint(1, 1),
+			SensingFlags);
+	AddCheck(
+		OutResults,
+		GTCheck_NeighborhoodSensingCountsPlayerFlags,
+		SafeUnknownNeighbors.Num() == 7 && !SafeUnknownNeighbors.Contains(FIntPoint(0, 0)),
+		FString::Printf(TEXT("Flag-only sensing safe neighbors=%d."), SafeUnknownNeighbors.Num()));
+
+	FGT_MiniMapCellViewData& TriggeredMine = SensingCells[8];
+	TriggeredMine.bVisible = true;
+	TriggeredMine.bExplored = true;
+	TriggeredMine.VisibleRoomIcon = FName(TEXT("Mine"));
+	SensingCenter.DisplayedNumber = 2;
+	SafeUnknownNeighbors = GT_NeighborhoodSensingViewModel::FindSafeUnknownNeighbors(
+		SensingCells,
+		3,
+		3,
+		FIntPoint(1, 1),
+		SensingFlags);
+	AddCheck(
+		OutResults,
+		GTCheck_NeighborhoodSensingCountsTriggeredMines,
+		SafeUnknownNeighbors.Num() == 6 && !SafeUnknownNeighbors.Contains(FIntPoint(2, 2)),
+		FString::Printf(TEXT("Flag plus triggered-mine sensing safe neighbors=%d."), SafeUnknownNeighbors.Num()));
+
+	SensingCenter.DisplayedNumber = 3;
+	SafeUnknownNeighbors = GT_NeighborhoodSensingViewModel::FindSafeUnknownNeighbors(
+		SensingCells,
+		3,
+		3,
+		FIntPoint(1, 1),
+		SensingFlags);
+	AddCheck(
+		OutResults,
+		GTCheck_NeighborhoodSensingWaitsForExactCount,
+		SafeUnknownNeighbors.IsEmpty(),
+		FString::Printf(TEXT("Under-confirmed sensing safe neighbors=%d."), SafeUnknownNeighbors.Num()));
 
 	auto CountQueryMiniMapViewModels = [QueryFacade]() -> int32
 	{

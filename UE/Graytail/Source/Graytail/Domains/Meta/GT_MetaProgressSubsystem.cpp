@@ -1,6 +1,7 @@
 #include "Domains/Meta/GT_MetaProgressSubsystem.h"
 
 #include "Domains/Meta/GT_MetaCatalog.h"
+#include "Domains/Meta/GT_MetaPersistenceTypes.h"
 #include "Data/GT_GameDataSubsystem.h"
 #include "Save/GT_MetaSaveGame.h"
 #include "Dom/JsonObject.h"
@@ -100,51 +101,40 @@ void UGT_MetaProgressSubsystem::Load()
 		UGameplayStatics::LoadGameFromSlot(SaveSlotName(), SaveUserIndex));
 	if (!SaveObj)
 	{
-		State = FGT_MetaProgressState();
-		UE_LOG(LogGraytailMeta, Warning, TEXT("Load: slot exists but load failed; starting fresh."));
+		UE_LOG(LogGraytailMeta, Error, TEXT("Load: slot exists but could not be deserialized."));
 		return;
 	}
-	State = SaveObj->State;
-	SanitizeAfterLoad();
+	FGT_MetaProgressState Candidate = SaveObj->State;
+	FString ValidationError;
+	if (!GT_MigrateMetaSave(SaveObj->SaveVersion, Candidate, ValidationError))
+	{
+		UE_LOG(LogGraytailMeta, Error, TEXT("Load: %s"), *ValidationError);
+		return;
+	}
+	if (!GT_ValidateAndSanitizeMetaState(Candidate, ValidationError))
+	{
+		UE_LOG(LogGraytailMeta, Error, TEXT("Load: invalid state: %s"), *ValidationError);
+		return;
+	}
+	State = MoveTemp(Candidate);
+	if (SaveObj->SaveVersion != UGT_MetaSaveGame::CurrentSaveVersion)
+	{
+		Save();
+	}
 	UE_LOG(LogGraytailMeta, Log, TEXT("Loaded: gold=%d"), State.Gold);
 }
 
 void UGT_MetaProgressSubsystem::SanitizeAfterLoad()
 {
-	State.Gold = ClampNonNegative(State.Gold);
 	if (!GT_GameData::IsReady())
 	{
 		return;
 	}
 
-	// 已装备项必须确实拥有(对齐 Lua 校验)。
-	State.EquippedItems.RemoveAll([this](const FName& Id)
+	FString ValidationError;
+	if (!GT_ValidateAndSanitizeMetaState(State, ValidationError))
 	{
-		return !State.OwnedItems.Contains(Id) || !GT_MetaCatalog::FindEquip(Id);
-	});
-	// 上限保护。
-	if (State.EquippedItems.Num() > GT_MetaCatalog::GetMaxEquipped())
-	{
-		State.EquippedItems.SetNum(GT_MetaCatalog::GetMaxEquipped());
-	}
-	// loadout 数量夹到库存且不超 maxCarry, 去掉未知/<=0。
-	for (auto It = State.LoadoutConsumables.CreateIterator(); It; ++It)
-	{
-		const FGT_ConsumableDef* Def = GT_MetaCatalog::FindConsumable(It.Key());
-		const int32 Stock = State.ConsumableStock.FindRef(It.Key());
-		int32 Count = FMath::Min(It.Value(), Stock);
-		if (Def && Def->MaxCarry > 0)
-		{
-			Count = FMath::Min(Count, Def->MaxCarry);
-		}
-		if (!Def || Count <= 0)
-		{
-			It.RemoveCurrent();
-		}
-		else
-		{
-			It.Value() = Count;
-		}
+		UE_LOG(LogGraytailMeta, Error, TEXT("SanitizeAfterLoad: %s"), *ValidationError);
 	}
 }
 

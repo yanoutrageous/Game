@@ -11,6 +11,7 @@
 #include "Core/GT_RunSubsystem.h"
 #include "Debug/GT_DebugSubsystem.h"
 #include "Debug/GT_DebugTypes.h"
+#include "Debug/GT_MetaPersistenceSmokeValidator.h"
 #include "Data/GT_GameDataSubsystem.h"
 #include "Dom/JsonObject.h"
 #include "Domains/Combat/GT_MonsterCatalog.h"
@@ -363,6 +364,7 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		GTCheck_RemoteControllerDoesNotCreateHud,
 		!AGT_PlayerController::ShouldCreateHud(false, false),
 		TEXT("A remote controller must not create a local HUD."));
+	GT_MetaPersistenceSmokeValidator::AppendChecks(OutResults);
 
 	FGT_GameDataSnapshot DefaultGameData;
 	TArray<FString> DefaultGameDataErrors;
@@ -956,7 +958,7 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		&& DebugMirrorObject.IsValid();
 	const TSharedPtr<FJsonObject>* DebugStateObject = nullptr;
 	const bool bMirrorMatches = bMirrorParsed
-		&& DebugMirrorObject->GetIntegerField(TEXT("saveVersion")) == 1
+		&& DebugMirrorObject->GetIntegerField(TEXT("saveVersion")) == UGT_MetaSaveGame::CurrentSaveVersion
 		&& DebugMirrorObject->TryGetObjectField(TEXT("state"), DebugStateObject)
 		&& DebugStateObject
 		&& (*DebugStateObject)->GetIntegerField(TEXT("gold")) == MetaProgress->GetGold();

@@ -13,12 +13,20 @@ class GRAYTAIL_API AGT_PlayerController : public APlayerController
 
 public:
 	static bool ShouldCreateHud(bool bIsLocalController, bool bHasExistingHud);
+#if !UE_BUILD_SHIPPING
+	static bool TryGetIsolatedStartupProbeSlot(
+		const TCHAR* CommandLine,
+		FString& OutSaveSlot);
+#endif
 
 protected:
 	virtual void BeginPlay() override;
 
 private:
 	void EnsureGameHud();
+#if !UE_BUILD_SHIPPING
+	void RunStartupProbeIfRequested();
+#endif
 
 	UPROPERTY(Transient)
 	UGT_GameHudWidget* GameHud = nullptr;

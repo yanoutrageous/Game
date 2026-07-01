@@ -364,6 +364,23 @@ bool UGT_RuntimeSmokeValidator::RunMinimalMovementSmokeTest(TArray<FGT_RuntimeSm
 		GTCheck_RemoteControllerDoesNotCreateHud,
 		!AGT_PlayerController::ShouldCreateHud(false, false),
 		TEXT("A remote controller must not create a local HUD."));
+#if !UE_BUILD_SHIPPING
+	FString StartupProbeSlot;
+	AddCheck(
+		OutResults,
+		FName(TEXT("StartupProbeRequiresIsolatedSaveSlot")),
+		AGT_PlayerController::TryGetIsolatedStartupProbeSlot(
+			TEXT("-GraytailStartupProbe -GraytailSaveSlot=GraytailStartupProbe_123"),
+			StartupProbeSlot)
+			&& StartupProbeSlot == TEXT("GraytailStartupProbe_123")
+			&& !AGT_PlayerController::TryGetIsolatedStartupProbeSlot(
+				TEXT("-GraytailStartupProbe -GraytailSaveSlot=GraytailMeta"),
+				StartupProbeSlot)
+			&& !AGT_PlayerController::TryGetIsolatedStartupProbeSlot(
+				TEXT("-GraytailStartupProbe"),
+				StartupProbeSlot),
+		TEXT("The packaged startup probe must refuse normal or missing save slots."));
+#endif
 	UGT_MetaProgressSubsystem* PersistenceMeta = DebugSubsystem && DebugSubsystem->GetGameInstance()
 		? DebugSubsystem->GetGameInstance()->GetSubsystem<UGT_MetaProgressSubsystem>()
 		: nullptr;

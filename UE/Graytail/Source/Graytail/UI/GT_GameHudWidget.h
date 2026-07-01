@@ -42,6 +42,7 @@ public:
 	virtual FReply NativeOnKeyUp(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 	virtual FReply NativeOnFocusReceived(const FGeometry& InGeometry, const FFocusEvent& InFocusEvent) override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
+	virtual bool NativeSupportsKeyboardFocus() const override { return true; }
 
 	bool IsMainMenuVisible() const;
 	bool TryStartRunFromMenu(EGT_Difficulty Difficulty);

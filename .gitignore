@@ -4,6 +4,7 @@ dist/
 logs/
 .cache/
 build/
+Artifacts/
 *.log
 .DS_Store
 Thumbs.db
